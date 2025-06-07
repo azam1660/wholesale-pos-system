@@ -1,136 +1,57 @@
 "use client"
 
-import { useState, useMemo, useRef } from "react"
-import { Trash2, Plus, Minus, User, ShoppingCart, FileText, Printer } from "lucide-react"
+import { useState, useMemo, useRef, useEffect, useCallback } from "react"
+import { Trash2, Plus, Minus, User, ShoppingCart, FileText, Printer, Settings, UserPlus } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Card, CardContent } from "@/components/ui/card"
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import { Checkbox } from "@/components/ui/checkbox"
+import { Label } from "@/components/ui/label"
+import { Textarea } from "@/components/ui/textarea"
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
+import AdminPanel from "./admin-panel"
+import { DataManager } from "./data-manager"
 
-// Indian General Store Data
-const sampleData = {
-  superCategories: [
-    { id: "groceries", name: "Groceries & Staples", icon: "🌾" },
-    { id: "beverages", name: "Beverages", icon: "🥤" },
-    { id: "snacks", name: "Snacks & Confectionery", icon: "🍪" },
-    { id: "personal-care", name: "Personal Care", icon: "🧴" },
-    { id: "household", name: "Household Items", icon: "🧽" },
-    { id: "dairy", name: "Dairy & Frozen", icon: "🥛" },
-  ],
-  subCategories: {
-    groceries: [
-      { id: "rice-grains", name: "Rice & Grains", icon: "🍚" },
-      { id: "pulses-lentils", name: "Pulses & Lentils", icon: "🫘" },
-      { id: "spices", name: "Spices & Masalas", icon: "🌶️" },
-      { id: "oil-ghee", name: "Oil & Ghee", icon: "🛢️" },
-      { id: "flour-atta", name: "Flour & Atta", icon: "🌾" },
-    ],
-    beverages: [
-      { id: "tea-coffee", name: "Tea & Coffee", icon: "☕" },
-      { id: "soft-drinks", name: "Soft Drinks", icon: "🥤" },
-      { id: "juices", name: "Juices", icon: "🧃" },
-      { id: "energy-drinks", name: "Energy Drinks", icon: "⚡" },
-    ],
-    snacks: [
-      { id: "biscuits", name: "Biscuits & Cookies", icon: "🍪" },
-      { id: "namkeen", name: "Namkeen & Chips", icon: "🥨" },
-      { id: "chocolates", name: "Chocolates & Sweets", icon: "🍫" },
-      { id: "dry-fruits", name: "Dry Fruits & Nuts", icon: "🥜" },
-    ],
-    "personal-care": [
-      { id: "soaps", name: "Soaps & Handwash", icon: "🧼" },
-      { id: "shampoo", name: "Shampoo & Hair Care", icon: "🧴" },
-      { id: "toothpaste", name: "Oral Care", icon: "🦷" },
-      { id: "skincare", name: "Skincare", icon: "🧴" },
-    ],
-    household: [
-      { id: "detergent", name: "Detergents", icon: "🧽" },
-      { id: "cleaning", name: "Cleaning Supplies", icon: "🧹" },
-      { id: "kitchen", name: "Kitchen Items", icon: "🍽️" },
-      { id: "stationery", name: "Stationery", icon: "✏️" },
-    ],
-    dairy: [
-      { id: "milk", name: "Milk & Curd", icon: "🥛" },
-      { id: "butter-cheese", name: "Butter & Cheese", icon: "🧈" },
-      { id: "ice-cream", name: "Ice Cream", icon: "🍦" },
-      { id: "frozen", name: "Frozen Foods", icon: "🧊" },
-    ],
-  },
-  products: {
-    "rice-grains": [
-      { id: "basmati-rice", name: "Basmati Rice 5kg", price: 450.0, stock: 100, unit: "bag" },
-      { id: "sona-masoori", name: "Sona Masoori Rice 25kg", price: 1200.0, stock: 50, unit: "bag" },
-      { id: "wheat", name: "Wheat 10kg", price: 280.0, stock: 75, unit: "bag" },
-    ],
-    "pulses-lentils": [
-      { id: "toor-dal", name: "Toor Dal 1kg", price: 120.0, stock: 200, unit: "kg" },
-      { id: "moong-dal", name: "Moong Dal 1kg", price: 110.0, stock: 150, unit: "kg" },
-      { id: "chana-dal", name: "Chana Dal 1kg", price: 90.0, stock: 180, unit: "kg" },
-    ],
-    spices: [
-      { id: "turmeric", name: "Turmeric Powder 500g", price: 80.0, stock: 100, unit: "pack" },
-      { id: "red-chilli", name: "Red Chilli Powder 500g", price: 120.0, stock: 80, unit: "pack" },
-      { id: "garam-masala", name: "Garam Masala 100g", price: 45.0, stock: 120, unit: "pack" },
-    ],
-    "oil-ghee": [
-      { id: "sunflower-oil", name: "Sunflower Oil 1L", price: 140.0, stock: 60, unit: "bottle" },
-      { id: "mustard-oil", name: "Mustard Oil 1L", price: 160.0, stock: 40, unit: "bottle" },
-      { id: "ghee", name: "Pure Ghee 500ml", price: 280.0, stock: 30, unit: "jar" },
-    ],
-    "flour-atta": [
-      { id: "wheat-flour", name: "Wheat Flour 10kg", price: 320.0, stock: 80, unit: "bag" },
-      { id: "maida", name: "Maida 1kg", price: 35.0, stock: 100, unit: "pack" },
-      { id: "besan", name: "Besan 1kg", price: 85.0, stock: 70, unit: "pack" },
-    ],
-    "tea-coffee": [
-      { id: "tea-leaves", name: "Premium Tea 1kg", price: 320.0, stock: 50, unit: "pack" },
-      { id: "coffee-powder", name: "Coffee Powder 500g", price: 180.0, stock: 40, unit: "pack" },
-      { id: "tea-bags", name: "Tea Bags 100pcs", price: 85.0, stock: 60, unit: "box" },
-    ],
-    biscuits: [
-      { id: "parle-g", name: "Parle-G Biscuits 1kg", price: 80.0, stock: 200, unit: "pack" },
-      { id: "marie-biscuits", name: "Marie Biscuits 500g", price: 45.0, stock: 150, unit: "pack" },
-      { id: "cream-biscuits", name: "Cream Biscuits 300g", price: 60.0, stock: 100, unit: "pack" },
-    ],
-  },
+interface SuperCategory {
+  id: string
+  name: string
+  icon: string
+  image?: string
+  createdAt: string
+  updatedAt: string
 }
 
-const customers = [
-  {
-    id: "cust1",
-    name: "Sharma General Store",
-    email: "sharma@gmail.com",
-    phone: "+91-98765-43210",
-    address: "123 Main Market, Delhi",
-  },
-  {
-    id: "cust2",
-    name: "Patel Wholesale Traders",
-    email: "patel.traders@gmail.com",
-    phone: "+91-87654-32109",
-    address: "456 Commercial Street, Mumbai",
-  },
-  {
-    id: "cust3",
-    name: "Singh Retail Hub",
-    email: "singh.retail@gmail.com",
-    phone: "+91-76543-21098",
-    address: "789 Market Road, Pune",
-  },
-  {
-    id: "cust4",
-    name: "Gupta Enterprises",
-    email: "gupta.ent@gmail.com",
-    phone: "+91-65432-10987",
-    address: "321 Trade Center, Bangalore",
-  },
-]
+interface SubCategory {
+  id: string
+  name: string
+  icon: string
+  image?: string
+  superCategoryId: string
+  createdAt: string
+  updatedAt: string
+}
 
-const storeInfo = {
-  name: "SL SALAR",
-  address: "60/61, Jodhbhavi Peth Chatla Chowk, Main Road, Main Road-413001",
-  phone: "9420490692",
+interface Product {
+  id: string
+  name: string
+  price: number
+  stock: number
+  unit: string
+  image?: string
+  subCategoryId: string
+  createdAt: string
+  updatedAt: string
+}
+
+interface Customer {
+  id: string
+  name: string
+  email: string
+  phone: string
+  address: string
+  createdAt: string
+  updatedAt: string
 }
 
 interface OrderItem {
@@ -150,12 +71,27 @@ interface Invoice {
   subtotal: number
   total: number
   isCashSale: boolean
+  paymentMethod: "cash" | "card" | "upi" | "credit"
 }
 
-// Invoice counter - in a real app, this would be stored in a database
-let invoiceCounter = 1
+const storeInfo = {
+  name: "SL SALAR",
+  address: "60/61, Jodhbhavi Peth Chatla Chowk, Main Road, Main Road-413001",
+  phone: "9420490692",
+}
+
+// Invoice counter - stored in localStorage
+const getInvoiceCounter = () => {
+  const stored = localStorage.getItem("invoiceCounter")
+  return stored ? Number.parseInt(stored) : 1
+}
+
+const setInvoiceCounter = (counter: number) => {
+  localStorage.setItem("invoiceCounter", counter.toString())
+}
 
 export default function POSSystem() {
+  const [showAdmin, setShowAdmin] = useState(false)
   const [currentView, setCurrentView] = useState<"super" | "sub" | "products">("super")
   const [selectedSuperCategory, setSelectedSuperCategory] = useState<string>("")
   const [selectedSubCategory, setSelectedSubCategory] = useState<string>("")
@@ -165,26 +101,126 @@ export default function POSSystem() {
   const [showInvoice, setShowInvoice] = useState(false)
   const [currentInvoice, setCurrentInvoice] = useState<Invoice | null>(null)
   const [isCashSale, setIsCashSale] = useState(false)
+  const [showAddCustomer, setShowAddCustomer] = useState(false)
+  const [paymentMethod, setPaymentMethod] = useState<"cash" | "card" | "upi" | "credit">("cash")
   const invoiceRef = useRef<HTMLDivElement>(null)
 
+  // Data states
+  const [superCategories, setSuperCategories] = useState<SuperCategory[]>([])
+  const [subCategories, setSubCategories] = useState<SubCategory[]>([])
+  const [products, setProducts] = useState<Product[]>([])
+  const [customers, setCustomers] = useState<Customer[]>([])
+  const [dataLoaded, setDataLoaded] = useState(false)
+
+  // Customer form state
+  const [customerForm, setCustomerForm] = useState({
+    name: "",
+    email: "",
+    phone: "",
+    address: "",
+  })
+
+  // Initialize data manager and load data
+  useEffect(() => {
+    const loadAllData = async () => {
+      try {
+        const [superCats, subCats, prods, custs] = await Promise.all([
+          DataManager.getSuperCategories(),
+          DataManager.getSubCategories(),
+          DataManager.getProducts(),
+          DataManager.getCustomers(),
+        ])
+
+        setSuperCategories(superCats)
+        setSubCategories(subCats)
+        setProducts(prods)
+        setCustomers(custs)
+        setDataLoaded(true)
+      } catch (error) {
+        console.error("Error loading data:", error)
+        setDataLoaded(true)
+      }
+    }
+
+    loadAllData()
+  }, [])
+
+  // Real-time data synchronization
+  useEffect(() => {
+    const handleStorageChange = (e: StorageEvent) => {
+      if (e.key === "superCategories") {
+        setSuperCategories(DataManager.getSuperCategories())
+      } else if (e.key === "subCategories") {
+        setSubCategories(DataManager.getSubCategories())
+      } else if (e.key === "products") {
+        setProducts(DataManager.getProducts())
+      } else if (e.key === "customers") {
+        setCustomers(DataManager.getCustomers())
+      }
+    }
+
+    window.addEventListener("storage", handleStorageChange)
+    return () => window.removeEventListener("storage", handleStorageChange)
+  }, [])
+
+  // Refresh data when returning from admin panel
+  const handleAdminReturn = useCallback(() => {
+    setShowAdmin(false)
+    // Refresh all data
+    setSuperCategories(DataManager.getSuperCategories())
+    setSubCategories(DataManager.getSubCategories())
+    setProducts(DataManager.getProducts())
+    setCustomers(DataManager.getCustomers())
+  }, [])
+
   const filteredCustomers = useMemo(() => {
+    if (!customerSearch.trim()) return []
     return customers.filter(
       (customer) =>
         customer.name.toLowerCase().includes(customerSearch.toLowerCase()) ||
-        customer.email.toLowerCase().includes(customerSearch.toLowerCase()),
+        customer.email.toLowerCase().includes(customerSearch.toLowerCase()) ||
+        customer.phone.includes(customerSearch),
     )
-  }, [customerSearch])
+  }, [customerSearch, customers])
 
-  const selectedCustomerData = customers.find((c) => c.id === selectedCustomer)
+  const selectedCustomerData = useMemo(() => {
+    return customers.find((c) => c.id === selectedCustomer)
+  }, [customers, selectedCustomer])
 
   const generateInvoiceNumber = () => {
-    const invoiceNumber = `SL-${invoiceCounter.toString().padStart(4, "0")}`
-    invoiceCounter++
+    const counter = getInvoiceCounter()
+    const invoiceNumber = `SL-${counter.toString().padStart(4, "0")}`
+    setInvoiceCounter(counter + 1)
     return invoiceNumber
+  }
+
+  const handleSaveCustomer = async () => {
+    if (!customerForm.name.trim() || !customerForm.phone.trim()) return
+
+    try {
+      const newCustomer = await DataManager.addCustomer({
+        name: customerForm.name.trim(),
+        email: customerForm.email.trim(),
+        phone: customerForm.phone.trim(),
+        address: customerForm.address.trim(),
+      })
+
+      setCustomers((prev) => [...prev, newCustomer])
+      setSelectedCustomer(newCustomer.id)
+      resetCustomerForm()
+    } catch (error) {
+      console.error("Error saving customer:", error)
+    }
+  }
+
+  const resetCustomerForm = () => {
+    setCustomerForm({ name: "", email: "", phone: "", address: "" })
+    setShowAddCustomer(false)
   }
 
   const handleSuperCategorySelect = (categoryId: string) => {
     setSelectedSuperCategory(categoryId)
+    setSelectedSubCategory("")
     setCurrentView("sub")
   }
 
@@ -204,7 +240,7 @@ export default function POSSystem() {
     setSelectedSubCategory("")
   }
 
-  const addToOrder = (product: any) => {
+  const addToOrder = (product: Product) => {
     const existingItem = orderItems.find((item) => item.id === product.id)
     if (existingItem) {
       updateQuantity(product.id, existingItem.quantity + 1)
@@ -249,7 +285,9 @@ export default function POSSystem() {
     setOrderItems([])
   }
 
-  const subtotal = orderItems.reduce((sum, item) => sum + item.lineTotal, 0)
+  const subtotal = useMemo(() => {
+    return orderItems.reduce((sum, item) => sum + item.lineTotal, 0)
+  }, [orderItems])
 
   const generateInvoice = () => {
     const invoiceNumber = generateInvoiceNumber()
@@ -261,6 +299,7 @@ export default function POSSystem() {
       subtotal,
       total: subtotal,
       isCashSale,
+      paymentMethod,
     }
     setCurrentInvoice(invoice)
     setShowInvoice(true)
@@ -304,49 +343,115 @@ export default function POSSystem() {
     }
   }
 
-  const confirmOrder = () => {
+  const confirmOrder = async () => {
     if (orderItems.length === 0) return
     if (!isCashSale && !selectedCustomer) return
 
-    generateInvoice()
-    clearCart()
-    setSelectedCustomer("")
-    setIsCashSale(false)
+    try {
+      // Record the sale
+      await DataManager.recordSale({
+        invoiceNumber: generateInvoiceNumber(),
+        customerId: isCashSale ? undefined : selectedCustomer,
+        isCashSale,
+        items: orderItems.map((item) => ({
+          productId: item.id,
+          quantity: item.quantity,
+          unitPrice: item.unitPrice,
+        })),
+        paymentMethod,
+      })
+
+      // Generate and show invoice
+      generateInvoice()
+
+      // Clear cart and reset form
+      clearCart()
+      setSelectedCustomer("")
+      setIsCashSale(false)
+      setPaymentMethod("cash")
+
+      // Refresh product data to show updated stock
+      setProducts(DataManager.getProducts())
+    } catch (error) {
+      console.error("Error recording sale:", error)
+      alert("Error processing sale. Please try again.")
+    }
+  }
+
+  if (showAdmin) {
+    return <AdminPanel onBack={handleAdminReturn} />
+  }
+
+  if (!dataLoaded) {
+    return (
+      <div className="min-h-screen bg-white flex items-center justify-center">
+        <div className="text-center">
+          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-yellow-400 mx-auto mb-4"></div>
+          <p className="text-gray-600">Loading POS System...</p>
+        </div>
+      </div>
+    )
   }
 
   const renderSuperCategories = () => (
-    <div className="grid grid-cols-2 md:grid-cols-3 gap-6">
-      {sampleData.superCategories.map((category) => (
+    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 md:gap-6">
+      {superCategories.map((category) => (
         <Button
           key={category.id}
           onClick={() => handleSuperCategorySelect(category.id)}
-          className="h-32 w-full bg-white border-2 border-gray-200 hover:border-yellow-400 hover:bg-yellow-50 text-black rounded-[23px] flex flex-col items-center justify-center gap-3 transition-colors"
+          className="h-24 sm:h-32 w-full bg-white border-2 border-gray-200 hover:border-yellow-400 hover:bg-yellow-50 text-black rounded-[23px] flex flex-col items-center justify-center gap-2 sm:gap-3 transition-colors p-4"
           variant="outline"
         >
-          <span className="text-3xl">{category.icon}</span>
-          <span className="font-medium text-sm text-center">{category.name}</span>
+          <div className="relative">
+            {category.image ? (
+              <div className="relative">
+                <img
+                  src={category.image || "/placeholder.svg"}
+                  alt={category.name}
+                  className="w-12 h-12 sm:w-16 sm:h-16 object-cover rounded-[11px] border border-gray-200"
+                />
+                <span className="absolute -bottom-1 -right-1 text-lg sm:text-xl">{category.icon}</span>
+              </div>
+            ) : (
+              <span className="text-2xl sm:text-3xl">{category.icon}</span>
+            )}
+          </div>
+          <span className="font-medium text-xs sm:text-sm text-center px-2">{category.name}</span>
         </Button>
       ))}
     </div>
   )
 
   const renderSubCategories = () => {
-    const subCategories = sampleData.subCategories[selectedSuperCategory] || []
+    const filteredSubCategories = subCategories.filter((sub) => sub.superCategoryId === selectedSuperCategory)
     return (
       <div className="space-y-4">
         <Button onClick={handleBackToSuper} variant="outline" className="rounded-[9px] border-gray-300">
           ← Back to Categories
         </Button>
-        <div className="grid grid-cols-2 md:grid-cols-3 gap-6">
-          {subCategories.map((subCategory) => (
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 md:gap-6">
+          {filteredSubCategories.map((subCategory) => (
             <Button
               key={subCategory.id}
               onClick={() => handleSubCategorySelect(subCategory.id)}
-              className="h-28 w-full bg-white border-2 border-gray-200 hover:border-yellow-400 hover:bg-yellow-50 text-black rounded-[18px] flex flex-col items-center justify-center gap-2 transition-colors"
+              className="h-20 sm:h-28 w-full bg-white border-2 border-gray-200 hover:border-yellow-400 hover:bg-yellow-50 text-black rounded-[18px] flex flex-col items-center justify-center gap-2 transition-colors p-4"
               variant="outline"
             >
-              <span className="text-2xl">{subCategory.icon}</span>
-              <span className="font-medium text-sm text-center">{subCategory.name}</span>
+              <div className="relative">
+                {subCategory.image ? (
+                  <div className="relative">
+                    <img
+                      src={subCategory.image || "/placeholder.svg"}
+                      alt={subCategory.name}
+                      className="w-10 h-10 sm:w-12 sm:h-12 object-cover rounded-[9px] border border-gray-200"
+                    />
+                    <span className="absolute -bottom-1 -right-1 text-sm sm:text-base">{subCategory.icon}</span>
+                  </div>
+                ) : (
+                  <span className="text-xl sm:text-2xl">{subCategory.icon}</span>
+                )}
+              </div>
+              <span className="font-medium text-xs sm:text-sm text-center px-2">{subCategory.name}</span>
             </Button>
           ))}
         </div>
@@ -355,10 +460,10 @@ export default function POSSystem() {
   }
 
   const renderProducts = () => {
-    const products = sampleData.products[selectedSubCategory] || []
+    const filteredProducts = products.filter((prod) => prod.subCategoryId === selectedSubCategory)
     return (
       <div className="space-y-4">
-        <div className="flex gap-2">
+        <div className="flex flex-wrap gap-2">
           <Button onClick={handleBackToSub} variant="outline" className="rounded-[9px] border-gray-300">
             ← Back to Subcategories
           </Button>
@@ -366,24 +471,38 @@ export default function POSSystem() {
             ← Back to Categories
           </Button>
         </div>
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-          {products.map((product) => (
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+          {filteredProducts.map((product) => (
             <Card key={product.id} className="rounded-[11px] border-gray-200">
-              <CardContent className="p-4">
+              <CardContent className="p-3 sm:p-4">
                 <div className="space-y-3">
-                  <h3 className="font-medium text-sm">{product.name}</h3>
-                  <div className="flex justify-between items-center">
-                    <span className="text-lg font-bold">₹{product.price.toFixed(2)}</span>
-                    <span className="text-xs text-gray-500">
-                      Stock: {product.stock} {product.unit}
-                    </span>
+                  <div className="flex items-start gap-3">
+                    {product.image && (
+                      <img
+                        src={product.image || "/placeholder.svg"}
+                        alt={product.name}
+                        className="w-16 h-16 object-cover rounded-[9px] border border-gray-200 flex-shrink-0"
+                      />
+                    )}
+                    <div className="flex-1 min-w-0">
+                      <h3 className="font-medium text-sm">{product.name}</h3>
+                      <div className="flex justify-between items-center mt-2">
+                        <span className="text-lg font-bold">₹{product.price.toFixed(2)}</span>
+                        <span
+                          className={`text-xs ${product.stock <= 10 ? "text-red-500 font-medium" : "text-gray-500"}`}
+                        >
+                          Stock: {product.stock} {product.unit}
+                        </span>
+                      </div>
+                    </div>
                   </div>
                   <Button
                     onClick={() => addToOrder(product)}
                     className="w-full bg-yellow-400 hover:bg-yellow-500 text-black rounded-[9px] font-medium"
+                    disabled={product.stock <= 0}
                   >
                     <Plus className="w-4 h-4 mr-2" />
-                    Add to Order
+                    {product.stock <= 0 ? "Out of Stock" : "Add to Order"}
                   </Button>
                 </div>
               </CardContent>
@@ -408,16 +527,27 @@ export default function POSSystem() {
         }}
       />
 
-      <div className="relative z-10 flex h-screen">
+      <div className="relative z-10 flex flex-col lg:flex-row h-screen">
         {/* Main Content */}
         <div className="flex-1 flex flex-col">
           {/* Header */}
-          <header className="bg-white border-b border-gray-200 p-6">
-            <div className="flex items-center justify-between">
-              <h1 className="text-2xl font-bold text-black">SL SALAR POS</h1>
+          <header className="bg-white border-b border-gray-200 p-4 lg:p-6">
+            <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
+              <div className="flex items-center gap-4">
+                <h1 className="text-xl sm:text-2xl font-bold text-black">SL SALAR POS</h1>
+                <Button
+                  onClick={() => setShowAdmin(true)}
+                  variant="outline"
+                  className="rounded-[9px] border-gray-300"
+                  size="sm"
+                >
+                  <Settings className="w-4 h-4 mr-2" />
+                  Admin
+                </Button>
+              </div>
 
               {/* Customer Selection */}
-              <div className="flex items-center gap-4">
+              <div className="flex flex-col sm:flex-row items-start sm:items-center gap-2 sm:gap-4 w-full sm:w-auto">
                 <div className="flex items-center space-x-2">
                   <Checkbox
                     id="cash-sale"
@@ -436,36 +566,45 @@ export default function POSSystem() {
                 </div>
 
                 {!isCashSale && (
-                  <div className="relative">
-                    <User className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-4 h-4" />
-                    <Input
-                      placeholder="Search customers..."
-                      value={customerSearch}
-                      onChange={(e) => setCustomerSearch(e.target.value)}
-                      className="pl-10 w-64 rounded-[9px]"
-                    />
-                    {customerSearch && (
-                      <div className="absolute top-full left-0 right-0 bg-white border border-gray-200 rounded-[9px] mt-1 max-h-40 overflow-y-auto z-20">
-                        {filteredCustomers.map((customer) => (
-                          <button
-                            key={customer.id}
-                            onClick={() => {
-                              setSelectedCustomer(customer.id)
-                              setCustomerSearch("")
-                            }}
-                            className="w-full text-left p-3 hover:bg-gray-50 border-b border-gray-100 last:border-b-0"
-                          >
-                            <div className="font-medium text-sm">{customer.name}</div>
-                            <div className="text-xs text-gray-500">{customer.phone}</div>
-                          </button>
-                        ))}
-                      </div>
-                    )}
+                  <div className="flex gap-2 w-full sm:w-auto">
+                    <div className="relative flex-1 sm:flex-none">
+                      <User className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-4 h-4" />
+                      <Input
+                        placeholder="Search customers..."
+                        value={customerSearch}
+                        onChange={(e) => setCustomerSearch(e.target.value)}
+                        className="pl-10 w-full sm:w-64 rounded-[9px]"
+                      />
+                      {customerSearch && filteredCustomers.length > 0 && (
+                        <div className="absolute top-full left-0 right-0 bg-white border border-gray-200 rounded-[9px] mt-1 max-h-40 overflow-y-auto z-20 shadow-lg">
+                          {filteredCustomers.map((customer) => (
+                            <button
+                              key={customer.id}
+                              onClick={() => {
+                                setSelectedCustomer(customer.id)
+                                setCustomerSearch("")
+                              }}
+                              className="w-full text-left p-3 hover:bg-gray-50 border-b border-gray-100 last:border-b-0"
+                            >
+                              <div className="font-medium text-sm">{customer.name}</div>
+                              <div className="text-xs text-gray-500">{customer.phone}</div>
+                            </button>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                    <Button
+                      onClick={() => setShowAddCustomer(true)}
+                      className="bg-yellow-400 hover:bg-yellow-500 text-black rounded-[9px]"
+                      size="sm"
+                    >
+                      <UserPlus className="w-4 h-4" />
+                    </Button>
                   </div>
                 )}
 
                 {selectedCustomerData && !isCashSale && (
-                  <Card className="rounded-[11px] border-gray-200">
+                  <Card className="rounded-[11px] border-gray-200 w-full sm:w-auto">
                     <CardContent className="p-3">
                       <div className="text-sm font-medium">{selectedCustomerData.name}</div>
                       <div className="text-xs text-gray-500">{selectedCustomerData.phone}</div>
@@ -474,7 +613,7 @@ export default function POSSystem() {
                 )}
 
                 {isCashSale && (
-                  <Card className="rounded-[11px] border-yellow-200 bg-yellow-50">
+                  <Card className="rounded-[11px] border-yellow-200 bg-yellow-50 w-full sm:w-auto">
                     <CardContent className="p-3">
                       <div className="text-sm font-medium text-yellow-800">CASH SALE</div>
                       <div className="text-xs text-yellow-600">No customer required</div>
@@ -486,7 +625,7 @@ export default function POSSystem() {
           </header>
 
           {/* Product Selection Area */}
-          <main className="flex-1 p-6 overflow-y-auto">
+          <main className="flex-1 p-4 lg:p-6 overflow-y-auto">
             {currentView === "super" && renderSuperCategories()}
             {currentView === "sub" && renderSubCategories()}
             {currentView === "products" && renderProducts()}
@@ -494,8 +633,8 @@ export default function POSSystem() {
         </div>
 
         {/* Order Summary Panel */}
-        <div className="w-96 bg-gray-50 border-l border-gray-200 flex flex-col">
-          <div className="p-6 border-b border-gray-200">
+        <div className="w-full lg:w-96 bg-gray-50 border-t lg:border-t-0 lg:border-l border-gray-200 flex flex-col max-h-96 lg:max-h-none">
+          <div className="p-4 lg:p-6 border-b border-gray-200">
             <div className="flex items-center gap-2 mb-4">
               <ShoppingCart className="w-5 h-5" />
               <h2 className="text-lg font-bold">Order Summary</h2>
@@ -504,7 +643,7 @@ export default function POSSystem() {
             {orderItems.length === 0 ? (
               <p className="text-gray-500 text-sm">No items in cart</p>
             ) : (
-              <div className="space-y-3 max-h-96 overflow-y-auto">
+              <div className="space-y-3 max-h-48 lg:max-h-96 overflow-y-auto">
                 {orderItems.map((item) => (
                   <Card key={item.id} className="rounded-[9px] border-gray-200">
                     <CardContent className="p-3">
@@ -571,7 +710,7 @@ export default function POSSystem() {
           </div>
 
           {/* Order Totals */}
-          <div className="p-6 border-b border-gray-200">
+          <div className="p-4 lg:p-6 border-b border-gray-200">
             <div className="space-y-2">
               <div className="flex justify-between text-lg">
                 <span className="font-medium">Subtotal:</span>
@@ -584,8 +723,29 @@ export default function POSSystem() {
             </div>
           </div>
 
+          {/* Payment Method Selection */}
+          <div className="p-4 lg:p-6 border-b border-gray-200">
+            <div className="space-y-3">
+              <Label className="text-sm font-medium">Payment Method</Label>
+              <Select
+                value={paymentMethod}
+                onValueChange={(value: "cash" | "card" | "upi" | "credit") => setPaymentMethod(value)}
+              >
+                <SelectTrigger className="rounded-[9px]">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="cash">💵 Cash</SelectItem>
+                  <SelectItem value="card">💳 Card</SelectItem>
+                  <SelectItem value="upi">📱 UPI</SelectItem>
+                  <SelectItem value="credit">🏪 Credit</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+          </div>
+
           {/* Action Buttons */}
-          <div className="p-6 space-y-3">
+          <div className="p-4 lg:p-6 space-y-3">
             <Button
               onClick={clearCart}
               variant="outline"
@@ -605,6 +765,66 @@ export default function POSSystem() {
           </div>
         </div>
       </div>
+
+      {/* Add Customer Dialog */}
+      <Dialog open={showAddCustomer} onOpenChange={setShowAddCustomer}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle>Add New Customer</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4">
+            <div>
+              <Label htmlFor="customer-name">Name *</Label>
+              <Input
+                id="customer-name"
+                value={customerForm.name}
+                onChange={(e) => setCustomerForm({ ...customerForm, name: e.target.value })}
+                className="rounded-[9px]"
+              />
+            </div>
+            <div>
+              <Label htmlFor="customer-phone">Phone *</Label>
+              <Input
+                id="customer-phone"
+                value={customerForm.phone}
+                onChange={(e) => setCustomerForm({ ...customerForm, phone: e.target.value })}
+                className="rounded-[9px]"
+              />
+            </div>
+            <div>
+              <Label htmlFor="customer-email">Email</Label>
+              <Input
+                id="customer-email"
+                type="email"
+                value={customerForm.email}
+                onChange={(e) => setCustomerForm({ ...customerForm, email: e.target.value })}
+                className="rounded-[9px]"
+              />
+            </div>
+            <div>
+              <Label htmlFor="customer-address">Address</Label>
+              <Textarea
+                id="customer-address"
+                value={customerForm.address}
+                onChange={(e) => setCustomerForm({ ...customerForm, address: e.target.value })}
+                className="rounded-[9px]"
+              />
+            </div>
+            <div className="flex gap-2">
+              <Button
+                onClick={handleSaveCustomer}
+                className="flex-1 bg-yellow-400 hover:bg-yellow-500 text-black rounded-[9px]"
+                disabled={!customerForm.name.trim() || !customerForm.phone.trim()}
+              >
+                Add Customer
+              </Button>
+              <Button onClick={resetCustomerForm} variant="outline" className="rounded-[9px]">
+                Cancel
+              </Button>
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
 
       {/* Invoice Dialog */}
       <Dialog open={showInvoice} onOpenChange={setShowInvoice}>
@@ -638,11 +858,14 @@ export default function POSSystem() {
                   <p>
                     <strong>Date:</strong> {currentInvoice.date}
                   </p>
+                  <p>
+                    <strong>Payment:</strong> {currentInvoice.paymentMethod.toUpperCase()}
+                  </p>
                 </div>
                 <div className="text-right">
                   <h3 className="font-bold">Bill To:</h3>
                   {currentInvoice.isCashSale ? (
-                    <p className="text-lg font-bold">CASH</p>
+                    <p className="text-lg font-bold">CASH CUSTOMER</p>
                   ) : (
                     <div>
                       <p className="font-medium">{currentInvoice.customer?.name}</p>
@@ -690,6 +913,9 @@ export default function POSSystem() {
                 <div>
                   <p className="text-sm">Thank you for your business!</p>
                   <p className="text-sm">Terms & Conditions Apply</p>
+                  <p className="text-sm mt-2">
+                    <strong>Payment Method:</strong> {currentInvoice.paymentMethod.toUpperCase()}
+                  </p>
                 </div>
                 <div className="text-center">
                   <div className="border-t border-black pt-2 mt-16 w-48">
