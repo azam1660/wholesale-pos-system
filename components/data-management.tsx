@@ -14,7 +14,7 @@ import { Label } from "@/components/ui/label"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { format } from "date-fns"
 import * as XLSX from "xlsx"
-import { SalesDataManagement } from "@/components/sales-data-management"
+import SalesDataManagement from "@/components/sales-data-management"
 
 interface BackupRecord {
   timestamp: number

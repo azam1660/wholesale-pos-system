@@ -1,7 +1,7 @@
 "use client"
 
 import { useState, useMemo, useRef, useEffect, useCallback } from "react"
-import { Trash2, Plus, Minus, User, ShoppingCart, FileText, Printer, Settings, UserPlus } from "lucide-react"
+import { Trash2, Plus, Minus, User, ShoppingCart, FileText, Printer, Settings, UserPlus, Package } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Card, CardContent } from "@/components/ui/card"
@@ -543,6 +543,15 @@ export default function POSSystem() {
                 >
                   <Settings className="w-4 h-4 mr-2" />
                   Admin
+                </Button>
+                <Button
+                  onClick={() => window.open("/inventory", "_blank")}
+                  variant="outline"
+                  className="rounded-[9px] border-gray-300"
+                  size="sm"
+                >
+                  <Package className="w-4 h-4 mr-2" />
+                  Inventory
                 </Button>
               </div>
 

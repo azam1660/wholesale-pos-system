@@ -14,15 +14,15 @@ export const metadata: Metadata = {
   authors: [{ name: 'Nexifive', url: 'https://nexifive.in' }],
   creator: 'Nexifive',
   publisher: 'Nexifive',
-  metadataBase: new URL('https://your-domain.com'),
+  metadataBase: new URL('https://nexifive.in'),
   openGraph: {
     title: 'Wholesale POS App',
     description: 'Wholesale POS system for efficient inventory and sales management – created by nexifive.in',
-    url: 'https://your-domain.com',
+    url: 'https://nexifive.in',
     siteName: 'Wholesale POS App',
     images: [
       {
-        url: 'https://your-domain.com/og-image.png', // Add your OG image
+        url: 'https://nexifive.in/og-image.png', // Add your OG image
         width: 1200,
         height: 630,
         alt: 'Wholesale POS App',
@@ -36,7 +36,7 @@ export const metadata: Metadata = {
     title: 'Wholesale POS App',
     description: 'Efficient wholesale POS system – Created by nexifive.in',
     creator: '@your_twitter_handle',
-    images: ['https://your-domain.com/twitter-image.png'],
+    images: ['https://nexifive.in/twitter-image.png'],
   },
   robots: {
     index: true,
@@ -51,7 +51,7 @@ export const metadata: Metadata = {
   category: 'Business',
   viewport: 'width=device-width, initial-scale=1, maximum-scale=1',
   alternates: {
-    canonical: 'https://your-domain.com',
+    canonical: 'https://nexifive.in',
   },
 };
 
