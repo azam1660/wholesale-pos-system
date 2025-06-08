@@ -1,7 +1,20 @@
 "use client"
 
 import { useState, useMemo, useRef, useEffect, useCallback } from "react"
-import { Trash2, Plus, Minus, User, ShoppingCart, FileText, Printer, Settings, UserPlus, Package } from "lucide-react"
+import {
+  Trash2,
+  Plus,
+  Minus,
+  User,
+  ShoppingCart,
+  FileText,
+  Printer,
+  Settings,
+  UserPlus,
+  Package,
+  Download,
+  Save,
+} from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Card, CardContent } from "@/components/ui/card"
@@ -12,6 +25,8 @@ import { Textarea } from "@/components/ui/textarea"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import AdminPanel from "./admin-panel"
 import { DataManager } from "./data-manager"
+import jsPDF from "jspdf"
+import "jspdf-autotable"
 
 interface SuperCategory {
   id: string
@@ -105,6 +120,10 @@ export default function POSSystem() {
   const [paymentMethod, setPaymentMethod] = useState<"cash" | "card" | "upi" | "credit">("cash")
   const invoiceRef = useRef<HTMLDivElement>(null)
 
+  const [showEditInvoice, setShowEditInvoice] = useState(false)
+  const [editableInvoice, setEditableInvoice] = useState<Invoice | null>(null)
+  const [invoiceItems, setInvoiceItems] = useState<OrderItem[]>([])
+
   // Data states
   const [superCategories, setSuperCategories] = useState<SuperCategory[]>([])
   const [subCategories, setSubCategories] = useState<SubCategory[]>([])
@@ -119,6 +138,137 @@ export default function POSSystem() {
     phone: "",
     address: "",
   })
+
+  const editInvoice = (invoice: Invoice) => {
+    setEditableInvoice({ ...invoice })
+    setInvoiceItems([...invoice.items])
+    setShowEditInvoice(true)
+  }
+
+  const updateInvoiceItem = (itemId: string, field: "quantity" | "unitPrice", value: number) => {
+    setInvoiceItems((items) =>
+      items.map((item) => {
+        if (item.id === itemId) {
+          const updatedItem = { ...item, [field]: value }
+          updatedItem.lineTotal = updatedItem.quantity * updatedItem.unitPrice
+          return updatedItem
+        }
+        return item
+      }),
+    )
+  }
+
+  const saveInvoiceChanges = () => {
+    if (!editableInvoice) return
+
+    const updatedSubtotal = invoiceItems.reduce((sum, item) => sum + item.lineTotal, 0)
+    const updatedInvoice = {
+      ...editableInvoice,
+      items: [...invoiceItems],
+      subtotal: updatedSubtotal,
+      total: updatedSubtotal,
+    }
+
+    setCurrentInvoice(updatedInvoice)
+    setShowEditInvoice(false)
+    setShowInvoice(true)
+  }
+
+  const exportInvoiceToPDF = (invoice: Invoice) => {
+    const doc = new jsPDF()
+
+    // Header
+    doc.setFontSize(20)
+    doc.text(storeInfo.name, 105, 20, { align: "center" })
+
+    doc.setFontSize(10)
+    doc.text(storeInfo.address, 105, 30, { align: "center" })
+    doc.text(`Contact: ${storeInfo.phone}`, 105, 35, { align: "center" })
+
+    // Invoice details
+    doc.setFontSize(16)
+    doc.text("INVOICE", 20, 50)
+
+    doc.setFontSize(10)
+    doc.text(`Invoice No: ${invoice.invoiceNumber}`, 20, 60)
+    doc.text(`Date: ${invoice.date}`, 20, 65)
+    doc.text(`Payment: ${invoice.paymentMethod.toUpperCase()}`, 20, 70)
+
+    // Customer details
+    if (!invoice.isCashSale && invoice.customer) {
+      doc.text("Bill To:", 120, 60)
+      doc.text(invoice.customer.name, 120, 65)
+      doc.text(invoice.customer.phone, 120, 70)
+      if (invoice.customer.address) {
+        doc.text(invoice.customer.address, 120, 75)
+      }
+    } else {
+      doc.text("CASH CUSTOMER", 120, 65)
+    }
+
+    // Items table
+    const tableData = invoice.items.map((item, index) => [
+      index + 1,
+      item.name,
+      item.quantity,
+      item.unit,
+      `₹${item.unitPrice.toFixed(2)}`,
+      `₹${item.lineTotal.toFixed(2)}`,
+    ])
+
+    doc.autoTable({
+      head: [["S.No.", "Particulars", "QTY", "Unit", "Rate (₹)", "Amount (₹)"]],
+      body: tableData,
+      startY: 85,
+      styles: { fontSize: 9 },
+      headStyles: { fillColor: [245, 245, 245], textColor: [0, 0, 0] },
+    })
+
+    // Total
+    const finalY = (doc as any).lastAutoTable.finalY + 10
+    doc.setFontSize(12)
+    doc.text(`Total: ₹${invoice.total.toFixed(2)}`, 150, finalY, { align: "right" })
+
+    // Footer
+    doc.setFontSize(8)
+    doc.text("Thank you for your business!", 20, finalY + 20)
+    doc.text("Terms & Conditions Apply", 20, finalY + 25)
+
+    return doc
+  }
+
+  const downloadInvoicePDF = (invoice: Invoice) => {
+    const doc = exportInvoiceToPDF(invoice)
+    doc.save(`Invoice_${invoice.invoiceNumber}.pdf`)
+  }
+
+  const shareInvoicePDF = async (invoice: Invoice) => {
+    const doc = exportInvoiceToPDF(invoice)
+    const pdfBlob = doc.output("blob")
+
+    if (navigator.share && navigator.canShare) {
+      try {
+        const file = new File([pdfBlob], `Invoice_${invoice.invoiceNumber}.pdf`, { type: "application/pdf" })
+        await navigator.share({
+          title: `Invoice ${invoice.invoiceNumber}`,
+          text: `Invoice from ${storeInfo.name}`,
+          files: [file],
+        })
+      } catch (error) {
+        console.error("Error sharing:", error)
+        // Fallback to download
+        downloadInvoicePDF(invoice)
+      }
+    } else {
+      // Fallback for browsers that don't support Web Share API
+      const url = URL.createObjectURL(pdfBlob)
+      const a = document.createElement("a")
+      a.href = url
+      a.download = `Invoice_${invoice.invoiceNumber}.pdf`
+      a.click()
+      URL.revokeObjectURL(url)
+    }
+  }
 
   // Initialize data manager and load data
   useEffect(() => {
@@ -841,10 +991,31 @@ export default function POSSystem() {
           <DialogHeader>
             <DialogTitle className="flex items-center justify-between">
               <span>Invoice Generated</span>
-              <Button onClick={printInvoice} className="bg-yellow-400 hover:bg-yellow-500 text-black">
-                <Printer className="w-4 h-4 mr-2" />
-                Print Invoice
-              </Button>
+              <div className="flex gap-2">
+                <Button
+                  onClick={() => editInvoice(currentInvoice!)}
+                  variant="outline"
+                  className="bg-blue-50 hover:bg-blue-100 text-blue-700 rounded-[9px]"
+                >
+                  <FileText className="w-4 h-4 mr-2" />
+                  Edit
+                </Button>
+                <Button onClick={printInvoice} variant="outline" className="rounded-[9px]">
+                  <Printer className="w-4 h-4 mr-2" />
+                  Print
+                </Button>
+                <Button onClick={() => downloadInvoicePDF(currentInvoice!)} variant="outline" className="rounded-[9px]">
+                  <Download className="w-4 h-4 mr-2" />
+                  PDF
+                </Button>
+                <Button
+                  onClick={() => shareInvoicePDF(currentInvoice!)}
+                  className="bg-green-500 hover:bg-green-600 text-white rounded-[9px]"
+                >
+                  <FileText className="w-4 h-4 mr-2" />
+                  Share PDF
+                </Button>
+              </div>
             </DialogTitle>
           </DialogHeader>
 
@@ -932,6 +1103,117 @@ export default function POSSystem() {
                     <p className="text-xs">{storeInfo.name}</p>
                   </div>
                 </div>
+              </div>
+            </div>
+          )}
+        </DialogContent>
+      </Dialog>
+
+      {/* Edit Invoice Dialog */}
+      <Dialog open={showEditInvoice} onOpenChange={setShowEditInvoice}>
+        <DialogContent className="max-w-4xl max-h-[90vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle>Edit Invoice - {editableInvoice?.invoiceNumber}</DialogTitle>
+          </DialogHeader>
+
+          {editableInvoice && (
+            <div className="space-y-6">
+              {/* Invoice Info */}
+              <div className="grid grid-cols-2 gap-4 p-4 bg-gray-50 rounded-[9px]">
+                <div>
+                  <Label className="text-sm font-medium">Invoice Number</Label>
+                  <p className="text-sm">{editableInvoice.invoiceNumber}</p>
+                </div>
+                <div>
+                  <Label className="text-sm font-medium">Date</Label>
+                  <p className="text-sm">{editableInvoice.date}</p>
+                </div>
+                <div>
+                  <Label className="text-sm font-medium">Customer</Label>
+                  <p className="text-sm">
+                    {editableInvoice.isCashSale ? "Cash Customer" : editableInvoice.customer?.name}
+                  </p>
+                </div>
+                <div>
+                  <Label className="text-sm font-medium">Payment Method</Label>
+                  <p className="text-sm">{editableInvoice.paymentMethod.toUpperCase()}</p>
+                </div>
+              </div>
+
+              {/* Editable Items */}
+              <div className="space-y-4">
+                <h3 className="text-lg font-semibold">Invoice Items</h3>
+                <div className="space-y-3">
+                  {invoiceItems.map((item, index) => (
+                    <Card key={item.id} className="rounded-[9px]">
+                      <CardContent className="p-4">
+                        <div className="grid grid-cols-6 gap-4 items-center">
+                          <div className="col-span-2">
+                            <Label className="text-sm">Product</Label>
+                            <p className="font-medium">{item.name}</p>
+                          </div>
+                          <div>
+                            <Label className="text-sm">Quantity</Label>
+                            <Input
+                              type="number"
+                              value={item.quantity}
+                              onChange={(e) =>
+                                updateInvoiceItem(item.id, "quantity", Number.parseInt(e.target.value) || 0)
+                              }
+                              className="rounded-[9px]"
+                              min="1"
+                            />
+                          </div>
+                          <div>
+                            <Label className="text-sm">Unit Price</Label>
+                            <Input
+                              type="number"
+                              step="0.01"
+                              value={item.unitPrice}
+                              onChange={(e) =>
+                                updateInvoiceItem(item.id, "unitPrice", Number.parseFloat(e.target.value) || 0)
+                              }
+                              className="rounded-[9px]"
+                              min="0"
+                            />
+                          </div>
+                          <div>
+                            <Label className="text-sm">Unit</Label>
+                            <p className="text-sm text-gray-600">{item.unit}</p>
+                          </div>
+                          <div>
+                            <Label className="text-sm">Line Total</Label>
+                            <p className="font-bold">₹{item.lineTotal.toFixed(2)}</p>
+                          </div>
+                        </div>
+                      </CardContent>
+                    </Card>
+                  ))}
+                </div>
+              </div>
+
+              {/* Totals */}
+              <div className="p-4 bg-gray-50 rounded-[9px]">
+                <div className="flex justify-between items-center">
+                  <span className="text-lg font-semibold">Total Amount:</span>
+                  <span className="text-xl font-bold">
+                    ₹{invoiceItems.reduce((sum, item) => sum + item.lineTotal, 0).toFixed(2)}
+                  </span>
+                </div>
+              </div>
+
+              {/* Action Buttons */}
+              <div className="flex gap-2 justify-end">
+                <Button onClick={() => setShowEditInvoice(false)} variant="outline" className="rounded-[9px]">
+                  Cancel
+                </Button>
+                <Button
+                  onClick={saveInvoiceChanges}
+                  className="bg-yellow-400 hover:bg-yellow-500 text-black rounded-[9px]"
+                >
+                  <Save className="w-4 h-4 mr-2" />
+                  Save Changes
+                </Button>
               </div>
             </div>
           )}
