@@ -14,6 +14,8 @@ import {
   Package,
   Download,
   Save,
+  Eye,
+  Edit,
 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -27,6 +29,8 @@ import AdminPanel from "./admin-panel"
 import { DataManager } from "./data-manager"
 import jsPDF from "jspdf"
 import "jspdf-autotable"
+import { format } from "date-fns"
+import { Badge } from "@/components/ui/badge"
 
 interface SuperCategory {
   id: string
@@ -76,6 +80,7 @@ interface OrderItem {
   unitPrice: number
   lineTotal: number
   unit: string
+  lastUsedRate?: number
 }
 
 interface Invoice {
@@ -84,9 +89,30 @@ interface Invoice {
   customer: any
   items: OrderItem[]
   subtotal: number
+  hamaliCharges: number
   total: number
   isCashSale: boolean
   paymentMethod: "cash" | "card" | "upi" | "credit"
+  reference?: string
+}
+
+interface Sale {
+  id: string
+  invoiceNumber: string
+  customerId?: string
+  isCashSale: boolean
+  items: {
+    productId: string
+    quantity: number
+    unitPrice: number
+  }[]
+  paymentMethod: "cash" | "card" | "upi" | "credit"
+  createdAt: string
+  timestamp: number
+  customerName?: string
+  customerPhone?: string
+  subtotal: number
+  total: number
 }
 
 const storeInfo = {
@@ -105,6 +131,13 @@ const setInvoiceCounter = (counter: number) => {
   localStorage.setItem("invoiceCounter", counter.toString())
 }
 
+const formatCurrency = (amount: number) => {
+  return new Intl.NumberFormat("en-IN", {
+    style: "currency",
+    currency: "INR",
+  }).format(amount)
+}
+
 export default function POSSystem() {
   const [showAdmin, setShowAdmin] = useState(false)
   const [currentView, setCurrentView] = useState<"super" | "sub" | "products">("super")
@@ -115,7 +148,7 @@ export default function POSSystem() {
   const [customerSearch, setCustomerSearch] = useState("")
   const [showInvoice, setShowInvoice] = useState(false)
   const [currentInvoice, setCurrentInvoice] = useState<Invoice | null>(null)
-  const [isCashSale, setIsCashSale] = useState(false)
+  const [isCashSale, setIsCashSale] = useState(true) // Default to true
   const [showAddCustomer, setShowAddCustomer] = useState(false)
   const [paymentMethod, setPaymentMethod] = useState<"cash" | "card" | "upi" | "credit">("cash")
   const invoiceRef = useRef<HTMLDivElement>(null)
@@ -123,6 +156,15 @@ export default function POSSystem() {
   const [showEditInvoice, setShowEditInvoice] = useState(false)
   const [editableInvoice, setEditableInvoice] = useState<Invoice | null>(null)
   const [invoiceItems, setInvoiceItems] = useState<OrderItem[]>([])
+
+  const [hamaliCharges, setHamaliCharges] = useState(0)
+  const [includeHamali, setIncludeHamali] = useState(false)
+  const [invoiceReference, setInvoiceReference] = useState("")
+  const [invoiceDate, setInvoiceDate] = useState(new Date().toISOString().split("T")[0])
+  const [showTransactionHistory, setShowTransactionHistory] = useState(false)
+  const [customerTransactions, setCustomerTransactions] = useState<Sale[]>([])
+  const [allTransactions, setAllTransactions] = useState<Sale[]>([])
+  const [showCashTransactions, setShowCashTransactions] = useState(false)
 
   // Data states
   const [superCategories, setSuperCategories] = useState<SuperCategory[]>([])
@@ -295,6 +337,48 @@ export default function POSSystem() {
     loadAllData()
   }, [])
 
+  // Check for prefilled order from Purchase Order conversion
+  useEffect(() => {
+    const prefilledData = localStorage.getItem("posPrefilledOrder")
+    if (prefilledData) {
+      try {
+        const orderData = JSON.parse(prefilledData)
+
+        // Convert PO items to POS order items
+        const posItems = orderData.items.map((item) => {
+          const product = products.find((p) => p.id === item.id)
+          const lastUsedRate = getLastUsedRate(item.id) || product?.price || 0
+
+          return {
+            id: item.id,
+            name: item.name,
+            quantity: item.quantity,
+            unitPrice: lastUsedRate,
+            lineTotal: item.quantity * lastUsedRate,
+            unit: item.unit,
+            lastUsedRate: lastUsedRate,
+          }
+        })
+
+        setOrderItems(posItems)
+
+        // Set reference if provided
+        if (orderData.reference) {
+          setInvoiceReference(`PO Ref: ${orderData.reference}`)
+        }
+
+        // Show notification
+        alert(`Purchase Order converted to POS with ${posItems.length} items`)
+
+        // Clear the prefilled data
+        localStorage.removeItem("posPrefilledOrder")
+      } catch (error) {
+        console.error("Error loading prefilled order:", error)
+        localStorage.removeItem("posPrefilledOrder")
+      }
+    }
+  }, [products, dataLoaded])
+
   // Real-time data synchronization
   useEffect(() => {
     const handleStorageChange = (e: StorageEvent) => {
@@ -339,7 +423,9 @@ export default function POSSystem() {
 
   const generateInvoiceNumber = () => {
     const counter = getInvoiceCounter()
-    const invoiceNumber = `SL-${counter.toString().padStart(4, "0")}`
+    const date = new Date(invoiceDate)
+    const dateStr = date.toISOString().split("T")[0].replace(/-/g, "")
+    const invoiceNumber = `SNS/${dateStr}/${counter.toString().padStart(4, "0")}`
     setInvoiceCounter(counter + 1)
     return invoiceNumber
   }
@@ -395,16 +481,28 @@ export default function POSSystem() {
     if (existingItem) {
       updateQuantity(product.id, existingItem.quantity + 1)
     } else {
+      // Get last used rate from localStorage or use product price
+      const lastUsedRate = getLastUsedRate(product.id) || product.price
       const newItem: OrderItem = {
         id: product.id,
         name: product.name,
         quantity: 1,
-        unitPrice: product.price,
-        lineTotal: product.price,
+        unitPrice: lastUsedRate,
+        lineTotal: lastUsedRate,
         unit: product.unit,
+        lastUsedRate: lastUsedRate,
       }
       setOrderItems([...orderItems, newItem])
     }
+  }
+
+  const getLastUsedRate = (productId: string): number | null => {
+    const stored = localStorage.getItem(`lastRate_${productId}`)
+    return stored ? Number.parseFloat(stored) : null
+  }
+
+  const saveLastUsedRate = (productId: string, rate: number) => {
+    localStorage.setItem(`lastRate_${productId}`, rate.toString())
   }
 
   const updateQuantity = (itemId: string, newQuantity: number) => {
@@ -421,9 +519,13 @@ export default function POSSystem() {
 
   const updateUnitPrice = (itemId: string, newPrice: number) => {
     setOrderItems((items) =>
-      items.map((item) =>
-        item.id === itemId ? { ...item, unitPrice: newPrice, lineTotal: item.quantity * newPrice } : item,
-      ),
+      items.map((item) => {
+        if (item.id === itemId) {
+          saveLastUsedRate(itemId, newPrice)
+          return { ...item, unitPrice: newPrice, lineTotal: item.quantity * newPrice, lastUsedRate: newPrice }
+        }
+        return item
+      }),
     )
   }
 
@@ -439,17 +541,23 @@ export default function POSSystem() {
     return orderItems.reduce((sum, item) => sum + item.lineTotal, 0)
   }, [orderItems])
 
+  const total = useMemo(() => {
+    return subtotal + (includeHamali ? hamaliCharges : 0)
+  }, [subtotal, hamaliCharges, includeHamali])
+
   const generateInvoice = () => {
     const invoiceNumber = generateInvoiceNumber()
     const invoice: Invoice = {
       invoiceNumber,
-      date: new Date().toLocaleDateString("en-IN"),
+      date: invoiceDate,
       customer: isCashSale ? null : selectedCustomerData,
       items: [...orderItems],
       subtotal,
-      total: subtotal,
+      hamaliCharges,
+      total: total,
       isCashSale,
       paymentMethod,
+      reference: invoiceReference,
     }
     setCurrentInvoice(invoice)
     setShowInvoice(true)
@@ -498,9 +606,10 @@ export default function POSSystem() {
     if (!isCashSale && !selectedCustomer) return
 
     try {
+      const invoiceNumber = generateInvoiceNumber()
       // Record the sale
       await DataManager.recordSale({
-        invoiceNumber: generateInvoiceNumber(),
+        invoiceNumber: invoiceNumber,
         customerId: isCashSale ? undefined : selectedCustomer,
         isCashSale,
         items: orderItems.map((item) => ({
@@ -509,6 +618,11 @@ export default function POSSystem() {
           unitPrice: item.unitPrice,
         })),
         paymentMethod,
+        timestamp: Date.now(),
+        customerName: selectedCustomerData?.name,
+        customerPhone: selectedCustomerData?.phone,
+        subtotal: subtotal,
+        total: total,
       })
 
       // Generate and show invoice
@@ -519,6 +633,10 @@ export default function POSSystem() {
       setSelectedCustomer("")
       setIsCashSale(false)
       setPaymentMethod("cash")
+      setInvoiceReference("")
+      setInvoiceDate(new Date().toISOString().split("T")[0])
+      setHamaliCharges(0)
+      setIncludeHamali(false)
 
       // Refresh product data to show updated stock
       setProducts(DataManager.getProducts())
@@ -526,6 +644,18 @@ export default function POSSystem() {
       console.error("Error recording sale:", error)
       alert("Error processing sale. Please try again.")
     }
+  }
+
+  const loadCustomerTransactions = (customerId: string) => {
+    const sales = DataManager.getSalesByCustomer(customerId)
+    setCustomerTransactions(sales)
+    setShowTransactionHistory(true)
+  }
+
+  const loadAllTransactions = () => {
+    const sales = DataManager.getSales()
+    setAllTransactions(sales)
+    setShowCashTransactions(true)
   }
 
   if (showAdmin) {
@@ -637,11 +767,8 @@ export default function POSSystem() {
                     <div className="flex-1 min-w-0">
                       <h3 className="font-medium text-sm">{product.name}</h3>
                       <div className="flex justify-between items-center mt-2">
-                        <span className="text-lg font-bold">₹{product.price.toFixed(2)}</span>
-                        <span
-                          className={`text-xs ${product.stock <= 10 ? "text-red-500 font-medium" : "text-gray-500"}`}
-                        >
-                          Stock: {product.stock} {product.unit}
+                        <span className="text-lg font-bold">
+                          ₹{getLastUsedRate(product.id) || product.price.toFixed(2)}
                         </span>
                       </div>
                     </div>
@@ -649,10 +776,9 @@ export default function POSSystem() {
                   <Button
                     onClick={() => addToOrder(product)}
                     className="w-full bg-yellow-400 hover:bg-yellow-500 text-black rounded-[9px] font-medium"
-                    disabled={product.stock <= 0}
                   >
                     <Plus className="w-4 h-4 mr-2" />
-                    {product.stock <= 0 ? "Out of Stock" : "Add to Order"}
+                    Add to Order
                   </Button>
                 </div>
               </CardContent>
@@ -765,8 +891,20 @@ export default function POSSystem() {
                 {selectedCustomerData && !isCashSale && (
                   <Card className="rounded-[11px] border-gray-200 w-full sm:w-auto">
                     <CardContent className="p-3">
-                      <div className="text-sm font-medium">{selectedCustomerData.name}</div>
-                      <div className="text-xs text-gray-500">{selectedCustomerData.phone}</div>
+                      <div className="flex items-center justify-between">
+                        <div>
+                          <div className="text-sm font-medium">{selectedCustomerData.name}</div>
+                          <div className="text-xs text-gray-500">{selectedCustomerData.phone}</div>
+                        </div>
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          onClick={() => loadCustomerTransactions(selectedCustomerData.id)}
+                          className="rounded-[9px]"
+                        >
+                          <FileText className="w-4 h-4" />
+                        </Button>
+                      </div>
                     </CardContent>
                   </Card>
                 )}
@@ -774,8 +912,20 @@ export default function POSSystem() {
                 {isCashSale && (
                   <Card className="rounded-[11px] border-yellow-200 bg-yellow-50 w-full sm:w-auto">
                     <CardContent className="p-3">
-                      <div className="text-sm font-medium text-yellow-800">CASH SALE</div>
-                      <div className="text-xs text-yellow-600">No customer required</div>
+                      <div className="flex items-center justify-between">
+                        <div>
+                          <div className="text-sm font-medium text-yellow-800">CASH SALE</div>
+                          <div className="text-xs text-yellow-600">No customer required</div>
+                        </div>
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          onClick={loadAllTransactions}
+                          className="rounded-[9px] border-yellow-300"
+                        >
+                          <FileText className="w-4 h-4" />
+                        </Button>
+                      </div>
                     </CardContent>
                   </Card>
                 )}
@@ -868,6 +1018,57 @@ export default function POSSystem() {
             )}
           </div>
 
+          {/* Hamali/Freight Charges */}
+          <div className="p-4 lg:p-6 border-b border-gray-200">
+            <div className="space-y-3">
+              <div className="flex items-center space-x-2">
+                <Checkbox
+                  id="include-hamali"
+                  checked={includeHamali}
+                  onCheckedChange={(checked) => setIncludeHamali(checked as boolean)}
+                />
+                <Label htmlFor="include-hamali" className="text-sm font-medium">
+                  Include Hamali/Freight Charges
+                </Label>
+              </div>
+              {includeHamali && (
+                <Input
+                  type="number"
+                  placeholder="Enter hamali charges"
+                  value={hamaliCharges}
+                  onChange={(e) => setHamaliCharges(Number.parseFloat(e.target.value) || 0)}
+                  className="rounded-[9px]"
+                  step="0.01"
+                  min="0"
+                />
+              )}
+            </div>
+          </div>
+
+          {/* Reference and Date Inputs */}
+          <div className="p-4 lg:p-6 border-b border-gray-200">
+            <div className="space-y-3">
+              <div>
+                <Label className="text-sm font-medium">Reference (Optional)</Label>
+                <Input
+                  placeholder="Reference number or note"
+                  value={invoiceReference}
+                  onChange={(e) => setInvoiceReference(e.target.value)}
+                  className="rounded-[9px]"
+                />
+              </div>
+              <div>
+                <Label className="text-sm font-medium">Invoice Date</Label>
+                <Input
+                  type="date"
+                  value={invoiceDate}
+                  onChange={(e) => setInvoiceDate(e.target.value)}
+                  className="rounded-[9px]"
+                />
+              </div>
+            </div>
+          </div>
+
           {/* Order Totals */}
           <div className="p-4 lg:p-6 border-b border-gray-200">
             <div className="space-y-2">
@@ -875,9 +1076,15 @@ export default function POSSystem() {
                 <span className="font-medium">Subtotal:</span>
                 <span className="font-bold">₹{subtotal.toFixed(2)}</span>
               </div>
-              <div className="flex justify-between text-xl">
+              {includeHamali && hamaliCharges > 0 && (
+                <div className="flex justify-between text-sm">
+                  <span className="text-gray-600">Hamali/Freight:</span>
+                  <span className="font-medium">₹{hamaliCharges.toFixed(2)}</span>
+                </div>
+              )}
+              <div className="flex justify-between text-xl border-t pt-2">
                 <span className="font-bold">Total:</span>
-                <span className="font-bold">₹{subtotal.toFixed(2)}</span>
+                <span className="font-bold">₹{total.toFixed(2)}</span>
               </div>
             </div>
           </div>
@@ -942,7 +1149,7 @@ export default function POSSystem() {
               />
             </div>
             <div>
-              <Label htmlFor="customer-phone">Phone *</Label>
+              <Label htmlFor="customer-phone">Phone</Label>
               <Input
                 id="customer-phone"
                 value={customerForm.phone}
@@ -973,7 +1180,7 @@ export default function POSSystem() {
               <Button
                 onClick={handleSaveCustomer}
                 className="flex-1 bg-yellow-400 hover:bg-yellow-500 text-black rounded-[9px]"
-                disabled={!customerForm.name.trim() || !customerForm.phone.trim()}
+                disabled={!customerForm.name.trim()}
               >
                 Add Customer
               </Button>
@@ -1041,6 +1248,11 @@ export default function POSSystem() {
                   <p>
                     <strong>Payment:</strong> {currentInvoice.paymentMethod.toUpperCase()}
                   </p>
+                  {currentInvoice.reference && (
+                    <p>
+                      <strong>Reference:</strong> {currentInvoice.reference}
+                    </p>
+                  )}
                 </div>
                 <div className="text-right">
                   <h3 className="font-bold">Bill To:</h3>
@@ -1079,6 +1291,16 @@ export default function POSSystem() {
                       <td className="border border-black p-2 text-right">{item.lineTotal.toFixed(2)}</td>
                     </tr>
                   ))}
+                  {currentInvoice.hamaliCharges > 0 && (
+                    <tr>
+                      <td colSpan={5} className="border border-black p-2 text-right font-bold">
+                        Hamali/Freight Charges:
+                      </td>
+                      <td className="border border-black p-2 text-right font-bold">
+                        ₹{currentInvoice.hamaliCharges.toFixed(2)}
+                      </td>
+                    </tr>
+                  )}
                   <tr>
                     <td colSpan={5} className="border border-black p-2 text-right font-bold">
                       Total (INR):
@@ -1217,6 +1439,193 @@ export default function POSSystem() {
               </div>
             </div>
           )}
+        </DialogContent>
+      </Dialog>
+
+      {/* Customer Transaction History Dialog */}
+      <Dialog open={showTransactionHistory} onOpenChange={setShowTransactionHistory}>
+        <DialogContent className="max-w-4xl max-h-[90vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle>Customer Transaction History - {selectedCustomerData?.name}</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4">
+            {customerTransactions.length === 0 ? (
+              <div className="text-center py-8 text-gray-500">
+                <FileText className="w-12 h-12 mx-auto mb-4 opacity-50" />
+                <p>No transactions found for this customer</p>
+              </div>
+            ) : (
+              <div className="space-y-2">
+                {customerTransactions.map((transaction) => (
+                  <div
+                    key={transaction.id}
+                    className="flex items-center justify-between p-3 border rounded-[9px] hover:bg-gray-50"
+                  >
+                    <div className="flex-1">
+                      <div className="flex items-center gap-2 mb-1">
+                        <span className="font-medium">{transaction.invoiceNumber}</span>
+                        <Badge variant="outline" className="text-xs">
+                          {transaction.paymentMethod.toUpperCase()}
+                        </Badge>
+                      </div>
+                      <div className="text-sm text-gray-600">
+                        <span>{format(new Date(transaction.timestamp), "MMM dd, yyyy HH:mm")}</span>
+                        <span className="mx-2">•</span>
+                        <span>{transaction.items.length} items</span>
+                      </div>
+                    </div>
+                    <div className="flex items-center gap-3">
+                      <div className="text-right">
+                        <div className="font-bold">{formatCurrency(transaction.total)}</div>
+                      </div>
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        onClick={() => {
+                          const invoice = {
+                            invoiceNumber: transaction.invoiceNumber,
+                            date: transaction.date,
+                            customer: selectedCustomerData,
+                            items: transaction.items,
+                            subtotal: transaction.subtotal,
+                            total: transaction.total,
+                            isCashSale: false,
+                            paymentMethod: transaction.paymentMethod,
+                          }
+                          setCurrentInvoice(invoice)
+                          setShowInvoice(true)
+                          setShowTransactionHistory(false)
+                        }}
+                        className="rounded-[9px]"
+                      >
+                        <Eye className="w-4 h-4" />
+                      </Button>
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        onClick={() => {
+                          const invoice = {
+                            invoiceNumber: transaction.invoiceNumber,
+                            date: transaction.date,
+                            customer: selectedCustomerData,
+                            items: transaction.items,
+                            subtotal: transaction.subtotal,
+                            total: transaction.total,
+                            isCashSale: false,
+                            paymentMethod: transaction.paymentMethod,
+                          }
+                          editInvoice(invoice)
+                          setShowTransactionHistory(false)
+                        }}
+                        className="rounded-[9px]"
+                      >
+                        <Edit className="w-4 h-4" />
+                      </Button>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* Cash Sale Transactions Dialog */}
+      <Dialog open={showCashTransactions} onOpenChange={setShowCashTransactions}>
+        <DialogContent className="max-w-4xl max-h-[90vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle>All Transactions</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4">
+            {allTransactions.length === 0 ? (
+              <div className="text-center py-8 text-gray-500">
+                <FileText className="w-12 h-12 mx-auto mb-4 opacity-50" />
+                <p>No transactions found</p>
+              </div>
+            ) : (
+              <div className="space-y-2">
+                {allTransactions
+                  .sort((a, b) => b.timestamp - a.timestamp)
+                  .map((transaction) => (
+                    <div
+                      key={transaction.id}
+                      className="flex items-center justify-between p-3 border rounded-[9px] hover:bg-gray-50"
+                    >
+                      <div className="flex-1">
+                        <div className="flex items-center gap-2 mb-1">
+                          <span className="font-medium">{transaction.invoiceNumber}</span>
+                          <Badge variant={transaction.isCashSale ? "secondary" : "default"} className="text-xs">
+                            {transaction.isCashSale ? "Cash" : "Customer"}
+                          </Badge>
+                          <Badge variant="outline" className="text-xs">
+                            {transaction.paymentMethod.toUpperCase()}
+                          </Badge>
+                        </div>
+                        <div className="text-sm text-gray-600">
+                          <span>{format(new Date(transaction.timestamp), "MMM dd, yyyy HH:mm")}</span>
+                          <span className="mx-2">•</span>
+                          <span>{transaction.customerName || "Cash Customer"}</span>
+                          <span className="mx-2">•</span>
+                          <span>{transaction.items.length} items</span>
+                        </div>
+                      </div>
+                      <div className="flex items-center gap-3">
+                        <div className="text-right">
+                          <div className="font-bold">{formatCurrency(transaction.total)}</div>
+                        </div>
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          onClick={() => {
+                            const invoice = {
+                              invoiceNumber: transaction.invoiceNumber,
+                              date: transaction.date,
+                              customer: transaction.isCashSale
+                                ? null
+                                : { name: transaction.customerName, phone: transaction.customerPhone },
+                              items: transaction.items,
+                              subtotal: transaction.subtotal,
+                              total: transaction.total,
+                              isCashSale: transaction.isCashSale,
+                              paymentMethod: transaction.paymentMethod,
+                            }
+                            setCurrentInvoice(invoice)
+                            setShowInvoice(true)
+                            setShowCashTransactions(false)
+                          }}
+                          className="rounded-[9px]"
+                        >
+                          <Eye className="w-4 h-4" />
+                        </Button>
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          onClick={() => {
+                            const invoice = {
+                              invoiceNumber: transaction.invoiceNumber,
+                              date: transaction.date,
+                              customer: transaction.isCashSale
+                                ? null
+                                : { name: transaction.customerName, phone: transaction.customerPhone },
+                              items: transaction.items,
+                              subtotal: transaction.subtotal,
+                              total: transaction.total,
+                              isCashSale: transaction.isCashSale,
+                              paymentMethod: transaction.paymentMethod,
+                            }
+                            editInvoice(invoice)
+                            setShowCashTransactions(false)
+                          }}
+                          className="rounded-[9px]"
+                        >
+                          <Edit className="w-4 h-4" />
+                        </Button>
+                      </div>
+                    </div>
+                  ))}
+              </div>
+            )}
+          </div>
         </DialogContent>
       </Dialog>
     </div>

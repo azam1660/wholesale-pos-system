@@ -1,7 +1,7 @@
 "use client"
 
 import { useState, useEffect } from "react"
-import { Plus, Edit, Trash2, Save, X, ArrowLeft, Database, ImageIcon, BarChart3, FileText } from "lucide-react"
+import { Plus, Edit, Trash2, Save, X, ArrowLeft, Database, BarChart3, FileText, Package } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Card, CardContent } from "@/components/ui/card"
@@ -9,13 +9,13 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/u
 import { Label } from "@/components/ui/label"
 import { Textarea } from "@/components/ui/textarea"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
-import { Badge } from "@/components/ui/badge"
 import { Alert, AlertDescription } from "@/components/ui/alert"
 import DataManagement from "./data-management"
 import ImageUpload from "./image-upload"
 import SalesAnalytics from "./sales-analytics"
 import { DataManager } from "./data-manager"
 import SalesDataManagement from "./sales-data-management"
+import PurchaseOrderModule from "./purchase-order-module"
 
 interface SuperCategory {
   id: string
@@ -60,7 +60,7 @@ interface Customer {
 
 export default function AdminPanel({ onBack }: { onBack: () => void }) {
   const [activeTab, setActiveTab] = useState<
-    "super" | "sub" | "products" | "customers" | "data" | "analytics" | "sales"
+    "super" | "sub" | "products" | "customers" | "data" | "analytics" | "sales" | "purchase"
   >("super")
   const [superCategories, setSuperCategories] = useState<SuperCategory[]>([])
   const [subCategories, setSubCategories] = useState<SubCategory[]>([])
@@ -380,18 +380,16 @@ export default function AdminPanel({ onBack }: { onBack: () => void }) {
           <Button
             onClick={() => setActiveTab("products")}
             variant={activeTab === "products" ? "default" : "outline"}
-            className={`rounded-[9px] ${
-              activeTab === "products" ? "bg-yellow-400 text-black hover:bg-yellow-500" : ""
-            }`}
+            className={`rounded-[9px] ${activeTab === "products" ? "bg-yellow-400 text-black hover:bg-yellow-500" : ""
+              }`}
           >
             Products
           </Button>
           <Button
             onClick={() => setActiveTab("customers")}
             variant={activeTab === "customers" ? "default" : "outline"}
-            className={`rounded-[9px] ${
-              activeTab === "customers" ? "bg-yellow-400 text-black hover:bg-yellow-500" : ""
-            }`}
+            className={`rounded-[9px] ${activeTab === "customers" ? "bg-yellow-400 text-black hover:bg-yellow-500" : ""
+              }`}
           >
             Customers
           </Button>
@@ -418,6 +416,14 @@ export default function AdminPanel({ onBack }: { onBack: () => void }) {
           >
             <FileText className="w-4 h-4 mr-2" />
             Sales Management
+          </Button>
+          <Button
+            onClick={() => setActiveTab("purchase")}
+            variant={activeTab === "purchase" ? "default" : "outline"}
+            className={`rounded-[9px] ${activeTab === "purchase" ? "bg-yellow-400 text-black hover:bg-yellow-500" : ""}`}
+          >
+            <Package className="w-4 h-4 mr-2" />
+            Purchase Orders
           </Button>
         </div>
 
@@ -447,26 +453,17 @@ export default function AdminPanel({ onBack }: { onBack: () => void }) {
                         <div className="flex items-center gap-3">
                           <div className="relative">
                             {category.image ? (
-                              <div className="relative">
-                                <img
-                                  src={category.image || "/placeholder.svg"}
-                                  alt={category.name}
-                                  className="w-12 h-12 object-cover rounded-[9px] border-2 border-gray-200"
-                                />
-                                <span className="absolute -bottom-1 -right-1 text-lg">{category.icon}</span>
-                              </div>
+                              <img
+                                src={category.image || "/placeholder.svg"}
+                                alt={category.name}
+                                className="w-12 h-12 object-cover rounded-[9px] border-2 border-gray-200"
+                              />
                             ) : (
                               <span className="text-2xl">{category.icon}</span>
                             )}
                           </div>
                           <div>
                             <span className="font-medium">{category.name}</span>
-                            {category.image && (
-                              <Badge variant="secondary" className="ml-2 text-xs">
-                                <ImageIcon className="w-3 h-3 mr-1" />
-                                Image
-                              </Badge>
-                            )}
                           </div>
                         </div>
                         <div className="flex gap-2">
@@ -524,26 +521,17 @@ export default function AdminPanel({ onBack }: { onBack: () => void }) {
                           <div className="flex items-center gap-3">
                             <div className="relative">
                               {category.image ? (
-                                <div className="relative">
-                                  <img
-                                    src={category.image || "/placeholder.svg"}
-                                    alt={category.name}
-                                    className="w-12 h-12 object-cover rounded-[9px] border-2 border-gray-200"
-                                  />
-                                  <span className="absolute -bottom-1 -right-1 text-lg">{category.icon}</span>
-                                </div>
+                                <img
+                                  src={category.image || "/placeholder.svg"}
+                                  alt={category.name}
+                                  className="w-12 h-12 object-cover rounded-[9px] border-2 border-gray-200"
+                                />
                               ) : (
                                 <span className="text-2xl">{category.icon}</span>
                               )}
                             </div>
                             <div>
                               <span className="font-medium">{category.name}</span>
-                              {category.image && (
-                                <Badge variant="secondary" className="ml-2 text-xs">
-                                  <ImageIcon className="w-3 h-3 mr-1" />
-                                  Image
-                                </Badge>
-                              )}
                             </div>
                           </div>
                           <div className="flex gap-2">
@@ -611,12 +599,6 @@ export default function AdminPanel({ onBack }: { onBack: () => void }) {
                               )}
                               <div>
                                 <span className="font-medium">{product.name}</span>
-                                {product.image && (
-                                  <Badge variant="secondary" className="ml-2 text-xs">
-                                    <ImageIcon className="w-3 h-3 mr-1" />
-                                    Image
-                                  </Badge>
-                                )}
                               </div>
                             </div>
                             <div className="text-sm text-gray-600">
@@ -716,9 +698,11 @@ export default function AdminPanel({ onBack }: { onBack: () => void }) {
 
         {/* Sales Management Tab */}
         {activeTab === "sales" && <SalesDataManagement />}
+
+        {/* Purchase Orders Tab */}
+        {activeTab === "purchase" && <PurchaseOrderModule onBack={() => setActiveTab("super")} />}
       </div>
 
-      {/* All the dialog components remain the same as before */}
       {/* Super Category Dialog */}
       <Dialog open={showSuperDialog} onOpenChange={setShowSuperDialog}>
         <DialogContent className="max-w-md max-h-[90vh] overflow-y-auto">

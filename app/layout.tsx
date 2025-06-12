@@ -1,6 +1,12 @@
 import type { Metadata } from 'next';
 import './globals.css';
 
+export const viewport = {
+  width: 'device-width',
+  initialScale: 1,
+  maximumScale: 1,
+};
+
 export const metadata: Metadata = {
   title: {
     default: 'Wholesale POS App',
@@ -49,7 +55,6 @@ export const metadata: Metadata = {
     },
   },
   category: 'Business',
-  viewport: 'width=device-width, initial-scale=1, maximum-scale=1',
   alternates: {
     canonical: 'https://nexifive.in',
   },
