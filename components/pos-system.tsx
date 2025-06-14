@@ -11,11 +11,12 @@ import {
   Printer,
   Settings,
   UserPlus,
-  Package,
   Download,
   Save,
   Eye,
   Edit,
+  X,
+  Search,
 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -25,7 +26,11 @@ import { Checkbox } from "@/components/ui/checkbox"
 import { Label } from "@/components/ui/label"
 import { Textarea } from "@/components/ui/textarea"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
+import { Sheet, SheetContent } from "@/components/ui/sheet"
 import AdminPanel from "./admin-panel"
+import InventoryManagement from "./inventory-management"
+import PurchaseOrderModule from "./purchase-order-module"
 import { DataManager } from "./data-manager"
 import jsPDF from "jspdf"
 import "jspdf-autotable"
@@ -59,6 +64,7 @@ interface Product {
   unit: string
   image?: string
   subCategoryId: string
+  hamaliValue: number
   createdAt: string
   updatedAt: string
 }
@@ -140,6 +146,7 @@ const formatCurrency = (amount: number) => {
 
 export default function POSSystem() {
   const [showAdmin, setShowAdmin] = useState(false)
+  const [activeMainTab, setActiveMainTab] = useState<"pos" | "order" | "godown">("pos")
   const [currentView, setCurrentView] = useState<"super" | "sub" | "products">("super")
   const [selectedSuperCategory, setSelectedSuperCategory] = useState<string>("")
   const [selectedSubCategory, setSelectedSubCategory] = useState<string>("")
@@ -148,7 +155,7 @@ export default function POSSystem() {
   const [customerSearch, setCustomerSearch] = useState("")
   const [showInvoice, setShowInvoice] = useState(false)
   const [currentInvoice, setCurrentInvoice] = useState<Invoice | null>(null)
-  const [isCashSale, setIsCashSale] = useState(true) // Default to true
+  const [isCashSale, setIsCashSale] = useState(true)
   const [showAddCustomer, setShowAddCustomer] = useState(false)
   const [paymentMethod, setPaymentMethod] = useState<"cash" | "card" | "upi" | "credit">("cash")
   const invoiceRef = useRef<HTMLDivElement>(null)
@@ -156,6 +163,8 @@ export default function POSSystem() {
   const [showEditInvoice, setShowEditInvoice] = useState(false)
   const [editableInvoice, setEditableInvoice] = useState<Invoice | null>(null)
   const [invoiceItems, setInvoiceItems] = useState<OrderItem[]>([])
+  const [showAddItemToInvoice, setShowAddItemToInvoice] = useState(false)
+  const [productSearchForInvoice, setProductSearchForInvoice] = useState("")
 
   const [hamaliCharges, setHamaliCharges] = useState(0)
   const [includeHamali, setIncludeHamali] = useState(false)
@@ -165,6 +174,10 @@ export default function POSSystem() {
   const [customerTransactions, setCustomerTransactions] = useState<Sale[]>([])
   const [allTransactions, setAllTransactions] = useState<Sale[]>([])
   const [showCashTransactions, setShowCashTransactions] = useState(false)
+
+  // Mobile states
+  const [showMobileCart, setShowMobileCart] = useState(false)
+  const [isMobile, setIsMobile] = useState(false)
 
   // Data states
   const [superCategories, setSuperCategories] = useState<SuperCategory[]>([])
@@ -180,6 +193,34 @@ export default function POSSystem() {
     phone: "",
     address: "",
   })
+
+  // Check if mobile on mount and resize
+  useEffect(() => {
+    const checkMobile = () => {
+      setIsMobile(window.innerWidth < 1024)
+    }
+
+    checkMobile()
+    window.addEventListener("resize", checkMobile)
+    return () => window.removeEventListener("resize", checkMobile)
+  }, [])
+
+  // Auto-calculate hamali charges when checkbox is checked
+  const calculateHamaliCharges = useCallback(() => {
+    if (!includeHamali) return 0
+    return orderItems.reduce((sum, item) => {
+      const product = products.find((p) => p.id === item.id)
+      return sum + (product?.hamaliValue || 0) * item.quantity
+    }, 0)
+  }, [orderItems, products, includeHamali])
+
+  useEffect(() => {
+    if (includeHamali) {
+      setHamaliCharges(calculateHamaliCharges())
+    } else {
+      setHamaliCharges(0)
+    }
+  }, [includeHamali, calculateHamaliCharges])
 
   const editInvoice = (invoice: Invoice) => {
     setEditableInvoice({ ...invoice })
@@ -200,6 +241,37 @@ export default function POSSystem() {
     )
   }
 
+  const removeInvoiceItem = (itemId: string) => {
+    setInvoiceItems((items) => items.filter((item) => item.id !== itemId))
+  }
+
+  const addNewItemToInvoice = () => {
+    setShowAddItemToInvoice(true)
+  }
+
+  const addProductToInvoice = (product: Product) => {
+    const existingItem = invoiceItems.find((item) => item.id === product.id)
+    if (existingItem) {
+      updateInvoiceItem(product.id, "quantity", existingItem.quantity + 1)
+    } else {
+      const newItem: OrderItem = {
+        id: product.id,
+        name: product.name,
+        quantity: 1,
+        unitPrice: product.price,
+        lineTotal: product.price,
+        unit: product.unit,
+      }
+      setInvoiceItems((prev) => [...prev, newItem])
+    }
+    setShowAddItemToInvoice(false)
+    setProductSearchForInvoice("")
+  }
+
+  const filteredProductsForInvoice = products.filter((product) =>
+    product.name.toLowerCase().includes(productSearchForInvoice.toLowerCase()),
+  )
+
   const saveInvoiceChanges = () => {
     if (!editableInvoice) return
 
@@ -208,7 +280,7 @@ export default function POSSystem() {
       ...editableInvoice,
       items: [...invoiceItems],
       subtotal: updatedSubtotal,
-      total: updatedSubtotal,
+      total: updatedSubtotal + editableInvoice.hamaliCharges,
     }
 
     setCurrentInvoice(updatedInvoice)
@@ -298,17 +370,165 @@ export default function POSSystem() {
         })
       } catch (error) {
         console.error("Error sharing:", error)
-        // Fallback to download
         downloadInvoicePDF(invoice)
       }
     } else {
-      // Fallback for browsers that don't support Web Share API
       const url = URL.createObjectURL(pdfBlob)
       const a = document.createElement("a")
       a.href = url
       a.download = `Invoice_${invoice.invoiceNumber}.pdf`
       a.click()
       URL.revokeObjectURL(url)
+    }
+  }
+
+  const printThermalInvoice = () => {
+    if (invoiceRef.current) {
+      const printWindow = window.open("", "_blank")
+      if (printWindow) {
+        printWindow.document.write(`
+        <!DOCTYPE html>
+        <html>
+          <head>
+            <title>Thermal Invoice - ${currentInvoice?.invoiceNumber}</title>
+            <style>
+              body {
+                font-family: 'Courier New', monospace;
+                margin: 0;
+                padding: 5px;
+                width: 79mm;
+                font-size: 12px;
+                line-height: 1.2;
+              }
+              .thermal-invoice {
+                width: 100%;
+                max-width: 79mm;
+              }
+              .center { text-align: center; }
+              .left { text-align: left; }
+              .right { text-align: right; }
+              .bold { font-weight: bold; }
+              .line { border-bottom: 1px dashed #000; margin: 2px 0; }
+              .double-line { border-bottom: 2px solid #000; margin: 3px 0; }
+              .item-row {
+                display: flex;
+                justify-content: space-between;
+                margin: 1px 0;
+                font-size: 11px;
+              }
+              .item-name {
+                flex: 1;
+                white-space: nowrap;
+                overflow: hidden;
+                text-overflow: ellipsis;
+                max-width: 35mm;
+              }
+              .item-qty { width: 15mm; text-align: center; }
+              .item-rate { width: 15mm; text-align: right; }
+              .item-amount { width: 18mm; text-align: right; }
+              .total-row {
+                display: flex;
+                justify-content: space-between;
+                font-weight: bold;
+                margin: 2px 0;
+              }
+              .header { font-size: 14px; font-weight: bold; }
+              .sub-header { font-size: 10px; }
+              .footer { font-size: 10px; margin-top: 5px; }
+              @media print {
+                body { margin: 0; padding: 2px; }
+                .no-print { display: none; }
+              }
+            </style>
+          </head>
+          <body>
+            <div class="thermal-invoice">
+              <!-- Store Header -->
+              <div class="center header">${storeInfo.name}</div>
+              <div class="center sub-header">${storeInfo.address}</div>
+              <div class="center sub-header">Ph: ${storeInfo.phone}</div>
+              <div class="double-line"></div>
+
+              <!-- Invoice Details -->
+              <div class="left">
+                <div><strong>Invoice:</strong> ${currentInvoice?.invoiceNumber}</div>
+                <div><strong>Date:</strong> ${currentInvoice?.date}</div>
+                <div><strong>Payment:</strong> ${currentInvoice?.paymentMethod.toUpperCase()}</div>
+                ${currentInvoice?.reference ? `<div><strong>Ref:</strong> ${currentInvoice.reference}</div>` : ""}
+              </div>
+
+              <!-- Customer Details -->
+              <div class="line"></div>
+              <div class="left">
+                <strong>Bill To:</strong>
+                ${currentInvoice?.isCashSale
+            ? "<div>CASH CUSTOMER</div>"
+            : `<div>${currentInvoice?.customer?.name || ""}</div>
+                     <div>${currentInvoice?.customer?.phone || ""}</div>`
+          }
+              </div>
+              <div class="line"></div>
+
+              <!-- Items Header -->
+              <div class="item-row bold">
+                <div class="item-name">Item</div>
+                <div class="item-qty">Qty</div>
+                <div class="item-rate">Rate</div>
+                <div class="item-amount">Amount</div>
+              </div>
+              <div class="line"></div>
+
+              <!-- Items -->
+              ${currentInvoice?.items
+            .map(
+              (item) => `
+                <div class="item-row">
+                  <div class="item-name">${item.name}</div>
+                  <div class="item-qty">${item.quantity}</div>
+                  <div class="item-rate">${item.unitPrice.toFixed(2)}</div>
+                  <div class="item-amount">${item.lineTotal.toFixed(2)}</div>
+                </div>
+              `,
+            )
+            .join("")}
+
+              <div class="line"></div>
+
+              <!-- Totals -->
+              <div class="total-row">
+                <div>Subtotal:</div>
+                <div>₹${currentInvoice?.subtotal.toFixed(2)}</div>
+              </div>
+
+              ${currentInvoice?.hamaliCharges > 0
+            ? `
+                <div class="total-row">
+                  <div>Hamali/Freight:</div>
+                  <div>₹${currentInvoice.hamaliCharges.toFixed(2)}</div>
+                </div>
+              `
+            : ""
+          }
+
+              <div class="double-line"></div>
+              <div class="total-row" style="font-size: 14px;">
+                <div>TOTAL:</div>
+                <div>₹${currentInvoice?.total.toFixed(2)}</div>
+              </div>
+              <div class="double-line"></div>
+
+              <!-- Footer -->
+              <div class="center footer">
+                <div>Thank you for your business!</div>
+                <div>Terms & Conditions Apply</div>
+              </div>
+            </div>
+          </body>
+        </html>
+      `)
+        printWindow.document.close()
+        printWindow.print()
+      }
     }
   }
 
@@ -628,10 +848,10 @@ export default function POSSystem() {
       // Generate and show invoice
       generateInvoice()
 
-      // Clear cart and reset form
+      // Clear cart and reset form completely
       clearCart()
       setSelectedCustomer("")
-      setIsCashSale(false)
+      setIsCashSale(true) // Always reset to cash sale
       setPaymentMethod("cash")
       setInvoiceReference("")
       setInvoiceDate(new Date().toISOString().split("T")[0])
@@ -674,12 +894,12 @@ export default function POSSystem() {
   }
 
   const renderSuperCategories = () => (
-    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 md:gap-6">
+    <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-3 md:gap-4">
       {superCategories.map((category) => (
         <Button
           key={category.id}
           onClick={() => handleSuperCategorySelect(category.id)}
-          className="h-24 sm:h-32 w-full bg-white border-2 border-gray-200 hover:border-yellow-400 hover:bg-yellow-50 text-black rounded-[23px] flex flex-col items-center justify-center gap-2 sm:gap-3 transition-colors p-4"
+          className="h-20 sm:h-24 md:h-28 lg:h-32 w-full bg-white border-2 border-gray-200 hover:border-yellow-400 hover:bg-yellow-50 text-black rounded-[15px] sm:rounded-[20px] md:rounded-[23px] flex flex-col items-center justify-center gap-1 sm:gap-2 md:gap-3 transition-colors p-2 sm:p-3 md:p-4"
           variant="outline"
         >
           <div className="relative">
@@ -688,15 +908,17 @@ export default function POSSystem() {
                 <img
                   src={category.image || "/placeholder.svg"}
                   alt={category.name}
-                  className="w-12 h-12 sm:w-16 sm:h-16 object-cover rounded-[11px] border border-gray-200"
+                  className="w-8 h-8 sm:w-10 sm:h-10 md:w-12 md:h-12 lg:w-16 lg:h-16 object-cover rounded-[8px] sm:rounded-[9px] md:rounded-[11px] border border-gray-200"
                 />
-                <span className="absolute -bottom-1 -right-1 text-lg sm:text-xl">{category.icon}</span>
+                <span className="absolute -bottom-1 -right-1 text-sm sm:text-base md:text-lg lg:text-xl">
+                  {category.icon}
+                </span>
               </div>
             ) : (
-              <span className="text-2xl sm:text-3xl">{category.icon}</span>
+              <span className="text-lg sm:text-xl md:text-2xl lg:text-3xl">{category.icon}</span>
             )}
           </div>
-          <span className="font-medium text-xs sm:text-sm text-center px-2">{category.name}</span>
+          <span className="font-medium text-xs sm:text-sm text-center px-1 leading-tight">{category.name}</span>
         </Button>
       ))}
     </div>
@@ -709,12 +931,12 @@ export default function POSSystem() {
         <Button onClick={handleBackToSuper} variant="outline" className="rounded-[9px] border-gray-300">
           ← Back to Categories
         </Button>
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 md:gap-6">
+        <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-3 md:gap-4">
           {filteredSubCategories.map((subCategory) => (
             <Button
               key={subCategory.id}
               onClick={() => handleSubCategorySelect(subCategory.id)}
-              className="h-20 sm:h-28 w-full bg-white border-2 border-gray-200 hover:border-yellow-400 hover:bg-yellow-50 text-black rounded-[18px] flex flex-col items-center justify-center gap-2 transition-colors p-4"
+              className="h-18 sm:h-20 md:h-24 lg:h-28 w-full bg-white border-2 border-gray-200 hover:border-yellow-400 hover:bg-yellow-50 text-black rounded-[12px] sm:rounded-[15px] md:rounded-[18px] flex flex-col items-center justify-center gap-1 sm:gap-2 transition-colors p-2 sm:p-3 md:p-4"
               variant="outline"
             >
               <div className="relative">
@@ -723,15 +945,17 @@ export default function POSSystem() {
                     <img
                       src={subCategory.image || "/placeholder.svg"}
                       alt={subCategory.name}
-                      className="w-10 h-10 sm:w-12 sm:h-12 object-cover rounded-[9px] border border-gray-200"
+                      className="w-6 h-6 sm:w-8 sm:h-8 md:w-10 md:h-10 lg:w-12 lg:h-12 object-cover rounded-[6px] sm:rounded-[7px] md:rounded-[9px] border border-gray-200"
                     />
-                    <span className="absolute -bottom-1 -right-1 text-sm sm:text-base">{subCategory.icon}</span>
+                    <span className="absolute -bottom-1 -right-1 text-xs sm:text-sm md:text-base">
+                      {subCategory.icon}
+                    </span>
                   </div>
                 ) : (
-                  <span className="text-xl sm:text-2xl">{subCategory.icon}</span>
+                  <span className="text-base sm:text-lg md:text-xl lg:text-2xl">{subCategory.icon}</span>
                 )}
               </div>
-              <span className="font-medium text-xs sm:text-sm text-center px-2">{subCategory.name}</span>
+              <span className="font-medium text-xs sm:text-sm text-center px-1 leading-tight">{subCategory.name}</span>
             </Button>
           ))}
         </div>
@@ -744,14 +968,22 @@ export default function POSSystem() {
     return (
       <div className="space-y-4">
         <div className="flex flex-wrap gap-2">
-          <Button onClick={handleBackToSub} variant="outline" className="rounded-[9px] border-gray-300">
+          <Button
+            onClick={handleBackToSub}
+            variant="outline"
+            className="rounded-[9px] border-gray-300 text-xs sm:text-sm"
+          >
             ← Back to Subcategories
           </Button>
-          <Button onClick={handleBackToSuper} variant="outline" className="rounded-[9px] border-gray-300">
+          <Button
+            onClick={handleBackToSuper}
+            variant="outline"
+            className="rounded-[9px] border-gray-300 text-xs sm:text-sm"
+          >
             ← Back to Categories
           </Button>
         </div>
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-3 sm:gap-4">
           {filteredProducts.map((product) => (
             <Card key={product.id} className="rounded-[11px] border-gray-200">
               <CardContent className="p-3 sm:p-4">
@@ -761,21 +993,26 @@ export default function POSSystem() {
                       <img
                         src={product.image || "/placeholder.svg"}
                         alt={product.name}
-                        className="w-16 h-16 object-cover rounded-[9px] border border-gray-200 flex-shrink-0"
+                        className="w-12 h-12 sm:w-14 sm:h-14 md:w-16 md:h-16 object-cover rounded-[9px] border border-gray-200 flex-shrink-0"
                       />
                     )}
                     <div className="flex-1 min-w-0">
-                      <h3 className="font-medium text-sm">{product.name}</h3>
+                      <h3 className="font-medium text-sm sm:text-base leading-tight">{product.name}</h3>
                       <div className="flex justify-between items-center mt-2">
-                        <span className="text-lg font-bold">
+                        <span className="text-base sm:text-lg font-bold">
                           ₹{getLastUsedRate(product.id) || product.price.toFixed(2)}
                         </span>
                       </div>
+                      {product.hamaliValue > 0 && (
+                        <div className="text-xs text-gray-500">
+                          Hamali: ₹{product.hamaliValue.toFixed(2)}/{product.unit}
+                        </div>
+                      )}
                     </div>
                   </div>
                   <Button
                     onClick={() => addToOrder(product)}
-                    className="w-full bg-yellow-400 hover:bg-yellow-500 text-black rounded-[9px] font-medium"
+                    className="w-full bg-yellow-400 hover:bg-yellow-500 text-black rounded-[9px] font-medium text-sm sm:text-base"
                   >
                     <Plus className="w-4 h-4 mr-2" />
                     Add to Order
@@ -789,252 +1026,106 @@ export default function POSSystem() {
     )
   }
 
-  return (
-    <div className="min-h-screen bg-white relative">
-      {/* Grid Background */}
-      <div
-        className="absolute inset-0 opacity-30"
-        style={{
-          backgroundImage: `
-            linear-gradient(rgba(0,0,0,0.03) 1px, transparent 1px),
-            linear-gradient(90deg, rgba(0,0,0,0.03) 1px, transparent 1px)
-          `,
-          backgroundSize: "20px 20px",
-        }}
-      />
-
-      <div className="relative z-10 flex flex-col lg:flex-row h-screen">
-        {/* Main Content */}
-        <div className="flex-1 flex flex-col">
-          {/* Header */}
-          <header className="bg-white border-b border-gray-200 p-4 lg:p-6">
-            <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
-              <div className="flex items-center gap-4">
-                <h1 className="text-xl sm:text-2xl font-bold text-black">SL SALAR POS</h1>
-                <Button
-                  onClick={() => setShowAdmin(true)}
-                  variant="outline"
-                  className="rounded-[9px] border-gray-300"
-                  size="sm"
-                >
-                  <Settings className="w-4 h-4 mr-2" />
-                  Admin
-                </Button>
-                <Button
-                  onClick={() => window.open("/inventory", "_blank")}
-                  variant="outline"
-                  className="rounded-[9px] border-gray-300"
-                  size="sm"
-                >
-                  <Package className="w-4 h-4 mr-2" />
-                  Inventory
-                </Button>
-              </div>
-
-              {/* Customer Selection */}
-              <div className="flex flex-col sm:flex-row items-start sm:items-center gap-2 sm:gap-4 w-full sm:w-auto">
-                <div className="flex items-center space-x-2">
-                  <Checkbox
-                    id="cash-sale"
-                    checked={isCashSale}
-                    onCheckedChange={(checked) => {
-                      setIsCashSale(checked as boolean)
-                      if (checked) {
-                        setSelectedCustomer("")
-                        setCustomerSearch("")
-                      }
-                    }}
-                  />
-                  <label htmlFor="cash-sale" className="text-sm font-medium">
-                    Cash Sale
-                  </label>
-                </div>
-
-                {!isCashSale && (
-                  <div className="flex gap-2 w-full sm:w-auto">
-                    <div className="relative flex-1 sm:flex-none">
-                      <User className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-4 h-4" />
-                      <Input
-                        placeholder="Search customers..."
-                        value={customerSearch}
-                        onChange={(e) => setCustomerSearch(e.target.value)}
-                        className="pl-10 w-full sm:w-64 rounded-[9px]"
-                      />
-                      {customerSearch && filteredCustomers.length > 0 && (
-                        <div className="absolute top-full left-0 right-0 bg-white border border-gray-200 rounded-[9px] mt-1 max-h-40 overflow-y-auto z-20 shadow-lg">
-                          {filteredCustomers.map((customer) => (
-                            <button
-                              key={customer.id}
-                              onClick={() => {
-                                setSelectedCustomer(customer.id)
-                                setCustomerSearch("")
-                              }}
-                              className="w-full text-left p-3 hover:bg-gray-50 border-b border-gray-100 last:border-b-0"
-                            >
-                              <div className="font-medium text-sm">{customer.name}</div>
-                              <div className="text-xs text-gray-500">{customer.phone}</div>
-                            </button>
-                          ))}
-                        </div>
-                      )}
-                    </div>
-                    <Button
-                      onClick={() => setShowAddCustomer(true)}
-                      className="bg-yellow-400 hover:bg-yellow-500 text-black rounded-[9px]"
-                      size="sm"
-                    >
-                      <UserPlus className="w-4 h-4" />
-                    </Button>
-                  </div>
-                )}
-
-                {selectedCustomerData && !isCashSale && (
-                  <Card className="rounded-[11px] border-gray-200 w-full sm:w-auto">
-                    <CardContent className="p-3">
-                      <div className="flex items-center justify-between">
-                        <div>
-                          <div className="text-sm font-medium">{selectedCustomerData.name}</div>
-                          <div className="text-xs text-gray-500">{selectedCustomerData.phone}</div>
-                        </div>
-                        <Button
-                          size="sm"
-                          variant="outline"
-                          onClick={() => loadCustomerTransactions(selectedCustomerData.id)}
-                          className="rounded-[9px]"
-                        >
-                          <FileText className="w-4 h-4" />
-                        </Button>
-                      </div>
-                    </CardContent>
-                  </Card>
-                )}
-
-                {isCashSale && (
-                  <Card className="rounded-[11px] border-yellow-200 bg-yellow-50 w-full sm:w-auto">
-                    <CardContent className="p-3">
-                      <div className="flex items-center justify-between">
-                        <div>
-                          <div className="text-sm font-medium text-yellow-800">CASH SALE</div>
-                          <div className="text-xs text-yellow-600">No customer required</div>
-                        </div>
-                        <Button
-                          size="sm"
-                          variant="outline"
-                          onClick={loadAllTransactions}
-                          className="rounded-[9px] border-yellow-300"
-                        >
-                          <FileText className="w-4 h-4" />
-                        </Button>
-                      </div>
-                    </CardContent>
-                  </Card>
-                )}
-              </div>
-            </div>
-          </header>
-
-          {/* Product Selection Area */}
-          <main className="flex-1 p-4 lg:p-6 overflow-y-auto">
-            {currentView === "super" && renderSuperCategories()}
-            {currentView === "sub" && renderSubCategories()}
-            {currentView === "products" && renderProducts()}
-          </main>
-        </div>
-
-        {/* Order Summary Panel */}
-        <div className="w-full lg:w-96 bg-gray-50 border-t lg:border-t-0 lg:border-l border-gray-200 flex flex-col max-h-96 lg:max-h-none">
-          <div className="p-4 lg:p-6 border-b border-gray-200">
-            <div className="flex items-center gap-2 mb-4">
+  // Mobile Cart Component
+  const MobileCartSheet = () => (
+    <Sheet open={showMobileCart} onOpenChange={setShowMobileCart}>
+      <SheetContent side="right" className="w-full sm:w-96 p-0">
+        <div className="flex flex-col">
+          <div className="p-4 border-b border-gray-200">
+            <div className="flex items-center gap-2">
               <ShoppingCart className="w-5 h-5" />
               <h2 className="text-lg font-bold">Order Summary</h2>
             </div>
-
-            {orderItems.length === 0 ? (
-              <p className="text-gray-500 text-sm">No items in cart</p>
-            ) : (
-              <div className="space-y-3 max-h-48 lg:max-h-96 overflow-y-auto">
-                {orderItems.map((item) => (
-                  <Card key={item.id} className="rounded-[9px] border-gray-200">
-                    <CardContent className="p-3">
-                      <div className="space-y-2">
-                        <div className="font-medium text-sm">{item.name}</div>
-
-                        <div className="flex items-center gap-2">
-                          <Button
-                            size="sm"
-                            variant="outline"
-                            onClick={() => updateQuantity(item.id, item.quantity - 1)}
-                            className="w-8 h-8 p-0 rounded-[9px]"
-                          >
-                            <Minus className="w-3 h-3" />
-                          </Button>
-                          <Input
-                            type="number"
-                            value={item.quantity}
-                            onChange={(e) => updateQuantity(item.id, Number.parseInt(e.target.value) || 0)}
-                            className="w-16 h-8 text-center rounded-[9px]"
-                            min="1"
-                          />
-                          <Button
-                            size="sm"
-                            variant="outline"
-                            onClick={() => updateQuantity(item.id, item.quantity + 1)}
-                            className="w-8 h-8 p-0 rounded-[9px]"
-                          >
-                            <Plus className="w-3 h-3" />
-                          </Button>
-                          <span className="text-xs text-gray-500">{item.unit}</span>
-                        </div>
-
-                        <div className="flex items-center gap-2">
-                          <span className="text-xs text-gray-500">Rate:</span>
-                          <Input
-                            type="number"
-                            value={item.unitPrice}
-                            onChange={(e) => updateUnitPrice(item.id, Number.parseFloat(e.target.value) || 0)}
-                            className="w-20 h-7 text-xs rounded-[9px]"
-                            step="0.01"
-                            min="0"
-                          />
-                          <span className="text-xs text-gray-500">₹</span>
-                        </div>
-
-                        <div className="flex justify-between items-center">
-                          <span className="font-bold text-sm">₹{item.lineTotal.toFixed(2)}</span>
-                          <Button
-                            size="sm"
-                            variant="outline"
-                            onClick={() => removeFromOrder(item.id)}
-                            className="w-7 h-7 p-0 rounded-[9px] text-red-500 hover:text-red-700"
-                          >
-                            <Trash2 className="w-3 h-3" />
-                          </Button>
-                        </div>
-                      </div>
-                    </CardContent>
-                  </Card>
-                ))}
-              </div>
-            )}
           </div>
 
-          {/* Hamali/Freight Charges */}
-          <div className="p-4 lg:p-6 border-b border-gray-200">
+          {orderItems.length === 0 ? (
+            <div className="flex-1 flex items-center justify-center">
+              <p className="text-gray-500 text-sm">No items in cart</p>
+            </div>
+          ) : (
+            <div className="flex-1 overflow-y-auto p-4 space-y-3">
+              {orderItems.map((item) => (
+                <Card key={item.id} className="rounded-[9px] border-gray-200">
+                  <CardContent className="p-3">
+                    <div className="space-y-2">
+                      <div className="font-medium text-sm">{item.name}</div>
+
+                      <div className="flex items-center gap-2">
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          onClick={() => updateQuantity(item.id, item.quantity - 1)}
+                          className="w-8 h-8 p-0 rounded-[9px]"
+                        >
+                          <Minus className="w-3 h-3" />
+                        </Button>
+                        <Input
+                          type="number"
+                          value={item.quantity}
+                          onChange={(e) => updateQuantity(item.id, Number.parseInt(e.target.value) || 0)}
+                          className="w-16 h-8 text-center rounded-[9px]"
+                          min="1"
+                        />
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          onClick={() => updateQuantity(item.id, item.quantity + 1)}
+                          className="w-8 h-8 p-0 rounded-[9px]"
+                        >
+                          <Plus className="w-3 h-3" />
+                        </Button>
+                        <span className="text-xs text-gray-500">{item.unit}</span>
+                      </div>
+
+                      <div className="flex items-center gap-2">
+                        <span className="text-xs text-gray-500">Rate:</span>
+                        <Input
+                          type="number"
+                          value={item.unitPrice}
+                          onChange={(e) => updateUnitPrice(item.id, Number.parseFloat(e.target.value) || 0)}
+                          className="w-20 h-7 text-xs rounded-[9px]"
+                          step="0.01"
+                          min="0"
+                        />
+                        <span className="text-xs text-gray-500">₹</span>
+                      </div>
+
+                      <div className="flex justify-between items-center">
+                        <span className="font-bold text-sm">₹{item.lineTotal.toFixed(2)}</span>
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          onClick={() => removeFromOrder(item.id)}
+                          className="w-7 h-7 p-0 rounded-[9px] text-red-500 hover:text-red-700"
+                        >
+                          <Trash2 className="w-3 h-3" />
+                        </Button>
+                      </div>
+                    </div>
+                  </CardContent>
+                </Card>
+              ))}
+            </div>
+          )}
+
+          {/* Mobile Cart Footer */}
+          <div className="border-t border-gray-200 p-4 space-y-4">
+            {/* Hamali Charges */}
             <div className="space-y-3">
               <div className="flex items-center space-x-2">
                 <Checkbox
-                  id="include-hamali"
+                  id="include-hamali-mobile"
                   checked={includeHamali}
                   onCheckedChange={(checked) => setIncludeHamali(checked as boolean)}
                 />
-                <Label htmlFor="include-hamali" className="text-sm font-medium">
-                  Include Hamali/Freight Charges
+                <Label htmlFor="include-hamali-mobile" className="text-sm font-medium">
+                  Include Hamali/Freight
                 </Label>
               </div>
               {includeHamali && (
                 <Input
                   type="number"
-                  placeholder="Enter hamali charges"
+                  placeholder="Hamali charges"
                   value={hamaliCharges}
                   onChange={(e) => setHamaliCharges(Number.parseFloat(e.target.value) || 0)}
                   className="rounded-[9px]"
@@ -1043,34 +1134,8 @@ export default function POSSystem() {
                 />
               )}
             </div>
-          </div>
 
-          {/* Reference and Date Inputs */}
-          <div className="p-4 lg:p-6 border-b border-gray-200">
-            <div className="space-y-3">
-              <div>
-                <Label className="text-sm font-medium">Reference (Optional)</Label>
-                <Input
-                  placeholder="Reference number or note"
-                  value={invoiceReference}
-                  onChange={(e) => setInvoiceReference(e.target.value)}
-                  className="rounded-[9px]"
-                />
-              </div>
-              <div>
-                <Label className="text-sm font-medium">Invoice Date</Label>
-                <Input
-                  type="date"
-                  value={invoiceDate}
-                  onChange={(e) => setInvoiceDate(e.target.value)}
-                  className="rounded-[9px]"
-                />
-              </div>
-            </div>
-          </div>
-
-          {/* Order Totals */}
-          <div className="p-4 lg:p-6 border-b border-gray-200">
+            {/* Totals */}
             <div className="space-y-2">
               <div className="flex justify-between text-lg">
                 <span className="font-medium">Subtotal:</span>
@@ -1087,54 +1152,429 @@ export default function POSSystem() {
                 <span className="font-bold">₹{total.toFixed(2)}</span>
               </div>
             </div>
-          </div>
 
-          {/* Payment Method Selection */}
-          <div className="p-4 lg:p-6 border-b border-gray-200">
-            <div className="space-y-3">
-              <Label className="text-sm font-medium">Payment Method</Label>
-              <Select
-                value={paymentMethod}
-                onValueChange={(value: "cash" | "card" | "upi" | "credit") => setPaymentMethod(value)}
+            {/* Action Buttons */}
+            <div className="space-y-2">
+              <Button
+                onClick={clearCart}
+                variant="outline"
+                className="w-full rounded-[9px] border-gray-300"
+                disabled={orderItems.length === 0}
               >
-                <SelectTrigger className="rounded-[9px]">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="cash">💵 Cash</SelectItem>
-                  <SelectItem value="card">💳 Card</SelectItem>
-                  <SelectItem value="upi">📱 UPI</SelectItem>
-                  <SelectItem value="credit">🏪 Credit</SelectItem>
-                </SelectContent>
-              </Select>
+                Clear Cart
+              </Button>
+              <Button
+                onClick={confirmOrder}
+                className="w-full bg-yellow-400 hover:bg-yellow-500 text-black rounded-[9px] font-medium"
+                disabled={orderItems.length === 0 || (!isCashSale && !selectedCustomer)}
+              >
+                <FileText className="w-4 h-4 mr-2" />
+                Generate Invoice
+              </Button>
             </div>
           </div>
-
-          {/* Action Buttons */}
-          <div className="p-4 lg:p-6 space-y-3">
-            <Button
-              onClick={clearCart}
-              variant="outline"
-              className="w-full rounded-[9px] border-gray-300"
-              disabled={orderItems.length === 0}
-            >
-              Clear Cart
-            </Button>
-            <Button
-              onClick={confirmOrder}
-              className="w-full bg-yellow-400 hover:bg-yellow-500 text-black rounded-[9px] font-medium"
-              disabled={orderItems.length === 0 || (!isCashSale && !selectedCustomer)}
-            >
-              <FileText className="w-4 h-4 mr-2" />
-              Generate Invoice
-            </Button>
-          </div>
         </div>
+      </SheetContent>
+    </Sheet>
+  )
+
+  return (
+    <div className="bg-white relative">
+      {/* Grid Background */}
+      <div
+        className="absolute inset-0 opacity-30"
+        style={{
+          backgroundImage: `
+            linear-gradient(rgba(0,0,0,0.03) 1px, transparent 1px),
+            linear-gradient(90deg, rgba(0,0,0,0.03) 1px, transparent 1px)
+          `,
+          backgroundSize: "20px 20px",
+        }}
+      />
+
+      <div className="relative z-10">
+        {/* Main Header */}
+        <header className="bg-white border-b border-gray-200 p-3 sm:p-4 lg:p-6">
+          <div className="flex flex-col gap-4">
+            {/* Top Header Row */}
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-2 sm:gap-4">
+                <h1 className="text-lg sm:text-xl lg:text-2xl font-bold text-black">SL SALAR</h1>
+                <Button
+                  onClick={() => setShowAdmin(true)}
+                  variant="outline"
+                  className="rounded-[9px] border-gray-300"
+                  size="sm"
+                >
+                  <Settings className="w-4 h-4 mr-1 sm:mr-2" />
+                  <span className="hidden sm:inline">Admin</span>
+                </Button>
+              </div>
+
+              {/* Mobile Cart Button */}
+              {isMobile && (
+                <Button
+                  onClick={() => setShowMobileCart(true)}
+                  className="bg-yellow-400 hover:bg-yellow-500 text-black rounded-[9px] relative"
+                  size="sm"
+                >
+                  <ShoppingCart className="w-4 h-4" />
+                  {orderItems.length > 0 && (
+                    <Badge className="absolute -top-2 -right-2 bg-red-500 text-white text-xs min-w-[20px] h-5 flex items-center justify-center rounded-full">
+                      {orderItems.length}
+                    </Badge>
+                  )}
+                </Button>
+              )}
+            </div>
+
+            {/* Main Tabs */}
+            <Tabs value={activeMainTab} onValueChange={(value: any) => setActiveMainTab(value)} className="w-full">
+              <TabsList className="grid w-full grid-cols-3">
+                <TabsTrigger value="pos" className="text-xs sm:text-sm">
+                  POS
+                </TabsTrigger>
+                <TabsTrigger value="order" className="text-xs sm:text-sm">
+                  ORDER
+                </TabsTrigger>
+                <TabsTrigger value="godown" className="text-xs sm:text-sm">
+                  GODOWN ENTRY
+                </TabsTrigger>
+              </TabsList>
+
+              <TabsContent value="pos" className="mt-4">
+                <div
+                  className={`flex flex-col ${!isMobile ? "lg:flex-row" : ""} ${!isMobile ? "h-[calc(100vh-200px)]" : ""}`}
+                >
+                  {/* POS Content */}
+                  <div className="flex-1 flex flex-col">
+                    {/* Customer Selection */}
+                    <div className="flex flex-col gap-3 sm:gap-4 w-full mb-4">
+                      <div className="flex items-center space-x-2">
+                        <Checkbox
+                          id="cash-sale"
+                          checked={isCashSale}
+                          onCheckedChange={(checked) => {
+                            setIsCashSale(checked as boolean)
+                            if (checked) {
+                              setSelectedCustomer("")
+                              setCustomerSearch("")
+                            }
+                          }}
+                        />
+                        <label htmlFor="cash-sale" className="text-sm font-medium">
+                          Cash Sale
+                        </label>
+                      </div>
+
+                      {!isCashSale && (
+                        <div className="flex gap-2 w-full">
+                          <div className="relative flex-1">
+                            <User className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-4 h-4" />
+                            <Input
+                              placeholder="Search customers..."
+                              value={customerSearch}
+                              onChange={(e) => setCustomerSearch(e.target.value)}
+                              className="pl-10 w-full rounded-[9px]"
+                            />
+                            {customerSearch && filteredCustomers.length > 0 && (
+                              <div className="absolute top-full left-0 right-0 bg-white border border-gray-200 rounded-[9px] mt-1 max-h-40 overflow-y-auto z-20 shadow-lg">
+                                {filteredCustomers.map((customer) => (
+                                  <button
+                                    key={customer.id}
+                                    onClick={() => {
+                                      setSelectedCustomer(customer.id)
+                                      setCustomerSearch("")
+                                    }}
+                                    className="w-full text-left p-3 hover:bg-gray-50 border-b border-gray-100 last:border-b-0"
+                                  >
+                                    <div className="font-medium text-sm">{customer.name}</div>
+                                    <div className="text-xs text-gray-500">{customer.phone}</div>
+                                  </button>
+                                ))}
+                              </div>
+                            )}
+                          </div>
+                          <Button
+                            onClick={() => setShowAddCustomer(true)}
+                            className="bg-yellow-400 hover:bg-yellow-500 text-black rounded-[9px] flex-shrink-0"
+                            size="sm"
+                          >
+                            <UserPlus className="w-4 h-4" />
+                          </Button>
+                        </div>
+                      )}
+
+                      {selectedCustomerData && !isCashSale && (
+                        <Card className="rounded-[11px] border-gray-200">
+                          <CardContent className="p-3">
+                            <div className="flex items-center justify-between">
+                              <div>
+                                <div className="text-sm font-medium">{selectedCustomerData.name}</div>
+                                <div className="text-xs text-gray-500">{selectedCustomerData.phone}</div>
+                              </div>
+                              <Button
+                                size="sm"
+                                variant="outline"
+                                onClick={() => loadCustomerTransactions(selectedCustomerData.id)}
+                                className="rounded-[9px]"
+                              >
+                                <FileText className="w-4 h-4" />
+                              </Button>
+                            </div>
+                          </CardContent>
+                        </Card>
+                      )}
+
+                      {isCashSale && (
+                        <Card className="rounded-[11px] border-yellow-200 bg-yellow-50">
+                          <CardContent className="p-3">
+                            <div className="flex items-center justify-between">
+                              <div>
+                                <div className="text-sm font-medium text-yellow-800">CASH SALE</div>
+                                <div className="text-xs text-yellow-600">No customer required</div>
+                              </div>
+                              <Button
+                                size="sm"
+                                variant="outline"
+                                onClick={loadAllTransactions}
+                                className="rounded-[9px] border-yellow-300"
+                              >
+                                <FileText className="w-4 h-4" />
+                              </Button>
+                            </div>
+                          </CardContent>
+                        </Card>
+                      )}
+                    </div>
+
+                    {/* Product Selection Area */}
+                    <main className="flex-1 overflow-y-auto">
+                      {currentView === "super" && renderSuperCategories()}
+                      {currentView === "sub" && renderSubCategories()}
+                      {currentView === "products" && renderProducts()}
+                    </main>
+                  </div>
+
+                  {/* Desktop Order Summary Panel */}
+                  {!isMobile && (
+                    <div className="w-full lg:w-96 bg-gray-50 border-t lg:border-t-0 lg:border-l border-gray-200 flex flex-col">
+                      <div className="p-4 lg:p-6 border-b border-gray-200">
+                        <div className="flex items-center gap-2 mb-4">
+                          <ShoppingCart className="w-5 h-5" />
+                          <h2 className="text-lg font-bold">Order Summary</h2>
+                        </div>
+
+                        {orderItems.length === 0 ? (
+                          <p className="text-gray-500 text-sm">No items in cart</p>
+                        ) : (
+                          <div className="space-y-3 max-h-48 lg:max-h-96 overflow-y-auto">
+                            {orderItems.map((item) => (
+                              <Card key={item.id} className="rounded-[9px] border-gray-200">
+                                <CardContent className="p-3">
+                                  <div className="space-y-2">
+                                    <div className="font-medium text-sm">{item.name}</div>
+
+                                    <div className="flex items-center gap-2">
+                                      <Button
+                                        size="sm"
+                                        variant="outline"
+                                        onClick={() => updateQuantity(item.id, item.quantity - 1)}
+                                        className="w-8 h-8 p-0 rounded-[9px]"
+                                      >
+                                        <Minus className="w-3 h-3" />
+                                      </Button>
+                                      <Input
+                                        type="number"
+                                        value={item.quantity}
+                                        onChange={(e) => updateQuantity(item.id, Number.parseInt(e.target.value) || 0)}
+                                        className="w-16 h-8 text-center rounded-[9px]"
+                                        min="1"
+                                      />
+                                      <Button
+                                        size="sm"
+                                        variant="outline"
+                                        onClick={() => updateQuantity(item.id, item.quantity + 1)}
+                                        className="w-8 h-8 p-0 rounded-[9px]"
+                                      >
+                                        <Plus className="w-3 h-3" />
+                                      </Button>
+                                      <span className="text-xs text-gray-500">{item.unit}</span>
+                                    </div>
+
+                                    <div className="flex items-center gap-2">
+                                      <span className="text-xs text-gray-500">Rate:</span>
+                                      <Input
+                                        type="number"
+                                        value={item.unitPrice}
+                                        onChange={(e) =>
+                                          updateUnitPrice(item.id, Number.parseFloat(e.target.value) || 0)
+                                        }
+                                        className="w-20 h-7 text-xs rounded-[9px]"
+                                        step="0.01"
+                                        min="0"
+                                      />
+                                      <span className="text-xs text-gray-500">₹</span>
+                                    </div>
+
+                                    <div className="flex justify-between items-center">
+                                      <span className="font-bold text-sm">₹{item.lineTotal.toFixed(2)}</span>
+                                      <Button
+                                        size="sm"
+                                        variant="outline"
+                                        onClick={() => removeFromOrder(item.id)}
+                                        className="w-7 h-7 p-0 rounded-[9px] text-red-500 hover:text-red-700"
+                                      >
+                                        <Trash2 className="w-3 h-3" />
+                                      </Button>
+                                    </div>
+                                  </div>
+                                </CardContent>
+                              </Card>
+                            ))}
+                          </div>
+                        )}
+                      </div>
+
+                      {/* Hamali/Freight Charges */}
+                      <div className="p-4 lg:p-6 border-b border-gray-200">
+                        <div className="space-y-3">
+                          <div className="flex items-center space-x-2">
+                            <Checkbox
+                              id="include-hamali"
+                              checked={includeHamali}
+                              onCheckedChange={(checked) => setIncludeHamali(checked as boolean)}
+                            />
+                            <Label htmlFor="include-hamali" className="text-sm font-medium">
+                              Include Hamali/Freight Charges
+                            </Label>
+                          </div>
+                          {includeHamali && (
+                            <div className="space-y-2">
+                              <div className="text-sm text-gray-600">
+                                Auto-calculated: ₹{calculateHamaliCharges().toFixed(2)}
+                              </div>
+                              <Input
+                                type="number"
+                                placeholder="Override hamali charges"
+                                value={hamaliCharges}
+                                onChange={(e) => setHamaliCharges(Number.parseFloat(e.target.value) || 0)}
+                                className="rounded-[9px]"
+                                step="0.01"
+                                min="0"
+                              />
+                            </div>
+                          )}
+                        </div>
+                      </div>
+
+                      {/* Reference and Date Inputs */}
+                      <div className="p-4 lg:p-6 border-b border-gray-200">
+                        <div className="space-y-3">
+                          <div>
+                            <Label className="text-sm font-medium">Reference (Optional)</Label>
+                            <Input
+                              placeholder="Reference number or note"
+                              value={invoiceReference}
+                              onChange={(e) => setInvoiceReference(e.target.value)}
+                              className="rounded-[9px]"
+                            />
+                          </div>
+                          <div>
+                            <Label className="text-sm font-medium">Invoice Date</Label>
+                            <Input
+                              type="date"
+                              value={invoiceDate}
+                              onChange={(e) => setInvoiceDate(e.target.value)}
+                              className="rounded-[9px]"
+                            />
+                          </div>
+                        </div>
+                      </div>
+
+                      {/* Order Totals */}
+                      <div className="p-4 lg:p-6 border-b border-gray-200">
+                        <div className="space-y-2">
+                          <div className="flex justify-between text-lg">
+                            <span className="font-medium">Subtotal:</span>
+                            <span className="font-bold">₹{subtotal.toFixed(2)}</span>
+                          </div>
+                          {includeHamali && hamaliCharges > 0 && (
+                            <div className="flex justify-between text-sm">
+                              <span className="text-gray-600">Hamali/Freight:</span>
+                              <span className="font-medium">₹{hamaliCharges.toFixed(2)}</span>
+                            </div>
+                          )}
+                          <div className="flex justify-between text-xl border-t pt-2">
+                            <span className="font-bold">Total:</span>
+                            <span className="font-bold">₹{total.toFixed(2)}</span>
+                          </div>
+                        </div>
+                      </div>
+
+                      {/* Payment Method Selection */}
+                      <div className="p-4 lg:p-6 border-b border-gray-200">
+                        <div className="space-y-3">
+                          <Label className="text-sm font-medium">Payment Method</Label>
+                          <Select
+                            value={paymentMethod}
+                            onValueChange={(value: "cash" | "card" | "upi" | "credit") => setPaymentMethod(value)}
+                          >
+                            <SelectTrigger className="rounded-[9px]">
+                              <SelectValue />
+                            </SelectTrigger>
+                            <SelectContent>
+                              <SelectItem value="cash">💵 Cash</SelectItem>
+                              <SelectItem value="card">💳 Card</SelectItem>
+                              <SelectItem value="upi">📱 UPI</SelectItem>
+                              <SelectItem value="credit">🏪 Credit</SelectItem>
+                            </SelectContent>
+                          </Select>
+                        </div>
+                      </div>
+
+                      {/* Action Buttons */}
+                      <div className="p-4 lg:p-6 space-y-3">
+                        <Button
+                          onClick={clearCart}
+                          variant="outline"
+                          className="w-full rounded-[9px] border-gray-300"
+                          disabled={orderItems.length === 0}
+                        >
+                          Clear Cart
+                        </Button>
+                        <Button
+                          onClick={confirmOrder}
+                          className="w-full bg-yellow-400 hover:bg-yellow-500 text-black rounded-[9px] font-medium"
+                          disabled={orderItems.length === 0 || (!isCashSale && !selectedCustomer)}
+                        >
+                          <FileText className="w-4 h-4 mr-2" />
+                          Generate Invoice
+                        </Button>
+                      </div>
+                    </div>
+                  )}
+                </div>
+              </TabsContent>
+
+              <TabsContent value="order" className="mt-4">
+                <PurchaseOrderModule onBack={() => setActiveMainTab("pos")} />
+              </TabsContent>
+
+              <TabsContent value="godown" className="mt-4">
+                <InventoryManagement />
+              </TabsContent>
+            </Tabs>
+          </div>
+        </header>
       </div>
+
+      {/* Mobile Cart Sheet */}
+      <MobileCartSheet />
 
       {/* Add Customer Dialog */}
       <Dialog open={showAddCustomer} onOpenChange={setShowAddCustomer}>
-        <DialogContent className="max-w-md">
+        <DialogContent className="max-w-md mx-4 sm:mx-auto">
           <DialogHeader>
             <DialogTitle>Add New Customer</DialogTitle>
           </DialogHeader>
@@ -1194,70 +1634,89 @@ export default function POSSystem() {
 
       {/* Invoice Dialog */}
       <Dialog open={showInvoice} onOpenChange={setShowInvoice}>
-        <DialogContent className="max-w-4xl max-h-[90vh] overflow-y-auto">
+        <DialogContent className="max-w-4xl max-h-[90vh] overflow-y-auto mx-4 sm:mx-auto">
           <DialogHeader>
-            <DialogTitle className="flex items-center justify-between">
+            <DialogTitle className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
               <span>Invoice Generated</span>
-              <div className="flex gap-2">
+              <div className="flex flex-wrap gap-2">
                 <Button
                   onClick={() => editInvoice(currentInvoice!)}
                   variant="outline"
-                  className="bg-blue-50 hover:bg-blue-100 text-blue-700 rounded-[9px]"
+                  className="bg-blue-50 hover:bg-blue-100 text-blue-700 rounded-[9px] text-xs sm:text-sm"
+                  size="sm"
                 >
-                  <FileText className="w-4 h-4 mr-2" />
+                  <Edit className="w-4 h-4 mr-1 sm:mr-2" />
                   Edit
                 </Button>
-                <Button onClick={printInvoice} variant="outline" className="rounded-[9px]">
-                  <Printer className="w-4 h-4 mr-2" />
+                <Button onClick={printInvoice} variant="outline" className="rounded-[9px] text-xs sm:text-sm" size="sm">
+                  <Printer className="w-4 h-4 mr-1 sm:mr-2" />
                   Print
                 </Button>
-                <Button onClick={() => downloadInvoicePDF(currentInvoice!)} variant="outline" className="rounded-[9px]">
-                  <Download className="w-4 h-4 mr-2" />
+                <Button
+                  onClick={printThermalInvoice}
+                  variant="outline"
+                  className="bg-orange-50 hover:bg-orange-100 text-orange-700 rounded-[9px] text-xs sm:text-sm"
+                  size="sm"
+                >
+                  <Printer className="w-4 h-4 mr-1 sm:mr-2" />
+                  Thermal
+                </Button>
+                <Button
+                  onClick={() => downloadInvoicePDF(currentInvoice!)}
+                  variant="outline"
+                  className="rounded-[9px] text-xs sm:text-sm"
+                  size="sm"
+                >
+                  <Download className="w-4 h-4 mr-1 sm:mr-2" />
                   PDF
                 </Button>
                 <Button
                   onClick={() => shareInvoicePDF(currentInvoice!)}
-                  className="bg-green-500 hover:bg-green-600 text-white rounded-[9px]"
+                  className="bg-green-500 hover:bg-green-600 text-white rounded-[9px] text-xs sm:text-sm"
+                  size="sm"
                 >
-                  <FileText className="w-4 h-4 mr-2" />
-                  Share PDF
+                  <FileText className="w-4 h-4 mr-1 sm:mr-2" />
+                  Share
+                </Button>
+                <Button onClick={() => setShowInvoice(false)} variant="outline" className="rounded-[9px]" size="sm">
+                  <X className="w-4 h-4" />
                 </Button>
               </div>
             </DialogTitle>
           </DialogHeader>
 
           {currentInvoice && (
-            <div ref={invoiceRef} className="invoice bg-white p-8">
+            <div ref={invoiceRef} className="invoice bg-white p-4 sm:p-6 lg:p-8">
               {/* Store Header */}
               <div className="header text-center border-b-2 border-black pb-4 mb-6">
-                <h1 className="text-3xl font-bold">{storeInfo.name}</h1>
-                <p className="text-sm mt-2">{storeInfo.address}</p>
-                <p className="text-sm mt-1">Contact: {storeInfo.phone}</p>
+                <h1 className="text-2xl sm:text-3xl font-bold">{storeInfo.name}</h1>
+                <p className="text-xs sm:text-sm mt-2">{storeInfo.address}</p>
+                <p className="text-xs sm:text-sm mt-1">Contact: {storeInfo.phone}</p>
               </div>
 
               {/* Invoice Details */}
-              <div className="flex justify-between mb-6">
+              <div className="flex flex-col sm:flex-row justify-between mb-6 gap-4">
                 <div>
-                  <h2 className="text-xl font-bold">INVOICE</h2>
-                  <p>
+                  <h2 className="text-lg sm:text-xl font-bold">INVOICE</h2>
+                  <p className="text-sm">
                     <strong>Invoice No:</strong> {currentInvoice.invoiceNumber}
                   </p>
-                  <p>
+                  <p className="text-sm">
                     <strong>Date:</strong> {currentInvoice.date}
                   </p>
-                  <p>
+                  <p className="text-sm">
                     <strong>Payment:</strong> {currentInvoice.paymentMethod.toUpperCase()}
                   </p>
                   {currentInvoice.reference && (
-                    <p>
+                    <p className="text-sm">
                       <strong>Reference:</strong> {currentInvoice.reference}
                     </p>
                   )}
                 </div>
-                <div className="text-right">
+                <div className="text-left sm:text-right">
                   <h3 className="font-bold">Bill To:</h3>
                   {currentInvoice.isCashSale ? (
-                    <p className="text-lg font-bold">CASH CUSTOMER</p>
+                    <p className="text-base sm:text-lg font-bold">CASH CUSTOMER</p>
                   ) : (
                     <div>
                       <p className="font-medium">{currentInvoice.customer?.name}</p>
@@ -1269,59 +1728,67 @@ export default function POSSystem() {
               </div>
 
               {/* Items Table */}
-              <table className="w-full border-collapse border border-black mb-6">
-                <thead>
-                  <tr className="bg-gray-100">
-                    <th className="border border-black p-2 text-left">S.No.</th>
-                    <th className="border border-black p-2 text-left">Particulars</th>
-                    <th className="border border-black p-2 text-center">QTY</th>
-                    <th className="border border-black p-2 text-center">Unit</th>
-                    <th className="border border-black p-2 text-right">Rate (₹)</th>
-                    <th className="border border-black p-2 text-right">Amount (₹)</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {currentInvoice.items.map((item, index) => (
-                    <tr key={item.id}>
-                      <td className="border border-black p-2">{index + 1}</td>
-                      <td className="border border-black p-2">{item.name}</td>
-                      <td className="border border-black p-2 text-center">{item.quantity}</td>
-                      <td className="border border-black p-2 text-center">{item.unit}</td>
-                      <td className="border border-black p-2 text-right">{item.unitPrice.toFixed(2)}</td>
-                      <td className="border border-black p-2 text-right">{item.lineTotal.toFixed(2)}</td>
+              <div className="overflow-x-auto mb-6">
+                <table className="w-full border-collapse border border-black">
+                  <thead>
+                    <tr className="bg-gray-100">
+                      <th className="border border-black p-2 text-left text-xs sm:text-sm">S.No.</th>
+                      <th className="border border-black p-2 text-left text-xs sm:text-sm">Particulars</th>
+                      <th className="border border-black p-2 text-center text-xs sm:text-sm">QTY</th>
+                      <th className="border border-black p-2 text-center text-xs sm:text-sm">Unit</th>
+                      <th className="border border-black p-2 text-right text-xs sm:text-sm">Rate (₹)</th>
+                      <th className="border border-black p-2 text-right text-xs sm:text-sm">Amount (₹)</th>
                     </tr>
-                  ))}
-                  {currentInvoice.hamaliCharges > 0 && (
+                  </thead>
+                  <tbody>
+                    {currentInvoice.items.map((item, index) => (
+                      <tr key={item.id}>
+                        <td className="border border-black p-2 text-xs sm:text-sm">{index + 1}</td>
+                        <td className="border border-black p-2 text-xs sm:text-sm">{item.name}</td>
+                        <td className="border border-black p-2 text-center text-xs sm:text-sm">{item.quantity}</td>
+                        <td className="border border-black p-2 text-center text-xs sm:text-sm">{item.unit}</td>
+                        <td className="border border-black p-2 text-right text-xs sm:text-sm">
+                          {item.unitPrice.toFixed(2)}
+                        </td>
+                        <td className="border border-black p-2 text-right text-xs sm:text-sm">
+                          {item.lineTotal.toFixed(2)}
+                        </td>
+                      </tr>
+                    ))}
+                    {currentInvoice.hamaliCharges > 0 && (
+                      <tr>
+                        <td colSpan={5} className="border border-black p-2 text-right font-bold text-xs sm:text-sm">
+                          Hamali/Freight Charges:
+                        </td>
+                        <td className="border border-black p-2 text-right font-bold text-xs sm:text-sm">
+                          ₹{currentInvoice.hamaliCharges.toFixed(2)}
+                        </td>
+                      </tr>
+                    )}
                     <tr>
-                      <td colSpan={5} className="border border-black p-2 text-right font-bold">
-                        Hamali/Freight Charges:
+                      <td colSpan={5} className="border border-black p-2 text-right font-bold text-xs sm:text-sm">
+                        Total (INR):
                       </td>
-                      <td className="border border-black p-2 text-right font-bold">
-                        ₹{currentInvoice.hamaliCharges.toFixed(2)}
+                      <td className="border border-black p-2 text-right font-bold text-xs sm:text-sm">
+                        ₹{currentInvoice.total.toFixed(2)}
                       </td>
                     </tr>
-                  )}
-                  <tr>
-                    <td colSpan={5} className="border border-black p-2 text-right font-bold">
-                      Total (INR):
-                    </td>
-                    <td className="border border-black p-2 text-right font-bold">₹{currentInvoice.total.toFixed(2)}</td>
-                  </tr>
-                </tbody>
-              </table>
+                  </tbody>
+                </table>
+              </div>
 
               {/* Footer */}
-              <div className="flex justify-between items-end mt-8">
+              <div className="flex flex-col sm:flex-row justify-between items-start sm:items-end mt-8 gap-4">
                 <div>
-                  <p className="text-sm">Thank you for your business!</p>
-                  <p className="text-sm">Terms & Conditions Apply</p>
-                  <p className="text-sm mt-2">
+                  <p className="text-xs sm:text-sm">Thank you for your business!</p>
+                  <p className="text-xs sm:text-sm">Terms & Conditions Apply</p>
+                  <p className="text-xs sm:text-sm mt-2">
                     <strong>Payment Method:</strong> {currentInvoice.paymentMethod.toUpperCase()}
                   </p>
                 </div>
                 <div className="text-center">
-                  <div className="border-t border-black pt-2 mt-16 w-48">
-                    <p className="text-sm">Authorized Signature</p>
+                  <div className="border-t border-black pt-2 mt-8 sm:mt-16 w-32 sm:w-48">
+                    <p className="text-xs sm:text-sm">Authorized Signature</p>
                     <p className="text-xs">{storeInfo.name}</p>
                   </div>
                 </div>
@@ -1333,7 +1800,7 @@ export default function POSSystem() {
 
       {/* Edit Invoice Dialog */}
       <Dialog open={showEditInvoice} onOpenChange={setShowEditInvoice}>
-        <DialogContent className="max-w-4xl max-h-[90vh] overflow-y-auto">
+        <DialogContent className="max-w-4xl max-h-[90vh] overflow-y-auto mx-4 sm:mx-auto">
           <DialogHeader>
             <DialogTitle>Edit Invoice - {editableInvoice?.invoiceNumber}</DialogTitle>
           </DialogHeader>
@@ -1341,7 +1808,7 @@ export default function POSSystem() {
           {editableInvoice && (
             <div className="space-y-6">
               {/* Invoice Info */}
-              <div className="grid grid-cols-2 gap-4 p-4 bg-gray-50 rounded-[9px]">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 p-4 bg-gray-50 rounded-[9px]">
                 <div>
                   <Label className="text-sm font-medium">Invoice Number</Label>
                   <p className="text-sm">{editableInvoice.invoiceNumber}</p>
@@ -1362,56 +1829,75 @@ export default function POSSystem() {
                 </div>
               </div>
 
-              {/* Editable Items */}
-              <div className="space-y-4">
+              {/* Add New Item Button */}
+              <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3">
                 <h3 className="text-lg font-semibold">Invoice Items</h3>
-                <div className="space-y-3">
-                  {invoiceItems.map((item, index) => (
-                    <Card key={item.id} className="rounded-[9px]">
-                      <CardContent className="p-4">
-                        <div className="grid grid-cols-6 gap-4 items-center">
-                          <div className="col-span-2">
-                            <Label className="text-sm">Product</Label>
-                            <p className="font-medium">{item.name}</p>
-                          </div>
-                          <div>
-                            <Label className="text-sm">Quantity</Label>
-                            <Input
-                              type="number"
-                              value={item.quantity}
-                              onChange={(e) =>
-                                updateInvoiceItem(item.id, "quantity", Number.parseInt(e.target.value) || 0)
-                              }
-                              className="rounded-[9px]"
-                              min="1"
-                            />
-                          </div>
-                          <div>
-                            <Label className="text-sm">Unit Price</Label>
-                            <Input
-                              type="number"
-                              step="0.01"
-                              value={item.unitPrice}
-                              onChange={(e) =>
-                                updateInvoiceItem(item.id, "unitPrice", Number.parseFloat(e.target.value) || 0)
-                              }
-                              className="rounded-[9px]"
-                              min="0"
-                            />
-                          </div>
-                          <div>
-                            <Label className="text-sm">Unit</Label>
-                            <p className="text-sm text-gray-600">{item.unit}</p>
-                          </div>
-                          <div>
-                            <Label className="text-sm">Line Total</Label>
-                            <p className="font-bold">₹{item.lineTotal.toFixed(2)}</p>
-                          </div>
+                <Button
+                  onClick={addNewItemToInvoice}
+                  className="bg-green-500 hover:bg-green-600 text-white rounded-[9px] w-full sm:w-auto"
+                >
+                  <Plus className="w-4 h-4 mr-2" />
+                  Add Item
+                </Button>
+              </div>
+
+              {/* Editable Items */}
+              <div className="space-y-3">
+                {invoiceItems.map((item, index) => (
+                  <Card key={item.id} className="rounded-[9px]">
+                    <CardContent className="p-4">
+                      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-7 gap-4 items-center">
+                        <div className="lg:col-span-2">
+                          <Label className="text-sm">Product</Label>
+                          <p className="font-medium">{item.name}</p>
                         </div>
-                      </CardContent>
-                    </Card>
-                  ))}
-                </div>
+                        <div>
+                          <Label className="text-sm">Quantity</Label>
+                          <Input
+                            type="number"
+                            value={item.quantity}
+                            onChange={(e) =>
+                              updateInvoiceItem(item.id, "quantity", Number.parseInt(e.target.value) || 0)
+                            }
+                            className="rounded-[9px]"
+                            min="1"
+                          />
+                        </div>
+                        <div>
+                          <Label className="text-sm">Unit Price</Label>
+                          <Input
+                            type="number"
+                            step="0.01"
+                            value={item.unitPrice}
+                            onChange={(e) =>
+                              updateInvoiceItem(item.id, "unitPrice", Number.parseFloat(e.target.value) || 0)
+                            }
+                            className="rounded-[9px]"
+                            min="0"
+                          />
+                        </div>
+                        <div>
+                          <Label className="text-sm">Unit</Label>
+                          <p className="text-sm text-gray-600">{item.unit}</p>
+                        </div>
+                        <div>
+                          <Label className="text-sm">Line Total</Label>
+                          <p className="font-bold">₹{item.lineTotal.toFixed(2)}</p>
+                        </div>
+                        <div>
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            onClick={() => removeInvoiceItem(item.id)}
+                            className="rounded-[9px] text-red-500 hover:text-red-700 w-full sm:w-auto"
+                          >
+                            <Trash2 className="w-4 h-4" />
+                          </Button>
+                        </div>
+                      </div>
+                    </CardContent>
+                  </Card>
+                ))}
               </div>
 
               {/* Totals */}
@@ -1425,13 +1911,17 @@ export default function POSSystem() {
               </div>
 
               {/* Action Buttons */}
-              <div className="flex gap-2 justify-end">
-                <Button onClick={() => setShowEditInvoice(false)} variant="outline" className="rounded-[9px]">
+              <div className="flex flex-col sm:flex-row gap-2 justify-end">
+                <Button
+                  onClick={() => setShowEditInvoice(false)}
+                  variant="outline"
+                  className="rounded-[9px] w-full sm:w-auto"
+                >
                   Cancel
                 </Button>
                 <Button
                   onClick={saveInvoiceChanges}
-                  className="bg-yellow-400 hover:bg-yellow-500 text-black rounded-[9px]"
+                  className="bg-yellow-400 hover:bg-yellow-500 text-black rounded-[9px] w-full sm:w-auto"
                 >
                   <Save className="w-4 h-4 mr-2" />
                   Save Changes
@@ -1442,9 +1932,55 @@ export default function POSSystem() {
         </DialogContent>
       </Dialog>
 
+      {/* Add Item to Invoice Dialog */}
+      <Dialog open={showAddItemToInvoice} onOpenChange={setShowAddItemToInvoice}>
+        <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto mx-4 sm:mx-auto">
+          <DialogHeader>
+            <DialogTitle>Add Item to Invoice</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4">
+            <div className="relative">
+              <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-4 h-4" />
+              <Input
+                placeholder="Search products..."
+                value={productSearchForInvoice}
+                onChange={(e) => setProductSearchForInvoice(e.target.value)}
+                className="pl-10 rounded-[9px]"
+              />
+            </div>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 max-h-96 overflow-y-auto">
+              {filteredProductsForInvoice.map((product) => (
+                <Card key={product.id} className="rounded-[9px] border-gray-200 cursor-pointer hover:bg-gray-50">
+                  <CardContent className="p-3" onClick={() => addProductToInvoice(product)}>
+                    <div className="space-y-2">
+                      <div className="flex items-start gap-3">
+                        {product.image && (
+                          <img
+                            src={product.image || "/placeholder.svg"}
+                            alt={product.name}
+                            className="w-12 h-12 object-cover rounded-[9px] border border-gray-200 flex-shrink-0"
+                          />
+                        )}
+                        <div className="flex-1 min-w-0">
+                          <h3 className="font-medium text-sm">{product.name}</h3>
+                          <div className="text-sm text-gray-600">
+                            <p>Price: ₹{product.price.toFixed(2)}</p>
+                            <p>Unit: {product.unit}</p>
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  </CardContent>
+                </Card>
+              ))}
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
+
       {/* Customer Transaction History Dialog */}
       <Dialog open={showTransactionHistory} onOpenChange={setShowTransactionHistory}>
-        <DialogContent className="max-w-4xl max-h-[90vh] overflow-y-auto">
+        <DialogContent className="max-w-4xl max-h-[90vh] overflow-y-auto mx-4 sm:mx-auto">
           <DialogHeader>
             <DialogTitle>Customer Transaction History - {selectedCustomerData?.name}</DialogTitle>
           </DialogHeader>
@@ -1459,10 +1995,10 @@ export default function POSSystem() {
                 {customerTransactions.map((transaction) => (
                   <div
                     key={transaction.id}
-                    className="flex items-center justify-between p-3 border rounded-[9px] hover:bg-gray-50"
+                    className="flex flex-col sm:flex-row items-start sm:items-center justify-between p-3 border rounded-[9px] hover:bg-gray-50 gap-3"
                   >
                     <div className="flex-1">
-                      <div className="flex items-center gap-2 mb-1">
+                      <div className="flex flex-wrap items-center gap-2 mb-1">
                         <span className="font-medium">{transaction.invoiceNumber}</span>
                         <Badge variant="outline" className="text-xs">
                           {transaction.paymentMethod.toUpperCase()}
@@ -1474,53 +2010,57 @@ export default function POSSystem() {
                         <span>{transaction.items.length} items</span>
                       </div>
                     </div>
-                    <div className="flex items-center gap-3">
-                      <div className="text-right">
+                    <div className="flex items-center gap-3 w-full sm:w-auto">
+                      <div className="text-right flex-1 sm:flex-none">
                         <div className="font-bold">{formatCurrency(transaction.total)}</div>
                       </div>
-                      <Button
-                        size="sm"
-                        variant="outline"
-                        onClick={() => {
-                          const invoice = {
-                            invoiceNumber: transaction.invoiceNumber,
-                            date: transaction.date,
-                            customer: selectedCustomerData,
-                            items: transaction.items,
-                            subtotal: transaction.subtotal,
-                            total: transaction.total,
-                            isCashSale: false,
-                            paymentMethod: transaction.paymentMethod,
-                          }
-                          setCurrentInvoice(invoice)
-                          setShowInvoice(true)
-                          setShowTransactionHistory(false)
-                        }}
-                        className="rounded-[9px]"
-                      >
-                        <Eye className="w-4 h-4" />
-                      </Button>
-                      <Button
-                        size="sm"
-                        variant="outline"
-                        onClick={() => {
-                          const invoice = {
-                            invoiceNumber: transaction.invoiceNumber,
-                            date: transaction.date,
-                            customer: selectedCustomerData,
-                            items: transaction.items,
-                            subtotal: transaction.subtotal,
-                            total: transaction.total,
-                            isCashSale: false,
-                            paymentMethod: transaction.paymentMethod,
-                          }
-                          editInvoice(invoice)
-                          setShowTransactionHistory(false)
-                        }}
-                        className="rounded-[9px]"
-                      >
-                        <Edit className="w-4 h-4" />
-                      </Button>
+                      <div className="flex gap-2">
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          onClick={() => {
+                            const invoice = {
+                              invoiceNumber: transaction.invoiceNumber,
+                              date: transaction.date,
+                              customer: selectedCustomerData,
+                              items: transaction.items,
+                              subtotal: transaction.subtotal,
+                              hamaliCharges: 0,
+                              total: transaction.total,
+                              isCashSale: false,
+                              paymentMethod: transaction.paymentMethod,
+                            }
+                            setCurrentInvoice(invoice)
+                            setShowInvoice(true)
+                            setShowTransactionHistory(false)
+                          }}
+                          className="rounded-[9px]"
+                        >
+                          <Eye className="w-4 h-4" />
+                        </Button>
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          onClick={() => {
+                            const invoice = {
+                              invoiceNumber: transaction.invoiceNumber,
+                              date: transaction.date,
+                              customer: selectedCustomerData,
+                              items: transaction.items,
+                              subtotal: transaction.subtotal,
+                              hamaliCharges: 0,
+                              total: transaction.total,
+                              isCashSale: false,
+                              paymentMethod: transaction.paymentMethod,
+                            }
+                            editInvoice(invoice)
+                            setShowTransactionHistory(false)
+                          }}
+                          className="rounded-[9px]"
+                        >
+                          <Edit className="w-4 h-4" />
+                        </Button>
+                      </div>
                     </div>
                   </div>
                 ))}
@@ -1532,7 +2072,7 @@ export default function POSSystem() {
 
       {/* Cash Sale Transactions Dialog */}
       <Dialog open={showCashTransactions} onOpenChange={setShowCashTransactions}>
-        <DialogContent className="max-w-4xl max-h-[90vh] overflow-y-auto">
+        <DialogContent className="max-w-4xl max-h-[90vh] overflow-y-auto mx-4 sm:mx-auto">
           <DialogHeader>
             <DialogTitle>All Transactions</DialogTitle>
           </DialogHeader>
@@ -1549,10 +2089,10 @@ export default function POSSystem() {
                   .map((transaction) => (
                     <div
                       key={transaction.id}
-                      className="flex items-center justify-between p-3 border rounded-[9px] hover:bg-gray-50"
+                      className="flex flex-col sm:flex-row items-start sm:items-center justify-between p-3 border rounded-[9px] hover:bg-gray-50 gap-3"
                     >
                       <div className="flex-1">
-                        <div className="flex items-center gap-2 mb-1">
+                        <div className="flex flex-wrap items-center gap-2 mb-1">
                           <span className="font-medium">{transaction.invoiceNumber}</span>
                           <Badge variant={transaction.isCashSale ? "secondary" : "default"} className="text-xs">
                             {transaction.isCashSale ? "Cash" : "Customer"}
@@ -1569,57 +2109,61 @@ export default function POSSystem() {
                           <span>{transaction.items.length} items</span>
                         </div>
                       </div>
-                      <div className="flex items-center gap-3">
-                        <div className="text-right">
+                      <div className="flex items-center gap-3 w-full sm:w-auto">
+                        <div className="text-right flex-1 sm:flex-none">
                           <div className="font-bold">{formatCurrency(transaction.total)}</div>
                         </div>
-                        <Button
-                          size="sm"
-                          variant="outline"
-                          onClick={() => {
-                            const invoice = {
-                              invoiceNumber: transaction.invoiceNumber,
-                              date: transaction.date,
-                              customer: transaction.isCashSale
-                                ? null
-                                : { name: transaction.customerName, phone: transaction.customerPhone },
-                              items: transaction.items,
-                              subtotal: transaction.subtotal,
-                              total: transaction.total,
-                              isCashSale: transaction.isCashSale,
-                              paymentMethod: transaction.paymentMethod,
-                            }
-                            setCurrentInvoice(invoice)
-                            setShowInvoice(true)
-                            setShowCashTransactions(false)
-                          }}
-                          className="rounded-[9px]"
-                        >
-                          <Eye className="w-4 h-4" />
-                        </Button>
-                        <Button
-                          size="sm"
-                          variant="outline"
-                          onClick={() => {
-                            const invoice = {
-                              invoiceNumber: transaction.invoiceNumber,
-                              date: transaction.date,
-                              customer: transaction.isCashSale
-                                ? null
-                                : { name: transaction.customerName, phone: transaction.customerPhone },
-                              items: transaction.items,
-                              subtotal: transaction.subtotal,
-                              total: transaction.total,
-                              isCashSale: transaction.isCashSale,
-                              paymentMethod: transaction.paymentMethod,
-                            }
-                            editInvoice(invoice)
-                            setShowCashTransactions(false)
-                          }}
-                          className="rounded-[9px]"
-                        >
-                          <Edit className="w-4 h-4" />
-                        </Button>
+                        <div className="flex gap-2">
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            onClick={() => {
+                              const invoice = {
+                                invoiceNumber: transaction.invoiceNumber,
+                                date: transaction.date,
+                                customer: transaction.isCashSale
+                                  ? null
+                                  : { name: transaction.customerName, phone: transaction.customerPhone },
+                                items: transaction.items,
+                                subtotal: transaction.subtotal,
+                                hamaliCharges: 0,
+                                total: transaction.total,
+                                isCashSale: transaction.isCashSale,
+                                paymentMethod: transaction.paymentMethod,
+                              }
+                              setCurrentInvoice(invoice)
+                              setShowInvoice(true)
+                              setShowCashTransactions(false)
+                            }}
+                            className="rounded-[9px]"
+                          >
+                            <Eye className="w-4 h-4" />
+                          </Button>
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            onClick={() => {
+                              const invoice = {
+                                invoiceNumber: transaction.invoiceNumber,
+                                date: transaction.date,
+                                customer: transaction.isCashSale
+                                  ? null
+                                  : { name: transaction.customerName, phone: transaction.customerPhone },
+                                items: transaction.items,
+                                subtotal: transaction.subtotal,
+                                hamaliCharges: 0,
+                                total: transaction.total,
+                                isCashSale: transaction.isCashSale,
+                                paymentMethod: transaction.paymentMethod,
+                              }
+                              editInvoice(invoice)
+                              setShowCashTransactions(false)
+                            }}
+                            className="rounded-[9px]"
+                          >
+                            <Edit className="w-4 h-4" />
+                          </Button>
+                        </div>
                       </div>
                     </div>
                   ))}

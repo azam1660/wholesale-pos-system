@@ -26,6 +26,7 @@ interface Product {
   unit: string
   image?: string
   subCategoryId: string
+  hamaliValue: number // Add this field
   createdAt: string
   updatedAt: string
 }
@@ -207,6 +208,7 @@ const defaultData = {
       stock: 100,
       unit: "bag",
       subCategoryId: "rice-grains",
+      hamaliValue: 5.0,
       createdAt: new Date().toISOString(),
       updatedAt: new Date().toISOString(),
     },
@@ -217,6 +219,7 @@ const defaultData = {
       stock: 200,
       unit: "kg",
       subCategoryId: "pulses-lentils",
+      hamaliValue: 2.0,
       createdAt: new Date().toISOString(),
       updatedAt: new Date().toISOString(),
     },
@@ -227,6 +230,7 @@ const defaultData = {
       stock: 100,
       unit: "pack",
       subCategoryId: "spices",
+      hamaliValue: 1.0,
       createdAt: new Date().toISOString(),
       updatedAt: new Date().toISOString(),
     },
@@ -237,6 +241,7 @@ const defaultData = {
       stock: 50,
       unit: "pack",
       subCategoryId: "tea-coffee",
+      hamaliValue: 3.0,
       createdAt: new Date().toISOString(),
       updatedAt: new Date().toISOString(),
     },
@@ -247,6 +252,7 @@ const defaultData = {
       stock: 200,
       unit: "pack",
       subCategoryId: "biscuits",
+      hamaliValue: 1.5,
       createdAt: new Date().toISOString(),
       updatedAt: new Date().toISOString(),
     },
@@ -901,6 +907,10 @@ export class DataManager {
 
     if (!data.subCategoryId?.trim()) {
       errors.push("Sub category is required")
+    }
+
+    if (typeof data.hamaliValue !== "number" || data.hamaliValue < 0) {
+      errors.push("Valid hamali value is required")
     }
 
     return errors

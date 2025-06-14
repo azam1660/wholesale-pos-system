@@ -1,7 +1,7 @@
 "use client"
 
 import { useState, useEffect } from "react"
-import { Plus, Edit, Trash2, Save, X, ArrowLeft, Database, BarChart3, FileText, Package } from "lucide-react"
+import { Plus, Edit, Trash2, Save, X, ArrowLeft, Database, BarChart3, FileText } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Card, CardContent } from "@/components/ui/card"
@@ -15,7 +15,6 @@ import ImageUpload from "./image-upload"
 import SalesAnalytics from "./sales-analytics"
 import { DataManager } from "./data-manager"
 import SalesDataManagement from "./sales-data-management"
-import PurchaseOrderModule from "./purchase-order-module"
 
 interface SuperCategory {
   id: string
@@ -46,6 +45,7 @@ interface Product {
   subCategoryId: string
   createdAt: string
   updatedAt: string
+  hamaliValue: number
 }
 
 interface Customer {
@@ -60,7 +60,7 @@ interface Customer {
 
 export default function AdminPanel({ onBack }: { onBack: () => void }) {
   const [activeTab, setActiveTab] = useState<
-    "super" | "sub" | "products" | "customers" | "data" | "analytics" | "sales" | "purchase"
+    "super" | "sub" | "products" | "customers" | "data" | "analytics" | "sales"
   >("super")
   const [superCategories, setSuperCategories] = useState<SuperCategory[]>([])
   const [subCategories, setSubCategories] = useState<SubCategory[]>([])
@@ -80,8 +80,6 @@ export default function AdminPanel({ onBack }: { onBack: () => void }) {
   const [editingCustomer, setEditingCustomer] = useState<Customer | null>(null)
 
   // Form states
-  const [superForm, setSuperForm] = useState({ name: "", icon: "", image: "" })
-  const [subForm, setSubForm] = useState({ name: "", icon: "", image: "", superCategoryId: "" })
   const [productForm, setProductForm] = useState({
     name: "",
     price: 0,
@@ -89,7 +87,10 @@ export default function AdminPanel({ onBack }: { onBack: () => void }) {
     unit: "",
     image: "",
     subCategoryId: "",
+    hamaliValue: 0,
   })
+  const [superForm, setSuperForm] = useState({ name: "", icon: "", image: "" })
+  const [subForm, setSubForm] = useState({ name: "", icon: "", image: "", superCategoryId: "" })
   const [customerForm, setCustomerForm] = useState({
     name: "",
     email: "",
@@ -227,9 +228,32 @@ export default function AdminPanel({ onBack }: { onBack: () => void }) {
   }
 
   const resetProductForm = () => {
-    setProductForm({ name: "", price: 0, stock: 0, unit: "", image: "", subCategoryId: "" })
+    setProductForm({
+      name: "",
+      price: 0,
+      stock: 0,
+      unit: "",
+      image: "",
+      subCategoryId: "",
+      hamaliValue: 0,
+    })
     setEditingProduct(null)
     setShowProductDialog(false)
+  }
+
+  const openEditProduct = (product: Product) => {
+    setEditingProduct(product)
+    setProductForm({
+      name: product.name,
+      price: product.price,
+      stock: product.stock,
+      unit: product.unit,
+      image: product.image || "",
+      subCategoryId: product.subCategoryId,
+      hamaliValue: product.hamaliValue || 0,
+    })
+    setShowProductDialog(true)
+    setErrors([])
   }
 
   // Customer CRUD
@@ -244,7 +268,7 @@ export default function AdminPanel({ onBack }: { onBack: () => void }) {
       if (editingCustomer) {
         await DataManager.updateCustomer(editingCustomer.id, customerForm)
       } else {
-        await DataManager.addCustomer(customerForm)
+        await DataManager.addProduct(customerForm)
       }
 
       loadData()
@@ -288,20 +312,6 @@ export default function AdminPanel({ onBack }: { onBack: () => void }) {
       superCategoryId: category.superCategoryId,
     })
     setShowSubDialog(true)
-    setErrors([])
-  }
-
-  const openEditProduct = (product: Product) => {
-    setEditingProduct(product)
-    setProductForm({
-      name: product.name,
-      price: product.price,
-      stock: product.stock,
-      unit: product.unit,
-      image: product.image || "",
-      subCategoryId: product.subCategoryId,
-    })
-    setShowProductDialog(true)
     setErrors([])
   }
 
@@ -416,14 +426,6 @@ export default function AdminPanel({ onBack }: { onBack: () => void }) {
           >
             <FileText className="w-4 h-4 mr-2" />
             Sales Management
-          </Button>
-          <Button
-            onClick={() => setActiveTab("purchase")}
-            variant={activeTab === "purchase" ? "default" : "outline"}
-            className={`rounded-[9px] ${activeTab === "purchase" ? "bg-yellow-400 text-black hover:bg-yellow-500" : ""}`}
-          >
-            <Package className="w-4 h-4 mr-2" />
-            Purchase Orders
           </Button>
         </div>
 
@@ -698,9 +700,6 @@ export default function AdminPanel({ onBack }: { onBack: () => void }) {
 
         {/* Sales Management Tab */}
         {activeTab === "sales" && <SalesDataManagement />}
-
-        {/* Purchase Orders Tab */}
-        {activeTab === "purchase" && <PurchaseOrderModule onBack={() => setActiveTab("super")} />}
       </div>
 
       {/* Super Category Dialog */}
@@ -859,15 +858,31 @@ export default function AdminPanel({ onBack }: { onBack: () => void }) {
                 />
               </div>
             </div>
-            <div>
-              <Label htmlFor="product-unit">Unit</Label>
-              <Input
-                id="product-unit"
-                value={productForm.unit}
-                onChange={(e) => setProductForm({ ...productForm, unit: e.target.value })}
-                className="rounded-[9px]"
-                placeholder="kg, pack, bottle, etc."
-              />
+            <div className="grid grid-cols-2 gap-2">
+              <div>
+                <Label htmlFor="product-unit">Unit</Label>
+                <Input
+                  id="product-unit"
+                  value={productForm.unit}
+                  onChange={(e) => setProductForm({ ...productForm, unit: e.target.value })}
+                  className="rounded-[9px]"
+                  placeholder="kg, pack, bottle, etc."
+                />
+              </div>
+              <div>
+                <Label htmlFor="product-hamali">Hamali Value (₹)</Label>
+                <Input
+                  id="product-hamali"
+                  type="number"
+                  step="0.01"
+                  value={productForm.hamaliValue}
+                  onChange={(e) =>
+                    setProductForm({ ...productForm, hamaliValue: Number.parseFloat(e.target.value) || 0 })
+                  }
+                  className="rounded-[9px]"
+                  placeholder="Per unit hamali charge"
+                />
+              </div>
             </div>
             <div>
               <Label htmlFor="product-category">Sub Category</Label>
