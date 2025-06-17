@@ -2,7 +2,7 @@
 
 # dependencies
 /node_modules
-
+android
 # next.js
 /.next/
 /out/

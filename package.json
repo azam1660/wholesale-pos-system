@@ -6,9 +6,15 @@
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
-    "lint": "next lint"
+    "lint": "next lint",
+    "build:web": "next build && NEXT_PUBLIC_IS_MOBILE=true next build",
+    "build:export": "NEXT_PUBLIC_IS_MOBILE=true next export",
+    "build:mobile": "npm run build:web && npm run build:export && npx cap sync"
   },
   "dependencies": {
+    "@capacitor/android": "^7.3.0",
+    "@capacitor/cli": "^7.3.0",
+    "@capacitor/core": "^7.3.0",
     "@hookform/resolvers": "^3.9.1",
     "@radix-ui/react-accordion": "1.2.2",
     "@radix-ui/react-alert-dialog": "1.1.4",

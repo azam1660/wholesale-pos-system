@@ -57,7 +57,7 @@ interface SaleItem {
 
 interface Sale {
   id: string
-  invoiceNumber: string
+  estimateNumber: string
   date: string
   timestamp: number
   customerId?: string
@@ -66,8 +66,10 @@ interface Sale {
   isCashSale: boolean
   items: SaleItem[]
   subtotal: number
+  hamaliCharges: number
   total: number
   paymentMethod: "cash" | "card" | "upi" | "credit"
+  reference?: string
   createdAt: string
   updatedAt: string
 }
@@ -533,7 +535,7 @@ export class DataManager {
   }
 
   static async recordSale(saleData: {
-    invoiceNumber: string
+    estimateNumber: string
     customerId?: string
     isCashSale: boolean
     items: Array<{
@@ -542,6 +544,13 @@ export class DataManager {
       unitPrice: number
     }>
     paymentMethod?: "cash" | "card" | "upi" | "credit"
+    timestamp?: number
+    customerName?: string
+    customerPhone?: string
+    subtotal: number
+    hamaliCharges: number
+    total: number
+    reference?: string
   }): Promise<Sale> {
     const sales = this.getSales()
     const products = this.getProducts()
@@ -578,21 +587,21 @@ export class DataManager {
       }
     })
 
-    const subtotal = saleItems.reduce((sum, item) => sum + item.lineTotal, 0)
-
     const newSale: Sale = {
       id: this.generateId(),
-      invoiceNumber: saleData.invoiceNumber,
+      estimateNumber: saleData.estimateNumber,
       date: new Date().toLocaleDateString("en-IN"),
-      timestamp: Date.now(),
+      timestamp: saleData.timestamp || Date.now(),
       customerId: customer?.id,
-      customerName: customer?.name,
-      customerPhone: customer?.phone,
+      customerName: saleData.customerName || customer?.name,
+      customerPhone: saleData.customerPhone || customer?.phone,
       isCashSale: saleData.isCashSale,
       items: saleItems,
-      subtotal,
-      total: subtotal,
+      subtotal: saleData.subtotal,
+      hamaliCharges: saleData.hamaliCharges,
+      total: saleData.total,
       paymentMethod: saleData.paymentMethod || "cash",
+      reference: saleData.reference,
       createdAt: this.getCurrentTimestamp(),
       updatedAt: this.getCurrentTimestamp(),
     }
@@ -824,7 +833,7 @@ export class DataManager {
 
     return sales.filter(
       (sale) =>
-        sale.invoiceNumber.toLowerCase().includes(lowercaseQuery) ||
+        sale.estimateNumber.toLowerCase().includes(lowercaseQuery) ||
         sale.customerName?.toLowerCase().includes(lowercaseQuery) ||
         sale.items.some((item) => item.productName.toLowerCase().includes(lowercaseQuery)),
     )
@@ -1024,7 +1033,7 @@ export class DataManager {
     localStorage.removeItem("products")
     localStorage.removeItem("customers")
     localStorage.removeItem("sales")
-    localStorage.removeItem("invoiceCounter")
+    localStorage.removeItem("estimateCounter")
 
     // Trigger storage events
     window.dispatchEvent(new StorageEvent("storage", { key: "superCategories", storageArea: localStorage }))
