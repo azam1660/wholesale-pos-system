@@ -11,6 +11,7 @@ import {
   Printer,
   Settings,
   UserPlus,
+  Download,
   Save,
   Eye,
   Edit,
@@ -24,8 +25,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/u
 import { Checkbox } from "@/components/ui/checkbox"
 import { Label } from "@/components/ui/label"
 import { Textarea } from "@/components/ui/textarea"
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
-import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs"
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Sheet, SheetContent } from "@/components/ui/sheet"
 import AdminPanel from "./admin-panel"
 import InventoryManagement from "./inventory-management"
@@ -117,29 +117,16 @@ interface Sale {
   customerName?: string
   customerPhone?: string
   subtotal: number
-  hamaliCharges: number
   total: number
-  reference?: string
-}
-
-interface Invoice {
-  invoiceNumber: string
-  date: string
-  customer: any
-  items: OrderItem[]
-  subtotal: number
   hamaliCharges: number
-  total: number
-  isCashSale: boolean
-  paymentMethod: "cash" | "card" | "upi" | "credit"
   reference?: string
-  phone: string
 }
 
 const storeInfo = {
-  name: "SNS",
-  address: "Jodbhavi peth, Solapur",
-  phone: "9876543210",
+  name: "SL SALAR",
+  address: "60/61, Jodhbhavi Peth Chatla Chowk, Main Road, Main Road-413001",
+  phone: "9420490692",
+  contact: "9405842623",
 }
 
 // Estimate counter - stored in localStorage
@@ -161,7 +148,7 @@ const formatCurrency = (amount: number) => {
 
 export default function POSSystem() {
   const [showAdmin, setShowAdmin] = useState(false)
-  const [activeMainTab, setActiveMainTab] = useState<"pos" | "order" | "inventory">("pos")
+  const [activeMainTab, setActiveMainTab] = useState<"pos" | "order" | "godown">("pos")
   const [currentView, setCurrentView] = useState<"super" | "sub" | "products">("super")
   const [selectedSuperCategory, setSelectedSuperCategory] = useState<string>("")
   const [selectedSubCategory, setSelectedSubCategory] = useState<string>("")
@@ -173,8 +160,8 @@ export default function POSSystem() {
   const [isCashSale, setIsCashSale] = useState(true)
   const [showAddCustomer, setShowAddCustomer] = useState(false)
   const [paymentMethod, setPaymentMethod] = useState<"cash" | "card" | "upi" | "credit">("cash")
-  const estimateRef = useRef<HTMLDivElement>(null)
   const invoiceRef = useRef<HTMLDivElement>(null)
+  console.log(currentEstimate)
 
   const [showEditEstimate, setShowEditEstimate] = useState(false)
   const [editableEstimate, setEditableEstimate] = useState<Estimate | null>(null)
@@ -241,8 +228,6 @@ export default function POSSystem() {
   const editEstimate = (estimate: Estimate) => {
     setEditableEstimate({ ...estimate })
     setEstimateItems([...estimate.items])
-    setHamaliCharges(estimate.hamaliCharges)
-    setIncludeHamali(estimate.hamaliCharges > 0)
     setShowEditEstimate(true)
   }
 
@@ -290,7 +275,7 @@ export default function POSSystem() {
     product.name.toLowerCase().includes(productSearchForEstimate.toLowerCase()),
   )
 
-  const saveEstimateChanges = async () => {
+  const saveEstimateChanges = () => {
     if (!editableEstimate) return
 
     const updatedSubtotal = estimateItems.reduce((sum, item) => sum + item.lineTotal, 0)
@@ -298,53 +283,15 @@ export default function POSSystem() {
       ...editableEstimate,
       items: [...estimateItems],
       subtotal: updatedSubtotal,
-      hamaliCharges: hamaliCharges,
-      total: updatedSubtotal + hamaliCharges,
+      total: updatedSubtotal + editableEstimate.hamaliCharges,
     }
 
-    // Update the sale in DataManager
-    try {
-      const saleData = {
-        estimateNumber: updatedEstimate.estimateNumber,
-        customerId: updatedEstimate.isCashSale ? undefined : updatedEstimate.customer?.id,
-        isCashSale: updatedEstimate.isCashSale,
-        items: updatedEstimate.items.map((item) => ({
-          productId: item.id,
-          quantity: item.quantity,
-          unitPrice: item.unitPrice,
-        })),
-        paymentMethod: updatedEstimate.paymentMethod,
-        subtotal: updatedEstimate.subtotal,
-        hamaliCharges: updatedEstimate.hamaliCharges,
-        total: updatedEstimate.total,
-        reference: updatedEstimate.reference,
-      }
-
-      // Find and update the existing sale
-      const sales = DataManager.getSales()
-      const existingSale = sales.find((s) => s.estimateNumber === updatedEstimate.estimateNumber)
-
-      if (existingSale) {
-        await DataManager.updateSale(existingSale.id, {
-          items: saleData.items,
-          subtotal: saleData.subtotal,
-          hamaliCharges: saleData.hamaliCharges,
-          total: saleData.total,
-          reference: saleData.reference,
-          paymentMethod: saleData.paymentMethod,
-        })
-      }
-
-      setCurrentEstimate(updatedEstimate)
-      setShowEditEstimate(false)
-      setShowEstimate(true)
-    } catch (error) {
-      console.error("Error updating estimate:", error)
-      alert("Error updating estimate. Please try again.")
-    }
+    setCurrentEstimate(updatedEstimate)
+    setShowEditEstimate(false)
+    setShowEstimate(true)
   }
 
-  const exportInvoiceToPDF = (invoice: Invoice) => {
+  const exportEstimateToPDF = (estimate: Estimate) => {
     const doc = new jsPDF()
 
     // Header
@@ -353,31 +300,30 @@ export default function POSSystem() {
 
     doc.setFontSize(10)
     doc.text(storeInfo.address, 105, 30, { align: "center" })
-    doc.text(`Contact: ${storeInfo.phone}`, 105, 35, { align: "center" })
+    doc.text(`Contact: ${storeInfo.phone} | ${storeInfo.contact}`, 105, 35, { align: "center" })
 
-    // Invoice details
+    // Estimate details
     doc.setFontSize(16)
-    doc.text("INVOICE", 20, 50)
+    doc.text("ESTIMATE", 20, 50)
 
     doc.setFontSize(10)
-    doc.text(`Invoice No: ${invoice.invoiceNumber}`, 20, 60)
-    doc.text(`Date: ${invoice.date}`, 20, 65)
-    doc.text(`Payment: ${invoice.paymentMethod.toUpperCase()}`, 20, 70)
+    doc.text(`Estimate No: ${estimate.estimateNumber}`, 20, 60)
+    doc.text(`Date: ${estimate.date}`, 20, 65)
 
     // Customer details
-    if (!invoice.isCashSale && invoice.customer) {
+    if (!estimate.isCashSale && estimate.customer) {
       doc.text("Bill To:", 120, 60)
-      doc.text(invoice.customer.name, 120, 65)
-      doc.text(invoice.customer.phone, 120, 70)
-      if (invoice.customer.address) {
-        doc.text(invoice.customer.address, 120, 75)
+      doc.text(estimate.customer.name, 120, 65)
+      doc.text(estimate.customer.phone, 120, 70)
+      if (estimate.customer.address) {
+        doc.text(estimate.customer.address, 120, 75)
       }
     } else {
       doc.text("CASH CUSTOMER", 120, 65)
     }
 
     // Items table
-    const tableData = invoice.items.map((item, index) => [
+    const tableData = estimate.items.map((item, index) => [
       index + 1,
       item.name,
       item.quantity,
@@ -397,7 +343,7 @@ export default function POSSystem() {
     // Total
     const finalY = (doc as any).lastAutoTable.finalY + 10
     doc.setFontSize(12)
-    doc.text(`Total: ₹${invoice.total.toFixed(2)}`, 150, finalY, { align: "right" })
+    doc.text(`Total: ₹${estimate.total.toFixed(2)}`, 150, finalY, { align: "right" })
 
     // Footer
     doc.setFontSize(8)
@@ -407,39 +353,39 @@ export default function POSSystem() {
     return doc
   }
 
-  const downloadInvoicePDF = (invoice: Invoice) => {
-    const doc = exportInvoiceToPDF(invoice)
-    doc.save(`Invoice_${invoice.invoiceNumber}.pdf`)
+  const downloadEstimatePDF = (estimate: Estimate) => {
+    const doc = exportEstimateToPDF(estimate)
+    doc.save(`Estimate_${estimate.estimateNumber}.pdf`)
   }
 
-  const shareInvoicePDF = async (invoice: Invoice) => {
-    const doc = exportInvoiceToPDF(invoice)
+  const shareEstimatePDF = async (estimate: Estimate) => {
+    const doc = exportEstimateToPDF(estimate)
     const pdfBlob = doc.output("blob")
 
     if (navigator.share && navigator.canShare) {
       try {
-        const file = new File([pdfBlob], `Invoice_${invoice.invoiceNumber}.pdf`, { type: "application/pdf" })
+        const file = new File([pdfBlob], `Estimate_${estimate.estimateNumber}.pdf`, { type: "application/pdf" })
         await navigator.share({
-          title: `Invoice ${invoice.invoiceNumber}`,
-          text: `Invoice from ${storeInfo.name}`,
+          title: `Estimate ${estimate.estimateNumber}`,
+          text: `Estimate from ${storeInfo.name}`,
           files: [file],
         })
       } catch (error) {
         console.error("Error sharing:", error)
-        downloadInvoicePDF(invoice)
+        downloadEstimatePDF(estimate)
       }
     } else {
       const url = URL.createObjectURL(pdfBlob)
       const a = document.createElement("a")
       a.href = url
-      a.download = `Invoice_${invoice.invoiceNumber}.pdf`
+      a.download = `Estimate_${estimate.estimateNumber}.pdf`
       a.click()
       URL.revokeObjectURL(url)
     }
   }
 
   const printThermalEstimate = () => {
-    if (estimateRef.current) {
+    if (invoiceRef.current) {
       const printWindow = window.open("", "_blank")
       if (printWindow) {
         printWindow.document.write(`
@@ -502,13 +448,13 @@ export default function POSSystem() {
               <!-- Store Header -->
               <div class="center header">${storeInfo.name}</div>
               <div class="center sub-header">${storeInfo.address}</div>
+              <div class="center sub-header">Ph: ${storeInfo.phone} | ${storeInfo.contact}</div>
               <div class="double-line"></div>
 
               <!-- Estimate Details -->
               <div class="left">
                 <div><strong>Estimate:</strong> ${currentEstimate?.estimateNumber}</div>
                 <div><strong>Date:</strong> ${currentEstimate?.date}</div>
-                <div><strong>Payment:</strong> ${currentEstimate?.paymentMethod.toUpperCase()}</div>
                 ${currentEstimate?.reference ? `<div><strong>Ref:</strong> ${currentEstimate.reference}</div>` : ""}
               </div>
 
@@ -696,6 +642,14 @@ export default function POSSystem() {
     return customers.find((c) => c.id === selectedCustomer)
   }, [customers, selectedCustomer])
 
+  const generateEstimateNumberwithoutincrement = () => {
+    const counter = getEstimateCounter()
+    const date = new Date(estimateDate)
+    const dateStr = date.toISOString().split("T")[0].replace(/-/g, "")
+
+    const estimateNumber = `EST/${dateStr}/${counter.toString().padStart(4, "0")}`
+    return estimateNumber
+  }
   const generateEstimateNumber = () => {
     const counter = getEstimateCounter()
     const date = new Date(estimateDate)
@@ -821,7 +775,7 @@ export default function POSSystem() {
   }, [subtotal, hamaliCharges, includeHamali])
 
   const generateEstimate = () => {
-    const estimateNumber = generateEstimateNumber()
+    const estimateNumber = generateEstimateNumberwithoutincrement()
     const estimate: Estimate = {
       estimateNumber,
       date: estimateDate,
@@ -838,46 +792,8 @@ export default function POSSystem() {
     setShowEstimate(true)
   }
 
-  const printInvoice = () => {
-    if (invoiceRef.current) {
-      const printWindow = window.open("", "_blank")
-      if (printWindow) {
-        printWindow.document.write(`
-          <!DOCTYPE html>
-          <html>
-            <head>
-              <title>Invoice - ${currentInvoice?.invoiceNumber}</title>
-              <style>
-                body { font-family: Arial, sans-serif; margin: 0; padding: 20px; }
-                .invoice { max-width: 800px; margin: 0 auto; }
-                table { width: 100%; border-collapse: collapse; margin: 10px 0; }
-                th, td { border: 1px solid #000; padding: 8px; text-align: left; }
-                th { background-color: #f5f5f5; font-weight: bold; }
-                .text-right { text-align: right; }
-                .text-center { text-align: center; }
-                .header { text-align: center; margin-bottom: 20px; }
-                .store-info { margin-bottom: 20px; }
-                .customer-info { margin-bottom: 20px; }
-                .signature { margin-top: 40px; }
-                @media print {
-                  body { margin: 0; }
-                  .no-print { display: none; }
-                }
-              </style>
-            </head>
-            <body>
-              ${invoiceRef.current.innerHTML}
-            </body>
-          </html>
-        `)
-        printWindow.document.close()
-        printWindow.print()
-      }
-    }
-  }
-
   const printEstimate = () => {
-    if (estimateRef.current) {
+    if (invoiceRef.current) {
       const printWindow = window.open("", "_blank")
       if (printWindow) {
         printWindow.document.write(`
@@ -904,7 +820,7 @@ export default function POSSystem() {
               </style>
             </head>
             <body>
-              ${estimateRef.current.innerHTML}
+              ${invoiceRef.current.innerHTML}
             </body>
           </html>
         `)
@@ -922,7 +838,7 @@ export default function POSSystem() {
       const estimateNumber = generateEstimateNumber()
       // Record the sale
       await DataManager.recordSale({
-        estimateNumber: estimateNumber,
+        estimateNumber: estimateNumber, // Change this to estimateNumber
         customerId: isCashSale ? undefined : selectedCustomer,
         isCashSale,
         items: orderItems.map((item) => ({
@@ -932,10 +848,10 @@ export default function POSSystem() {
         })),
         paymentMethod,
         timestamp: Date.now(),
-        customerName: selectedCustomerData?.name,
-        customerPhone: selectedCustomerData?.phone,
+        customerName: isCashSale ? "CASH CUSTOMER" : selectedCustomerData?.name,
+        customerPhone: isCashSale ? "" : selectedCustomerData?.phone,
         subtotal: subtotal,
-        hamaliCharges: hamaliCharges,
+        hamaliCharges: includeHamali ? hamaliCharges : 0,
         total: total,
         reference: estimateReference,
       })
@@ -989,26 +905,31 @@ export default function POSSystem() {
   }
 
   const renderSuperCategories = () => (
-    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 md:gap-6">
+    <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-3 md:gap-4">
       {superCategories.map((category) => (
         <Button
           key={category.id}
           onClick={() => handleSuperCategorySelect(category.id)}
-          className="h-24 sm:h-32 w-full bg-white border-2 border-gray-200 hover:border-yellow-400 hover:bg-yellow-50 text-black rounded-[23px] flex flex-col items-center justify-center gap-2 sm:gap-3 transition-colors p-4"
+          className="h-20 sm:h-24 md:h-28 lg:h-32 w-full bg-white border-2 border-gray-200 hover:border-yellow-400 hover:bg-yellow-50 text-black rounded-[15px] sm:rounded-[20px] md:rounded-[23px] flex flex-col items-center justify-center gap-1 sm:gap-2 md:gap-3 transition-colors p-2 sm:p-3 md:p-4"
           variant="outline"
         >
           <div className="relative">
             {category.image ? (
-              <img
-                src={category.image || "/placeholder.svg"}
-                alt={category.name}
-                className="w-12 h-12 sm:w-16 sm:h-16 object-cover rounded-[11px] border border-gray-200"
-              />
+              <div className="relative">
+                <img
+                  src={category.image || "/placeholder.svg"}
+                  alt={category.name}
+                  className="w-8 h-8 sm:w-10 sm:h-10 md:w-12 md:h-12 lg:w-16 lg:h-16 object-cover rounded-[8px] sm:rounded-[9px] md:rounded-[11px] border border-gray-200"
+                />
+                <span className="absolute -bottom-1 -right-1 text-sm sm:text-base md:text-lg lg:text-xl">
+                  {category.icon}
+                </span>
+              </div>
             ) : (
-              <span className="text-2xl sm:text-3xl">{category.icon}</span>
+              <span className="text-lg sm:text-xl md:text-2xl lg:text-3xl">{category.icon}</span>
             )}
           </div>
-          <span className="font-medium text-xs sm:text-sm text-center px-2">{category.name}</span>
+          <span className="font-medium text-xs sm:text-sm text-center px-1 leading-tight">{category.name}</span>
         </Button>
       ))}
     </div>
@@ -1021,26 +942,31 @@ export default function POSSystem() {
         <Button onClick={handleBackToSuper} variant="outline" className="rounded-[9px] border-gray-300">
           ← Back to Categories
         </Button>
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 md:gap-6">
+        <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-3 md:gap-4">
           {filteredSubCategories.map((subCategory) => (
             <Button
               key={subCategory.id}
               onClick={() => handleSubCategorySelect(subCategory.id)}
-              className="h-20 sm:h-28 w-full bg-white border-2 border-gray-200 hover:border-yellow-400 hover:bg-yellow-50 text-black rounded-[18px] flex flex-col items-center justify-center gap-2 transition-colors p-4"
+              className="h-18 sm:h-20 md:h-24 lg:h-28 w-full bg-white border-2 border-gray-200 hover:border-yellow-400 hover:bg-yellow-50 text-black rounded-[12px] sm:rounded-[15px] md:rounded-[18px] flex flex-col items-center justify-center gap-1 sm:gap-2 transition-colors p-2 sm:p-3 md:p-4"
               variant="outline"
             >
               <div className="relative">
                 {subCategory.image ? (
-                  <img
-                    src={subCategory.image || "/placeholder.svg"}
-                    alt={subCategory.name}
-                    className="w-10 h-10 sm:w-12 sm:h-12 object-cover rounded-[9px] border border-gray-200"
-                  />
+                  <div className="relative">
+                    <img
+                      src={subCategory.image || "/placeholder.svg"}
+                      alt={subCategory.name}
+                      className="w-6 h-6 sm:w-8 sm:h-8 md:w-10 md:h-10 lg:w-12 lg:w-12 object-cover rounded-[6px] sm:rounded-[7px] md:rounded-[9px] border border-gray-200"
+                    />
+                    <span className="absolute -bottom-1 -right-1 text-xs sm:text-sm md:text-base">
+                      {subCategory.icon}
+                    </span>
+                  </div>
                 ) : (
-                  <span className="text-xl sm:text-2xl">{subCategory.icon}</span>
+                  <span className="text-base sm:text-lg md:text-xl lg:text-2xl">{subCategory.icon}</span>
                 )}
               </div>
-              <span className="font-medium text-xs sm:text-sm text-center px-2">{subCategory.name}</span>
+              <span className="font-medium text-xs sm:text-sm text-center px-1 leading-tight">{subCategory.name}</span>
             </Button>
           ))}
         </div>
@@ -1053,14 +979,22 @@ export default function POSSystem() {
     return (
       <div className="space-y-4">
         <div className="flex flex-wrap gap-2">
-          <Button onClick={handleBackToSub} variant="outline" className="rounded-[9px] border-gray-300">
+          <Button
+            onClick={handleBackToSub}
+            variant="outline"
+            className="rounded-[9px] border-gray-300 text-xs sm:text-sm"
+          >
             ← Back to Subcategories
           </Button>
-          <Button onClick={handleBackToSuper} variant="outline" className="rounded-[9px] border-gray-300">
+          <Button
+            onClick={handleBackToSuper}
+            variant="outline"
+            className="rounded-[9px] border-gray-300 text-xs sm:text-sm"
+          >
             ← Back to Categories
           </Button>
         </div>
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-3 sm:gap-4">
           {filteredProducts.map((product) => (
             <Card key={product.id} className="rounded-[11px] border-gray-200">
               <CardContent className="p-3 sm:p-4">
@@ -1070,13 +1004,13 @@ export default function POSSystem() {
                       <img
                         src={product.image || "/placeholder.svg"}
                         alt={product.name}
-                        className="w-16 h-16 object-cover rounded-[9px] border border-gray-200 flex-shrink-0"
+                        className="w-12 h-12 sm:w-14 sm:h-14 md:w-16 md:h-16 object-cover rounded-[9px] border border-gray-200 flex-shrink-0"
                       />
                     )}
                     <div className="flex-1 min-w-0">
-                      <h3 className="font-medium text-sm">{product.name}</h3>
+                      <h3 className="font-medium text-sm sm:text-base leading-tight">{product.name}</h3>
                       <div className="flex justify-between items-center mt-2">
-                        <span className="text-lg font-bold">
+                        <span className="text-base sm:text-lg font-bold">
                           ₹{getLastUsedRate(product.id) || product.price.toFixed(2)}
                         </span>
                       </div>
@@ -1089,7 +1023,7 @@ export default function POSSystem() {
                   </div>
                   <Button
                     onClick={() => addToOrder(product)}
-                    className="w-full bg-yellow-400 hover:bg-yellow-500 text-black rounded-[9px] font-medium"
+                    className="w-full bg-yellow-400 hover:bg-yellow-500 text-black rounded-[9px] font-medium text-sm sm:text-base"
                   >
                     <Plus className="w-4 h-4 mr-2" />
                     Add to Order
@@ -1269,46 +1203,27 @@ export default function POSSystem() {
         }}
       />
 
-      <div className="relative z-10 flex flex-col lg:flex-row h-screen">
-        {/* Main Content */}
-        <div className="flex-1 flex flex-col">
-          {/* Header */}
-          <header className="bg-white border-b border-gray-200 p-4 lg:p-6">
-            <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
-              <div className="flex items-center gap-4">
-                <h1 className="text-xl sm:text-2xl font-bold text-black">{storeInfo.name}</h1>
+      <div className="relative z-10">
+        {/* Main Header */}
+        <header className="bg-white border-b border-gray-200 p-3 sm:p-4 lg:p-6">
+          <div className="flex flex-col gap-4">
+            {/* Top Header Row */}
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-2 sm:gap-4">
+                <h1 className="text-lg sm:text-xl lg:text-2xl font-bold text-black">SL SALAR</h1>
                 <Button
                   onClick={() => setShowAdmin(true)}
                   variant="outline"
                   className="rounded-[9px] border-gray-300"
                   size="sm"
                 >
-                  <Settings className="w-4 h-4 mr-2" />
-                  Admin
+                  <Settings className="w-4 h-4 mr-1 sm:mr-2" />
+                  <span className="hidden sm:inline">Admin</span>
                 </Button>
               </div>
 
-              {/* Main Tabs */}
-              <Tabs
-                value={activeMainTab}
-                onValueChange={(value: any) => setActiveMainTab(value)}
-                className="w-full sm:w-auto"
-              >
-                <TabsList className="grid w-full grid-cols-3 sm:w-auto">
-                  <TabsTrigger value="pos" className="text-xs sm:text-sm">
-                    POS
-                  </TabsTrigger>
-                  <TabsTrigger value="order" className="text-xs sm:text-sm">
-                    POO
-                  </TabsTrigger>
-                  <TabsTrigger value="inventory" className="text-xs sm:text-sm">
-                    POI
-                  </TabsTrigger>
-                </TabsList>
-              </Tabs>
-
               {/* Mobile Cart Button */}
-              {isMobile && activeMainTab === "pos" && (
+              {isMobile && (
                 <Button
                   onClick={() => setShowMobileCart(true)}
                   className="bg-yellow-400 hover:bg-yellow-500 text-black rounded-[9px] relative"
@@ -1324,325 +1239,324 @@ export default function POSSystem() {
               )}
             </div>
 
-            {/* Customer Selection - Only for POS */}
-            {activeMainTab === "pos" && (
-              <div className="flex flex-col sm:flex-row items-start sm:items-center gap-2 sm:gap-4 w-full sm:w-auto mt-4">
-                <div className="flex items-center space-x-2">
-                  <Checkbox
-                    id="cash-sale"
-                    checked={isCashSale}
-                    onCheckedChange={(checked) => {
-                      setIsCashSale(checked as boolean)
-                      if (checked) {
-                        setSelectedCustomer("")
-                        setCustomerSearch("")
-                      }
-                    }}
-                  />
-                  <label htmlFor="cash-sale" className="text-sm font-medium">
-                    Cash Sale
-                  </label>
-                </div>
+            {/* Main Tabs */}
+            <Tabs value={activeMainTab} onValueChange={(value: any) => setActiveMainTab(value)} className="w-full">
+              <TabsList className="grid w-full grid-cols-3">
+                <TabsTrigger value="pos" className="text-xs sm:text-sm">
+                  POS
+                </TabsTrigger>
+                <TabsTrigger value="order" className="text-xs sm:text-sm">
+                  ORDER
+                </TabsTrigger>
+                <TabsTrigger value="godown" className="text-xs sm:text-sm">
+                  GODOWN ENTRY
+                </TabsTrigger>
+              </TabsList>
 
-                {!isCashSale && (
-                  <div className="flex gap-2 w-full sm:w-auto">
-                    <div className="relative flex-1 sm:flex-none">
-                      <User className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-4 h-4" />
-                      <Input
-                        placeholder="Search customers..."
-                        value={customerSearch}
-                        onChange={(e) => setCustomerSearch(e.target.value)}
-                        className="pl-10 w-full sm:w-64 rounded-[9px]"
-                      />
-                      {customerSearch && filteredCustomers.length > 0 && (
-                        <div className="absolute top-full left-0 right-0 bg-white border border-gray-200 rounded-[9px] mt-1 max-h-40 overflow-y-auto z-20 shadow-lg">
-                          {filteredCustomers.map((customer) => (
-                            <button
-                              key={customer.id}
-                              onClick={() => {
-                                setSelectedCustomer(customer.id)
-                                setCustomerSearch("")
-                              }}
-                              className="w-full text-left p-3 hover:bg-gray-50 border-b border-gray-100 last:border-b-0"
-                            >
-                              <div className="font-medium text-sm">{customer.name}</div>
-                              <div className="text-xs text-gray-500">{customer.phone}</div>
-                            </button>
-                          ))}
+              <TabsContent value="pos" className="mt-4">
+                <div
+                  className={`flex flex-col ${!isMobile ? "lg:flex-row" : ""} ${!isMobile ? "h-[calc(100vh-200px)]" : ""}`}
+                >
+                  {/* POS Content */}
+                  <div className="flex-1 flex flex-col">
+                    {/* Customer Selection */}
+                    <div className="flex flex-col gap-3 sm:gap-4 w-full mb-4">
+                      <div className="flex items-center space-x-2">
+                        <Checkbox
+                          id="cash-sale"
+                          checked={isCashSale}
+                          onCheckedChange={(checked) => {
+                            setIsCashSale(checked as boolean)
+                            if (checked) {
+                              setSelectedCustomer("")
+                              setCustomerSearch("")
+                            }
+                          }}
+                        />
+                        <label htmlFor="cash-sale" className="text-sm font-medium">
+                          Cash Sale
+                        </label>
+                      </div>
+
+                      {!isCashSale && (
+                        <div className="flex gap-2 w-full">
+                          <div className="relative flex-1">
+                            <User className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-4 h-4" />
+                            <Input
+                              placeholder="Search customers..."
+                              value={customerSearch}
+                              onChange={(e) => setCustomerSearch(e.target.value)}
+                              className="pl-10 w-full rounded-[9px]"
+                            />
+                            {customerSearch && filteredCustomers.length > 0 && (
+                              <div className="absolute top-full left-0 right-0 bg-white border border-gray-200 rounded-[9px] mt-1 max-h-40 overflow-y-auto z-20 shadow-lg">
+                                {filteredCustomers.map((customer) => (
+                                  <button
+                                    key={customer.id}
+                                    onClick={() => {
+                                      setSelectedCustomer(customer.id)
+                                      setCustomerSearch("")
+                                    }}
+                                    className="w-full text-left p-3 hover:bg-gray-50 border-b border-gray-100 last:border-b-0"
+                                  >
+                                    <div className="font-medium text-sm">{customer.name}</div>
+                                    <div className="text-xs text-gray-500">{customer.phone}</div>
+                                  </button>
+                                ))}
+                              </div>
+                            )}
+                          </div>
+                          <Button
+                            onClick={() => setShowAddCustomer(true)}
+                            className="bg-yellow-400 hover:bg-yellow-500 text-black rounded-[9px] flex-shrink-0"
+                            size="sm"
+                          >
+                            <UserPlus className="w-4 h-4" />
+                          </Button>
                         </div>
                       )}
+
+                      {selectedCustomerData && !isCashSale && (
+                        <Card className="rounded-[11px] border-gray-200">
+                          <CardContent className="p-3">
+                            <div className="flex items-center justify-between">
+                              <div>
+                                <div className="text-sm font-medium">{selectedCustomerData.name}</div>
+                                <div className="text-xs text-gray-500">{selectedCustomerData.phone}</div>
+                              </div>
+                              <Button
+                                size="sm"
+                                variant="outline"
+                                onClick={() => loadCustomerTransactions(selectedCustomerData.id)}
+                                className="rounded-[9px]"
+                              >
+                                <FileText className="w-4 h-4" />
+                              </Button>
+                            </div>
+                          </CardContent>
+                        </Card>
+                      )}
+
+                      {isCashSale && (
+                        <Card className="rounded-[11px] border-yellow-200 bg-yellow-50">
+                          <CardContent className="p-3">
+                            <div className="flex items-center justify-between">
+                              <div>
+                                <div className="text-sm font-medium text-yellow-800">CASH SALE</div>
+                                <div className="text-xs text-yellow-600">No customer required</div>
+                              </div>
+                              <Button
+                                size="sm"
+                                variant="outline"
+                                onClick={loadAllTransactions}
+                                className="rounded-[9px] border-yellow-300"
+                              >
+                                <FileText className="w-4 h-4" />
+                              </Button>
+                            </div>
+                          </CardContent>
+                        </Card>
+                      )}
                     </div>
-                    <Button
-                      onClick={() => setShowAddCustomer(true)}
-                      className="bg-yellow-400 hover:bg-yellow-500 text-black rounded-[9px]"
-                      size="sm"
-                    >
-                      <UserPlus className="w-4 h-4" />
-                    </Button>
+
+                    {/* Product Selection Area */}
+                    <main className="flex-1 overflow-y-auto">
+                      {currentView === "super" && renderSuperCategories()}
+                      {currentView === "sub" && renderSubCategories()}
+                      {currentView === "products" && renderProducts()}
+                    </main>
                   </div>
-                )}
 
-                {selectedCustomerData && !isCashSale && (
-                  <Card className="rounded-[11px] border-gray-200 w-full sm:w-auto">
-                    <CardContent className="p-3">
-                      <div className="flex items-center justify-between">
-                        <div>
-                          <div className="text-sm font-medium">{selectedCustomerData.name}</div>
-                          <div className="text-xs text-gray-500">{selectedCustomerData.phone}</div>
+                  {/* Desktop Order Summary Panel */}
+                  {!isMobile && (
+                    <div className="w-full lg:w-96 bg-gray-50 border-t lg:border-t-0 lg:border-l border-gray-200 flex flex-col">
+                      <div className="p-4 lg:p-6 border-b border-gray-200">
+                        <div className="flex items-center gap-2 mb-4">
+                          <ShoppingCart className="w-5 h-5" />
+                          <h2 className="text-lg font-bold">Order Summary</h2>
                         </div>
-                        <Button
-                          size="sm"
-                          variant="outline"
-                          onClick={() => loadCustomerTransactions(selectedCustomerData.id)}
-                          className="rounded-[9px]"
-                        >
-                          <FileText className="w-4 h-4" />
-                        </Button>
-                      </div>
-                    </CardContent>
-                  </Card>
-                )}
 
-                {isCashSale && (
-                  <Card className="rounded-[11px] border-yellow-200 bg-yellow-50 w-full sm:w-auto">
-                    <CardContent className="p-3">
-                      <div className="flex items-center justify-between">
-                        <div>
-                          <div className="text-sm font-medium text-yellow-800">CASH SALE</div>
-                          <div className="text-xs text-yellow-600">No customer required</div>
+                        {orderItems.length === 0 ? (
+                          <p className="text-gray-500 text-sm">No items in cart</p>
+                        ) : (
+                          <div className="space-y-3 max-h-48 lg:max-h-96 overflow-y-auto">
+                            {orderItems.map((item) => (
+                              <Card key={item.id} className="rounded-[9px] border-gray-200">
+                                <CardContent className="p-3">
+                                  <div className="space-y-2">
+                                    <div className="font-medium text-sm">{item.name}</div>
+
+                                    <div className="flex items-center gap-2">
+                                      <Button
+                                        size="sm"
+                                        variant="outline"
+                                        onClick={() => updateQuantity(item.id, item.quantity - 1)}
+                                        className="w-8 h-8 p-0 rounded-[9px]"
+                                      >
+                                        <Minus className="w-3 h-3" />
+                                      </Button>
+                                      <Input
+                                        type="number"
+                                        value={item.quantity}
+                                        onChange={(e) => updateQuantity(item.id, Number.parseInt(e.target.value) || 0)}
+                                        className="w-16 h-8 text-center rounded-[9px]"
+                                        min="1"
+                                      />
+                                      <Button
+                                        size="sm"
+                                        variant="outline"
+                                        onClick={() => updateQuantity(item.id, item.quantity + 1)}
+                                        className="w-8 h-8 p-0 rounded-[9px]"
+                                      >
+                                        <Plus className="w-3 h-3" />
+                                      </Button>
+                                      <span className="text-xs text-gray-500">{item.unit}</span>
+                                    </div>
+
+                                    <div className="flex items-center gap-2">
+                                      <span className="text-xs text-gray-500">Rate:</span>
+                                      <Input
+                                        type="number"
+                                        value={item.unitPrice}
+                                        onChange={(e) =>
+                                          updateUnitPrice(item.id, Number.parseFloat(e.target.value) || 0)
+                                        }
+                                        className="w-20 h-7 text-xs rounded-[9px]"
+                                        step="0.01"
+                                        min="0"
+                                      />
+                                      <span className="text-xs text-gray-500">₹</span>
+                                    </div>
+
+                                    <div className="flex justify-between items-center">
+                                      <span className="font-bold text-sm">₹{item.lineTotal.toFixed(2)}</span>
+                                      <Button
+                                        size="sm"
+                                        variant="outline"
+                                        onClick={() => removeFromOrder(item.id)}
+                                        className="w-7 h-7 p-0 rounded-[9px] text-red-500 hover:text-red-700"
+                                      >
+                                        <Trash2 className="w-3 h-3" />
+                                      </Button>
+                                    </div>
+                                  </div>
+                                </CardContent>
+                              </Card>
+                            ))}
+                          </div>
+                        )}
+                      </div>
+
+                      {/* Hamali/Freight Charges */}
+                      <div className="p-4 lg:p-6 border-b border-gray-200">
+                        <div className="space-y-3">
+                          <div className="flex items-center space-x-2">
+                            <Checkbox
+                              id="include-hamali"
+                              checked={includeHamali}
+                              onCheckedChange={(checked) => setIncludeHamali(checked as boolean)}
+                            />
+                            <Label htmlFor="include-hamali" className="text-sm font-medium">
+                              Include Hamali/Freight Charges
+                            </Label>
+                          </div>
+                          {includeHamali && (
+                            <div className="space-y-2">
+                              <div className="text-sm text-gray-600">
+                                Auto-calculated: ₹{calculateHamaliCharges().toFixed(2)}
+                              </div>
+                              <Input
+                                type="number"
+                                placeholder="Override hamali charges"
+                                value={hamaliCharges}
+                                onChange={(e) => setHamaliCharges(Number.parseFloat(e.target.value) || 0)}
+                                className="rounded-[9px]"
+                                step="0.01"
+                                min="0"
+                              />
+                            </div>
+                          )}
                         </div>
-                        <Button
-                          size="sm"
-                          variant="outline"
-                          onClick={loadAllTransactions}
-                          className="rounded-[9px] border-yellow-300"
-                        >
-                          <FileText className="w-4 h-4" />
-                        </Button>
                       </div>
-                    </CardContent>
-                  </Card>
-                )}
-              </div>
-            )}
-          </header>
 
-          {/* Tab Content */}
-          {activeMainTab === "pos" && (
-            <main className="flex-1 p-4 lg:p-6 overflow-y-auto">
-              {currentView === "super" && renderSuperCategories()}
-              {currentView === "sub" && renderSubCategories()}
-              {currentView === "products" && renderProducts()}
-            </main>
-          )}
+                      {/* Reference and Date Inputs */}
+                      <div className="p-4 lg:p-6 border-b border-gray-200">
+                        <div className="space-y-3">
+                          <div>
+                            <Label className="text-sm font-medium">Reference (Optional)</Label>
+                            <Input
+                              placeholder="Reference number or note"
+                              value={estimateReference}
+                              onChange={(e) => setEstimateReference(e.target.value)}
+                              className="rounded-[9px]"
+                            />
+                          </div>
+                          <div>
+                            <Label className="text-sm font-medium">Estimate Date</Label>
+                            <Input
+                              type="date"
+                              value={estimateDate}
+                              onChange={(e) => setEstimateDate(e.target.value)}
+                              className="rounded-[9px]"
+                            />
+                          </div>
+                        </div>
+                      </div>
 
-          {activeMainTab === "order" && (
-            <main className="flex-1 overflow-hidden">
-              <PurchaseOrderModule onBack={() => setActiveMainTab("pos")} />
-            </main>
-          )}
-
-          {activeMainTab === "inventory" && (
-            <main className="flex-1 overflow-hidden">
-              <InventoryManagement />
-            </main>
-          )}
-        </div>
-
-        {/* Desktop Order Summary Panel - Only for POS */}
-        {!isMobile && activeMainTab === "pos" && (
-          <div className="w-full lg:w-96 bg-gray-50 border-t lg:border-t-0 lg:border-l border-gray-200 flex flex-col max-h-96 lg:max-h-none">
-            <div className="p-4 lg:p-6 border-b border-gray-200">
-              <div className="flex items-center gap-2 mb-4">
-                <ShoppingCart className="w-5 h-5" />
-                <h2 className="text-lg font-bold">Order Summary</h2>
-              </div>
-
-              {orderItems.length === 0 ? (
-                <p className="text-gray-500 text-sm">No items in cart</p>
-              ) : (
-                <div className="space-y-3 max-h-48 lg:max-h-96 overflow-y-auto">
-                  {orderItems.map((item) => (
-                    <Card key={item.id} className="rounded-[9px] border-gray-200">
-                      <CardContent className="p-3">
+                      {/* Order Totals */}
+                      <div className="p-4 lg:p-6 border-b border-gray-200">
                         <div className="space-y-2">
-                          <div className="font-medium text-sm">{item.name}</div>
-
-                          <div className="flex items-center gap-2">
-                            <Button
-                              size="sm"
-                              variant="outline"
-                              onClick={() => updateQuantity(item.id, item.quantity - 1)}
-                              className="w-8 h-8 p-0 rounded-[9px]"
-                            >
-                              <Minus className="w-3 h-3" />
-                            </Button>
-                            <Input
-                              type="number"
-                              value={item.quantity}
-                              onChange={(e) => updateQuantity(item.id, Number.parseInt(e.target.value) || 0)}
-                              className="w-16 h-8 text-center rounded-[9px]"
-                              min="1"
-                            />
-                            <Button
-                              size="sm"
-                              variant="outline"
-                              onClick={() => updateQuantity(item.id, item.quantity + 1)}
-                              className="w-8 h-8 p-0 rounded-[9px]"
-                            >
-                              <Plus className="w-3 h-3" />
-                            </Button>
-                            <span className="text-xs text-gray-500">{item.unit}</span>
+                          <div className="flex justify-between text-lg">
+                            <span className="font-medium">Subtotal:</span>
+                            <span className="font-bold">₹{subtotal.toFixed(2)}</span>
                           </div>
-
-                          <div className="flex items-center gap-2">
-                            <span className="text-xs text-gray-500">Rate:</span>
-                            <Input
-                              type="number"
-                              value={item.unitPrice}
-                              onChange={(e) => updateUnitPrice(item.id, Number.parseFloat(e.target.value) || 0)}
-                              className="w-20 h-7 text-xs rounded-[9px]"
-                              step="0.01"
-                              min="0"
-                            />
-                            <span className="text-xs text-gray-500">₹</span>
-                          </div>
-
-                          <div className="flex justify-between items-center">
-                            <span className="font-bold text-sm">₹{item.lineTotal.toFixed(2)}</span>
-                            <Button
-                              size="sm"
-                              variant="outline"
-                              onClick={() => removeFromOrder(item.id)}
-                              className="w-7 h-7 p-0 rounded-[9px] text-red-500 hover:text-red-700"
-                            >
-                              <Trash2 className="w-3 h-3" />
-                            </Button>
+                          {includeHamali && hamaliCharges > 0 && (
+                            <div className="flex justify-between text-sm">
+                              <span className="text-gray-600">Hamali/Freight:</span>
+                              <span className="font-medium">₹{hamaliCharges.toFixed(2)}</span>
+                            </div>
+                          )}
+                          <div className="flex justify-between text-xl border-t pt-2">
+                            <span className="font-bold">Total:</span>
+                            <span className="font-bold">₹{total.toFixed(2)}</span>
                           </div>
                         </div>
-                      </CardContent>
-                    </Card>
-                  ))}
-                </div>
-              )}
-            </div>
+                      </div>
 
-            {/* Hamali/Freight Charges */}
-            <div className="p-4 lg:p-6 border-b border-gray-200">
-              <div className="space-y-3">
-                <div className="flex items-center space-x-2">
-                  <Checkbox
-                    id="include-hamali"
-                    checked={includeHamali}
-                    onCheckedChange={(checked) => setIncludeHamali(checked as boolean)}
-                  />
-                  <Label htmlFor="include-hamali" className="text-sm font-medium">
-                    Include Hamali/Freight Charges
-                  </Label>
+                      {/* Action Buttons */}
+                      <div className="p-4 lg:p-6 space-y-3">
+                        <Button
+                          onClick={clearCart}
+                          variant="outline"
+                          className="w-full rounded-[9px] border-gray-300"
+                          disabled={orderItems.length === 0}
+                        >
+                          Clear Cart
+                        </Button>
+                        <Button
+                          onClick={confirmOrder}
+                          className="w-full bg-yellow-400 hover:bg-yellow-500 text-black rounded-[9px] font-medium"
+                          disabled={orderItems.length === 0 || (!isCashSale && !selectedCustomer)}
+                        >
+                          <FileText className="w-4 h-4 mr-2" />
+                          Generate Estimate
+                        </Button>
+                      </div>
+                    </div>
+                  )}
                 </div>
-                {includeHamali && (
-                  <div className="space-y-2">
-                    <div className="text-sm text-gray-600">Auto-calculated: ₹{calculateHamaliCharges().toFixed(2)}</div>
-                    <Input
-                      type="number"
-                      placeholder="Override hamali charges"
-                      value={hamaliCharges}
-                      onChange={(e) => setHamaliCharges(Number.parseFloat(e.target.value) || 0)}
-                      className="rounded-[9px]"
-                      step="0.01"
-                      min="0"
-                    />
-                  </div>
-                )}
-              </div>
-            </div>
+              </TabsContent>
 
-            {/* Reference and Date Inputs */}
-            <div className="p-4 lg:p-6 border-b border-gray-200">
-              <div className="space-y-3">
-                <div>
-                  <Label className="text-sm font-medium">Reference (Optional)</Label>
-                  <Input
-                    placeholder="Reference number or note"
-                    value={estimateReference}
-                    onChange={(e) => setEstimateReference(e.target.value)}
-                    className="rounded-[9px]"
-                  />
-                </div>
-                <div>
-                  <Label className="text-sm font-medium">Estimate Date</Label>
-                  <Input
-                    type="date"
-                    value={estimateDate}
-                    onChange={(e) => setEstimateDate(e.target.value)}
-                    className="rounded-[9px]"
-                  />
-                </div>
-              </div>
-            </div>
+              <TabsContent value="order" className="mt-4">
+                <PurchaseOrderModule onBack={() => setActiveMainTab("pos")} />
+              </TabsContent>
 
-            {/* Order Totals */}
-            <div className="p-4 lg:p-6 border-b border-gray-200">
-              <div className="space-y-2">
-                <div className="flex justify-between text-lg">
-                  <span className="font-medium">Subtotal:</span>
-                  <span className="font-bold">₹{subtotal.toFixed(2)}</span>
-                </div>
-                {includeHamali && hamaliCharges > 0 && (
-                  <div className="flex justify-between text-sm">
-                    <span className="text-gray-600">Hamali/Freight:</span>
-                    <span className="font-medium">₹{hamaliCharges.toFixed(2)}</span>
-                  </div>
-                )}
-                <div className="flex justify-between text-xl border-t pt-2">
-                  <span className="font-bold">Total:</span>
-                  <span className="font-bold">₹{total.toFixed(2)}</span>
-                </div>
-              </div>
-            </div>
-
-            {/* Payment Method Selection */}
-            <div className="p-4 lg:p-6 border-b border-gray-200">
-              <div className="space-y-3">
-                <Label className="text-sm font-medium">Payment Method</Label>
-                <Select
-                  value={paymentMethod}
-                  onValueChange={(value: "cash" | "card" | "upi" | "credit") => setPaymentMethod(value)}
-                >
-                  <SelectTrigger className="rounded-[9px]">
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="cash">💵 Cash</SelectItem>
-                    <SelectItem value="card">💳 Card</SelectItem>
-                    <SelectItem value="upi">📱 UPI</SelectItem>
-                    <SelectItem value="credit">🏪 Credit</SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
-            </div>
-
-            {/* Action Buttons */}
-            <div className="p-4 lg:p-6 space-y-3">
-              <Button
-                onClick={clearCart}
-                variant="outline"
-                className="w-full rounded-[9px] border-gray-300"
-                disabled={orderItems.length === 0}
-              >
-                Clear Cart
-              </Button>
-              <Button
-                onClick={confirmOrder}
-                className="w-full bg-yellow-400 hover:bg-yellow-500 text-black rounded-[9px] font-medium"
-                disabled={orderItems.length === 0 || (!isCashSale && !selectedCustomer)}
-              >
-                <FileText className="w-4 h-4 mr-2" />
-                Generate Estimate
-              </Button>
-            </div>
+              <TabsContent value="godown" className="mt-4">
+                <InventoryManagement />
+              </TabsContent>
+            </Tabs>
           </div>
-        )}
+        </header>
       </div>
 
       {/* Mobile Cart Sheet */}
@@ -1709,7 +1623,18 @@ export default function POSSystem() {
       </Dialog>
 
       {/* Estimate Dialog */}
-      <Dialog open={showEstimate} onOpenChange={setShowEstimate}>
+      <Dialog
+        open={showEstimate}
+        onOpenChange={(open) => {
+          setShowEstimate(open)
+          if (!open) {
+            // Navigate back to main page when estimate dialog is closed
+            setCurrentView("super")
+            setSelectedSuperCategory("")
+            setSelectedSubCategory("")
+          }
+        }}
+      >
         <DialogContent className="max-w-4xl max-h-[90vh] overflow-y-auto mx-4 sm:mx-auto">
           <DialogHeader>
             <DialogTitle className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
@@ -1742,7 +1667,34 @@ export default function POSSystem() {
                   <Printer className="w-4 h-4 mr-1 sm:mr-2" />
                   Thermal
                 </Button>
-                <Button onClick={() => setShowEstimate(false)} variant="outline" className="rounded-[9px]" size="sm">
+                <Button
+                  onClick={() => downloadEstimatePDF(currentEstimate!)}
+                  variant="outline"
+                  className="rounded-[9px] text-xs sm:text-sm"
+                  size="sm"
+                >
+                  <Download className="w-4 h-4 mr-1 sm:mr-2" />
+                  PDF
+                </Button>
+                <Button
+                  onClick={() => shareEstimatePDF(currentEstimate!)}
+                  className="bg-green-500 hover:bg-green-600 text-white rounded-[9px] text-xs sm:text-sm"
+                  size="sm"
+                >
+                  <FileText className="w-4 h-4 mr-1 sm:mr-2" />
+                  Share
+                </Button>
+                <Button
+                  onClick={() => {
+                    setShowEstimate(false)
+                    setCurrentView("super")
+                    setSelectedSuperCategory("")
+                    setSelectedSubCategory("")
+                  }}
+                  variant="outline"
+                  className="rounded-[9px]"
+                  size="sm"
+                >
                   <X className="w-4 h-4" />
                 </Button>
               </div>
@@ -1750,11 +1702,14 @@ export default function POSSystem() {
           </DialogHeader>
 
           {currentEstimate && (
-            <div ref={estimateRef} className="estimate bg-white p-4 sm:p-6 lg:p-8">
+            <div ref={invoiceRef} className="estimate bg-white p-4 sm:p-6 lg:p-8">
               {/* Store Header */}
               <div className="header text-center border-b-2 border-black pb-4 mb-6">
                 <h1 className="text-2xl sm:text-3xl font-bold">{storeInfo.name}</h1>
                 <p className="text-xs sm:text-sm mt-2">{storeInfo.address}</p>
+                <p className="text-xs sm:text-sm mt-1">
+                  Phone: {storeInfo.phone} | Contact: {storeInfo.contact}
+                </p>
               </div>
 
               {/* Estimate Details */}
@@ -1766,9 +1721,6 @@ export default function POSSystem() {
                   </p>
                   <p className="text-sm">
                     <strong>Date:</strong> {currentEstimate.date}
-                  </p>
-                  <p className="text-sm">
-                    <strong>Payment:</strong> {currentEstimate.paymentMethod.toUpperCase()}
                   </p>
                   {currentEstimate.reference && (
                     <p className="text-sm">
@@ -1845,9 +1797,6 @@ export default function POSSystem() {
                 <div>
                   <p className="text-xs sm:text-sm">Thank you for your business!</p>
                   <p className="text-xs sm:text-sm">Terms & Conditions Apply</p>
-                  <p className="text-xs sm:text-sm mt-2">
-                    <strong>Payment Method:</strong> {currentEstimate.paymentMethod.toUpperCase()}
-                  </p>
                 </div>
                 <div className="text-center">
                   <div className="border-t border-black pt-2 mt-8 sm:mt-16 w-32 sm:w-48">
@@ -1862,7 +1811,18 @@ export default function POSSystem() {
       </Dialog>
 
       {/* Edit Estimate Dialog */}
-      <Dialog open={showEditEstimate} onOpenChange={setShowEditEstimate}>
+      <Dialog
+        open={showEditEstimate}
+        onOpenChange={(open) => {
+          setShowEditEstimate(open)
+          if (!open) {
+            // Navigate back to main page when edit estimate dialog is closed
+            setCurrentView("super")
+            setSelectedSuperCategory("")
+            setSelectedSubCategory("")
+          }
+        }}
+      >
         <DialogContent className="max-w-4xl max-h-[90vh] overflow-y-auto mx-4 sm:mx-auto">
           <DialogHeader>
             <DialogTitle>Edit Estimate - {editableEstimate?.estimateNumber}</DialogTitle>
@@ -1963,65 +1923,13 @@ export default function POSSystem() {
                 ))}
               </div>
 
-              {/* Hamali/Freight Charges */}
-              <div className="p-4 bg-gray-50 rounded-[9px]">
-                <div className="space-y-3">
-                  <div className="flex items-center space-x-2">
-                    <Checkbox
-                      id="include-hamali-edit"
-                      checked={includeHamali}
-                      onCheckedChange={(checked) => setIncludeHamali(checked as boolean)}
-                    />
-                    <Label htmlFor="include-hamali-edit" className="text-sm font-medium">
-                      Include Hamali/Freight Charges
-                    </Label>
-                  </div>
-                  {includeHamali && (
-                    <div className="space-y-2">
-                      <div className="text-sm text-gray-600">
-                        Auto-calculated: ₹
-                        {estimateItems
-                          .reduce((sum, item) => {
-                            const product = products.find((p) => p.id === item.id)
-                            return sum + (product?.hamaliValue || 0) * item.quantity
-                          }, 0)
-                          .toFixed(2)}
-                      </div>
-                      <Input
-                        type="number"
-                        placeholder="Override hamali charges"
-                        value={hamaliCharges}
-                        onChange={(e) => setHamaliCharges(Number.parseFloat(e.target.value) || 0)}
-                        className="rounded-[9px]"
-                        step="0.01"
-                        min="0"
-                      />
-                    </div>
-                  )}
-                </div>
-              </div>
-
               {/* Totals */}
               <div className="p-4 bg-gray-50 rounded-[9px]">
-                <div className="space-y-2">
-                  <div className="flex justify-between items-center">
-                    <span className="text-lg font-medium">Subtotal:</span>
-                    <span className="text-lg font-bold">
-                      ₹{estimateItems.reduce((sum, item) => sum + item.lineTotal, 0).toFixed(2)}
-                    </span>
-                  </div>
-                  {includeHamali && hamaliCharges > 0 && (
-                    <div className="flex justify-between items-center">
-                      <span className="text-sm text-gray-600">Hamali/Freight:</span>
-                      <span className="text-sm font-medium">₹{hamaliCharges.toFixed(2)}</span>
-                    </div>
-                  )}
-                  <div className="flex justify-between items-center border-t pt-2">
-                    <span className="text-xl font-semibold">Total Amount:</span>
-                    <span className="text-xl font-bold">
-                      ₹{(estimateItems.reduce((sum, item) => sum + item.lineTotal, 0) + hamaliCharges).toFixed(2)}
-                    </span>
-                  </div>
+                <div className="flex justify-between items-center">
+                  <span className="text-lg font-semibold">Total Amount:</span>
+                  <span className="text-xl font-bold">
+                    ₹{estimateItems.reduce((sum, item) => sum + item.lineTotal, 0).toFixed(2)}
+                  </span>
                 </div>
               </div>
 
@@ -2094,7 +2002,18 @@ export default function POSSystem() {
       </Dialog>
 
       {/* Customer Transaction History Dialog */}
-      <Dialog open={showTransactionHistory} onOpenChange={setShowTransactionHistory}>
+      <Dialog
+        open={showTransactionHistory}
+        onOpenChange={(open) => {
+          setShowTransactionHistory(open)
+          if (!open) {
+            // Navigate back to main page when transaction history dialog is closed
+            setCurrentView("super")
+            setSelectedSuperCategory("")
+            setSelectedSubCategory("")
+          }
+        }}
+      >
         <DialogContent className="max-w-4xl max-h-[90vh] overflow-y-auto mx-4 sm:mx-auto">
           <DialogHeader>
             <DialogTitle>Customer Transaction History - {selectedCustomerData?.name}</DialogTitle>
@@ -2136,9 +2055,16 @@ export default function POSSystem() {
                           onClick={() => {
                             const estimate = {
                               estimateNumber: transaction.estimateNumber,
-                              date: transaction.date,
+                              date: new Date(transaction.timestamp).toLocaleDateString("en-IN"),
                               customer: selectedCustomerData,
-                              items: transaction.items,
+                              items: transaction.items.map((item) => ({
+                                id: item.productId,
+                                name: item.productName || "Unknown Product",
+                                quantity: item.quantity,
+                                unitPrice: item.unitPrice,
+                                lineTotal: item.quantity * item.unitPrice,
+                                unit: item.unit || "unit",
+                              })),
                               subtotal: transaction.subtotal,
                               hamaliCharges: transaction.hamaliCharges || 0,
                               total: transaction.total,
@@ -2160,9 +2086,16 @@ export default function POSSystem() {
                           onClick={() => {
                             const estimate = {
                               estimateNumber: transaction.estimateNumber,
-                              date: transaction.date,
+                              date: new Date(transaction.timestamp).toLocaleDateString("en-IN"),
                               customer: selectedCustomerData,
-                              items: transaction.items,
+                              items: transaction.items.map((item) => ({
+                                id: item.productId,
+                                name: item.productName || "Unknown Product",
+                                quantity: item.quantity,
+                                unitPrice: item.unitPrice,
+                                lineTotal: item.quantity * item.unitPrice,
+                                unit: item.unit || "unit",
+                              })),
                               subtotal: transaction.subtotal,
                               hamaliCharges: transaction.hamaliCharges || 0,
                               total: transaction.total,
@@ -2188,7 +2121,18 @@ export default function POSSystem() {
       </Dialog>
 
       {/* Cash Sale Transactions Dialog */}
-      <Dialog open={showCashTransactions} onOpenChange={setShowCashTransactions}>
+      <Dialog
+        open={showCashTransactions}
+        onOpenChange={(open) => {
+          setShowCashTransactions(open)
+          if (!open) {
+            // Navigate back to main page when cash transactions dialog is closed
+            setCurrentView("super")
+            setSelectedSuperCategory("")
+            setSelectedSubCategory("")
+          }
+        }}
+      >
         <DialogContent className="max-w-4xl max-h-[90vh] overflow-y-auto mx-4 sm:mx-auto">
           <DialogHeader>
             <DialogTitle>All Transactions</DialogTitle>
@@ -2237,11 +2181,22 @@ export default function POSSystem() {
                             onClick={() => {
                               const estimate = {
                                 estimateNumber: transaction.estimateNumber,
-                                date: transaction.date,
+                                date: new Date(transaction.timestamp).toLocaleDateString("en-IN"),
                                 customer: transaction.isCashSale
                                   ? null
-                                  : customers.find((c) => c.id === transaction.customerId),
-                                items: transaction.items,
+                                  : {
+                                    name: transaction.customerName || "Unknown Customer",
+                                    phone: transaction.customerPhone || "",
+                                    address: customers.find((c) => c.id === transaction.customerId)?.address || "",
+                                  },
+                                items: transaction.items.map((item) => ({
+                                  id: item.productId,
+                                  name: item.productName || "Unknown Product",
+                                  quantity: item.quantity,
+                                  unitPrice: item.unitPrice,
+                                  lineTotal: item.quantity * item.unitPrice,
+                                  unit: item.unit || "unit",
+                                })),
                                 subtotal: transaction.subtotal,
                                 hamaliCharges: transaction.hamaliCharges || 0,
                                 total: transaction.total,
@@ -2263,11 +2218,22 @@ export default function POSSystem() {
                             onClick={() => {
                               const estimate = {
                                 estimateNumber: transaction.estimateNumber,
-                                date: transaction.date,
+                                date: new Date(transaction.timestamp).toLocaleDateString("en-IN"),
                                 customer: transaction.isCashSale
                                   ? null
-                                  : customers.find((c) => c.id === transaction.customerId),
-                                items: transaction.items,
+                                  : {
+                                    name: transaction.customerName || "Unknown Customer",
+                                    phone: transaction.customerPhone || "",
+                                    address: customers.find((c) => c.id === transaction.customerId)?.address || "",
+                                  },
+                                items: transaction.items.map((item) => ({
+                                  id: item.productId,
+                                  name: item.productName || "Unknown Product",
+                                  quantity: item.quantity,
+                                  unitPrice: item.unitPrice,
+                                  lineTotal: item.quantity * item.unitPrice,
+                                  unit: item.unit || "unit",
+                                })),
                                 subtotal: transaction.subtotal,
                                 hamaliCharges: transaction.hamaliCharges || 0,
                                 total: transaction.total,

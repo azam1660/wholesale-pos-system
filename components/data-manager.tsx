@@ -534,6 +534,16 @@ export class DataManager {
     return this.getItem<Sale>("sales", [])
   }
 
+  // Add this method after the existing getSales method
+  static getSalesWithEstimateNumber(): Sale[] {
+    const sales = this.getSales()
+    // Ensure backward compatibility - map invoiceNumber to estimateNumber if needed
+    return sales.map((sale) => ({
+      ...sale,
+      estimateNumber: sale.estimateNumber || (sale as any).invoiceNumber || "Unknown",
+    }))
+  }
+
   static async recordSale(saleData: {
     estimateNumber: string
     customerId?: string

@@ -18,7 +18,6 @@ import {
   AlertCircle,
   BarChart3,
   Eye,
-  ArrowLeft,
 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -72,6 +71,15 @@ interface StockTransaction {
   createdAt: string
 }
 
+interface TransactionItem {
+  id: string
+  name: string
+  quantity: number
+  unitPrice: number
+  lineTotal: number
+  unit: string
+}
+
 interface InventoryReport {
   id: string
   reportType: "closing_stock" | "stock_movement" | "low_stock" | "valuation"
@@ -93,14 +101,14 @@ const STORAGE_KEYS = {
 }
 
 export default function InventoryManagement() {
-  const [currentReport, setCurrentReport] = useState<any>(null)
-
   // State management
   const [inventoryItems, setInventoryItems] = useState<InventoryItem[]>([])
   const [stockTransactions, setStockTransactions] = useState<StockTransaction[]>([])
   const [filteredItems, setFilteredItems] = useState<InventoryItem[]>([])
   const [products, setProducts] = useState<any[]>([])
   const [categories, setCategories] = useState<any[]>([])
+  const [superCategories, setSuperCategories] = useState<any[]>([])
+  const [subCategories, setSubCategories] = useState<any[]>([])
 
   // UI State
   const [activeTab, setActiveTab] = useState<"overview" | "transactions" | "reports" | "settings">("overview")
@@ -108,9 +116,18 @@ export default function InventoryManagement() {
   const [categoryFilter, setCategoryFilter] = useState("all")
   const [stockFilter, setStockFilter] = useState<"all" | "low" | "out">("all")
 
+  // Transaction UI State
+  const [showTransactionDialog, setShowTransactionDialog] = useState(false)
+  const [transactionType, setTransactionType] = useState<"sale" | "purchase" | "adjustment">("purchase")
+  const [currentView, setCurrentView] = useState<"super" | "sub" | "products">("super")
+  const [selectedSuperCategory, setSelectedSuperCategory] = useState<string>("")
+  const [selectedSubCategory, setSelectedSubCategory] = useState<string>("")
+  const [transactionItems, setTransactionItems] = useState<TransactionItem[]>([])
+  const [transactionReference, setTransactionReference] = useState("")
+  const [transactionDate, setTransactionDate] = useState(format(new Date(), "yyyy-MM-dd"))
+
   // Dialog states
   const [showAddItemDialog, setShowAddItemDialog] = useState(false)
-  const [showTransactionDialog, setShowTransactionDialog] = useState(false)
   const [showReportDialog, setShowReportDialog] = useState(false)
   const [showItemDetailsDialog, setShowItemDetailsDialog] = useState(false)
   const [selectedItem, setSelectedItem] = useState<InventoryItem | null>(null)
@@ -123,22 +140,15 @@ export default function InventoryManagement() {
     notes: "",
   })
 
-  const [transactionForm, setTransactionForm] = useState({
-    productId: "",
-    type: "purchase" as "opening" | "purchase" | "sale" | "adjustment",
-    quantity: 0,
-    unitPrice: 0,
-    reference: "",
-    notes: "",
-    date: format(new Date(), "yyyy-MM-dd"),
-  })
-
   const [reportForm, setReportForm] = useState({
     type: "closing_stock" as "closing_stock" | "stock_movement" | "low_stock" | "valuation",
     startDate: format(new Date(), "yyyy-MM-dd"),
     endDate: format(new Date(), "yyyy-MM-dd"),
     categoryFilter: "all",
   })
+
+  const [lastProcessedTransaction, setLastProcessedTransaction] = useState<any>(null)
+  const [showTransactionReceipt, setShowTransactionReceipt] = useState(false)
 
   // Refs
   const reportRef = useRef<HTMLDivElement>(null)
@@ -167,11 +177,13 @@ export default function InventoryManagement() {
 
     // Load products and categories from DataManager
     const productsData = DataManager.getProducts()
-    const subCategories = DataManager.getSubCategories()
-    const superCategories = DataManager.getSuperCategories()
+    const subCategoriesData = DataManager.getSubCategories()
+    const superCategoriesData = DataManager.getSuperCategories()
 
     setProducts(productsData)
-    setCategories([...superCategories, ...subCategories])
+    setSubCategories(subCategoriesData)
+    setSuperCategories(superCategoriesData)
+    setCategories([...superCategoriesData, ...subCategoriesData])
   }
 
   const saveInventoryItems = (items: InventoryItem[]) => {
@@ -212,13 +224,141 @@ export default function InventoryManagement() {
     return Date.now().toString() + Math.random().toString(36).substr(2, 9)
   }
 
+  // Transaction handling functions
+  const handleSuperCategorySelect = (categoryId: string) => {
+    setSelectedSuperCategory(categoryId)
+    setSelectedSubCategory("")
+    setCurrentView("sub")
+  }
+
+  const handleSubCategorySelect = (subCategoryId: string) => {
+    setSelectedSubCategory(subCategoryId)
+    setCurrentView("products")
+  }
+
+  const handleBackToSuper = () => {
+    setCurrentView("super")
+    setSelectedSuperCategory("")
+    setSelectedSubCategory("")
+  }
+
+  const handleBackToSub = () => {
+    setCurrentView("sub")
+    setSelectedSubCategory("")
+  }
+
+  const addToTransaction = (product: any) => {
+    const existingItem = transactionItems.find((item) => item.id === product.id)
+    if (existingItem) {
+      updateTransactionQuantity(product.id, existingItem.quantity + 1)
+    } else {
+      const newItem: TransactionItem = {
+        id: product.id,
+        name: product.name,
+        quantity: 1,
+        unitPrice: product.price,
+        lineTotal: product.price,
+        unit: product.unit,
+      }
+      setTransactionItems([...transactionItems, newItem])
+    }
+  }
+
+  const updateTransactionQuantity = (itemId: string, newQuantity: number) => {
+    if (newQuantity <= 0) {
+      removeFromTransaction(itemId)
+      return
+    }
+    setTransactionItems((items) =>
+      items.map((item) =>
+        item.id === itemId ? { ...item, quantity: newQuantity, lineTotal: newQuantity * item.unitPrice } : item,
+      ),
+    )
+  }
+
+  const updateTransactionUnitPrice = (itemId: string, newPrice: number) => {
+    setTransactionItems((items) =>
+      items.map((item) => {
+        if (item.id === itemId) {
+          return { ...item, unitPrice: newPrice, lineTotal: item.quantity * newPrice }
+        }
+        return item
+      }),
+    )
+  }
+
+  const removeFromTransaction = (itemId: string) => {
+    setTransactionItems((items) => items.filter((item) => item.id !== itemId))
+  }
+
+  const clearTransactionItems = () => {
+    setTransactionItems([])
+  }
+
+  const processTransaction = async () => {
+    if (transactionItems.length === 0) return
+
+    try {
+      const transactionSubtotal = transactionItems.reduce((sum, item) => sum + item.lineTotal, 0)
+      const transactionRecord = {
+        id: generateId(),
+        type: transactionType,
+        date: transactionDate,
+        reference: transactionReference,
+        items: [...transactionItems],
+        subtotal: transactionSubtotal,
+        processedAt: new Date().toISOString(),
+        transactionNumber: `${transactionType.toUpperCase()}-${format(new Date(), "yyyyMMdd")}-${Date.now().toString().slice(-4)}`,
+      }
+
+      // Process each item in the transaction
+      for (const item of transactionItems) {
+        const newTransaction: StockTransaction = {
+          id: generateId(),
+          productId: item.id,
+          productName: item.name,
+          type: transactionType,
+          quantity: transactionType === "sale" ? -item.quantity : item.quantity,
+          unitPrice: item.unitPrice,
+          totalValue: item.lineTotal,
+          date: transactionDate,
+          reference: transactionReference,
+          notes: `${transactionType.charAt(0).toUpperCase() + transactionType.slice(1)} transaction`,
+          createdAt: new Date().toISOString(),
+        }
+
+        const updatedTransactions = [...stockTransactions, newTransaction]
+        saveStockTransactions(updatedTransactions)
+
+        // Update inventory item
+        updateInventoryFromTransaction(newTransaction)
+      }
+
+      // Set the transaction record and show receipt
+      setLastProcessedTransaction(transactionRecord)
+      setShowTransactionReceipt(true)
+
+      // Clear form and close dialog
+      clearTransactionItems()
+      setTransactionReference("")
+      setTransactionDate(format(new Date(), "yyyy-MM-dd"))
+      setCurrentView("super")
+      setSelectedSuperCategory("")
+      setSelectedSubCategory("")
+      setShowTransactionDialog(false)
+    } catch (error) {
+      console.error("Error processing transaction:", error)
+      alert("Error processing transaction. Please try again.")
+    }
+  }
+
   const handleAddInventoryItem = () => {
     if (!itemForm.productId) return
 
     const product = products.find((p) => p.id === itemForm.productId)
     if (!product) return
 
-    const subCategory = categories.find((c) => c.id === product.subCategoryId)
+    const subCategory = subCategories.find((c) => c.id === product.subCategoryId)
     const categoryName = subCategory?.name || "Unknown"
 
     const newItem: InventoryItem = {
@@ -268,45 +408,6 @@ export default function InventoryManagement() {
     setShowAddItemDialog(false)
   }
 
-  const handleAddTransaction = () => {
-    if (!transactionForm.productId || transactionForm.quantity === 0) return
-
-    const product = products.find((p) => p.id === transactionForm.productId)
-    if (!product) return
-
-    const newTransaction: StockTransaction = {
-      id: generateId(),
-      productId: product.id,
-      productName: product.name,
-      type: transactionForm.type,
-      quantity: transactionForm.quantity,
-      unitPrice: transactionForm.unitPrice || undefined,
-      totalValue: transactionForm.unitPrice ? transactionForm.quantity * transactionForm.unitPrice : undefined,
-      date: transactionForm.date,
-      reference: transactionForm.reference,
-      notes: transactionForm.notes,
-      createdAt: new Date().toISOString(),
-    }
-
-    const updatedTransactions = [...stockTransactions, newTransaction]
-    saveStockTransactions(updatedTransactions)
-
-    // Update inventory item
-    updateInventoryFromTransaction(newTransaction)
-
-    // Reset form
-    setTransactionForm({
-      productId: "",
-      type: "purchase",
-      quantity: 0,
-      unitPrice: 0,
-      reference: "",
-      notes: "",
-      date: format(new Date(), "yyyy-MM-dd"),
-    })
-    setShowTransactionDialog(false)
-  }
-
   const updateInventoryFromTransaction = (transaction: StockTransaction) => {
     const updatedItems = inventoryItems.map((item) => {
       if (item.productId === transaction.productId) {
@@ -314,12 +415,12 @@ export default function InventoryManagement() {
 
         switch (transaction.type) {
           case "purchase":
-            updatedItem.purchases += transaction.quantity
-            updatedItem.closingStock += transaction.quantity
+            updatedItem.purchases += Math.abs(transaction.quantity)
+            updatedItem.closingStock += Math.abs(transaction.quantity)
             break
           case "sale":
-            updatedItem.sales += transaction.quantity
-            updatedItem.closingStock -= transaction.quantity
+            updatedItem.sales += Math.abs(transaction.quantity)
+            updatedItem.closingStock -= Math.abs(transaction.quantity)
             break
           case "adjustment":
             updatedItem.adjustments += transaction.quantity
@@ -364,19 +465,120 @@ export default function InventoryManagement() {
     saveStockTransactions(updatedTransactions)
   }
 
-  const prefillTransactionForm = (item: InventoryItem, type: "purchase" | "sale") => {
-    setTransactionForm({
-      productId: item.productId,
-      type,
-      quantity: type === "purchase" ? 10 : 1,
-      unitPrice: 0,
-      reference: "",
-      notes: "",
-      date: format(new Date(), "yyyy-MM-dd"),
-    })
-    setShowTransactionDialog(true)
+  // Render functions for transaction interface
+  const renderSuperCategories = () => (
+    <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-4">
+      {superCategories.map((category) => (
+        <Button
+          key={category.id}
+          onClick={() => handleSuperCategorySelect(category.id)}
+          className="h-28 sm:h-32 w-full bg-white border-2 border-gray-200 hover:border-yellow-400 hover:bg-yellow-50 text-gray-900 rounded-xl flex flex-col items-center justify-center gap-3 transition-all duration-200 shadow-sm hover:shadow-md"
+          variant="outline"
+        >
+          <div className="relative">
+            {category.image ? (
+              <img
+                src={category.image || "/placeholder.svg"}
+                alt={category.name}
+                className="w-12 h-12 sm:w-14 sm:h-14 object-cover rounded-lg border border-gray-200"
+              />
+            ) : (
+              <span className="text-2xl sm:text-3xl">{category.icon}</span>
+            )}
+          </div>
+          <span className="font-medium text-xs sm:text-sm text-center px-2 leading-tight">{category.name}</span>
+        </Button>
+      ))}
+    </div>
+  )
+
+  const renderSubCategories = () => {
+    const filteredSubCategories = subCategories.filter((sub) => sub.superCategoryId === selectedSuperCategory)
+    return (
+      <div className="space-y-6">
+        <Button onClick={handleBackToSuper} variant="outline" className="rounded-lg border-gray-300 hover:bg-gray-50">
+          ← Back to Categories
+        </Button>
+        <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-4">
+          {filteredSubCategories.map((subCategory) => (
+            <Button
+              key={subCategory.id}
+              onClick={() => handleSubCategorySelect(subCategory.id)}
+              className="h-24 sm:h-28 w-full bg-white border-2 border-gray-200 hover:border-yellow-400 hover:bg-yellow-50 text-gray-900 rounded-xl flex flex-col items-center justify-center gap-2 transition-all duration-200 shadow-sm hover:shadow-md"
+              variant="outline"
+            >
+              <div className="relative">
+                {subCategory.image ? (
+                  <img
+                    src={subCategory.image || "/placeholder.svg"}
+                    alt={subCategory.name}
+                    className="w-10 h-10 sm:w-12 sm:h-12 object-cover rounded-lg border border-gray-200"
+                  />
+                ) : (
+                  <span className="text-xl sm:text-2xl">{subCategory.icon}</span>
+                )}
+              </div>
+              <span className="font-medium text-xs sm:text-sm text-center px-2 leading-tight">{subCategory.name}</span>
+            </Button>
+          ))}
+        </div>
+      </div>
+    )
   }
 
+  const renderProducts = () => {
+    const filteredProducts = products.filter((prod) => prod.subCategoryId === selectedSubCategory)
+    return (
+      <div className="space-y-6">
+        <div className="flex flex-wrap gap-3">
+          <Button onClick={handleBackToSub} variant="outline" className="rounded-lg border-gray-300 hover:bg-gray-50">
+            ← Back to Subcategories
+          </Button>
+          <Button onClick={handleBackToSuper} variant="outline" className="rounded-lg border-gray-300 hover:bg-gray-50">
+            ← Back to Categories
+          </Button>
+        </div>
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
+          {filteredProducts.map((product) => (
+            <Card
+              key={product.id}
+              className="rounded-xl border-gray-200 shadow-sm hover:shadow-md transition-shadow duration-200"
+            >
+              <CardContent className="p-4">
+                <div className="space-y-4">
+                  <div className="flex items-start gap-3">
+                    {product.image && (
+                      <img
+                        src={product.image || "/placeholder.svg"}
+                        alt={product.name}
+                        className="w-16 h-16 object-cover rounded-lg border border-gray-200 flex-shrink-0"
+                      />
+                    )}
+                    <div className="flex-1 min-w-0">
+                      <h3 className="font-medium text-sm text-gray-900 mb-2">{product.name}</h3>
+                      <div className="flex justify-between items-center">
+                        <span className="text-lg font-bold text-gray-900">₹{product.price.toFixed(2)}</span>
+                      </div>
+                      <div className="text-xs text-gray-500 mt-1">Unit: {product.unit}</div>
+                    </div>
+                  </div>
+                  <Button
+                    onClick={() => addToTransaction(product)}
+                    className="w-full bg-yellow-500 hover:bg-yellow-600 text-white rounded-lg font-medium shadow-sm"
+                  >
+                    <Plus className="w-4 h-4 mr-2" />
+                    Add to {transactionType.charAt(0).toUpperCase() + transactionType.slice(1)}
+                  </Button>
+                </div>
+              </CardContent>
+            </Card>
+          ))}
+        </div>
+      </div>
+    )
+  }
+
+  // Rest of the existing functions (generateReport, printReport, etc.) remain the same...
   const generateReport = () => {
     let reportData: any[] = []
     let title = ""
@@ -483,14 +685,12 @@ export default function InventoryManagement() {
     if (purchaseTransactions.length === 0) return 0
 
     const totalValue = purchaseTransactions.reduce((sum, t) => sum + (t.totalValue || 0), 0)
-    const totalQuantity = purchaseTransactions.reduce((sum, t) => sum + t.quantity, 0)
+    const totalQuantity = purchaseTransactions.reduce((sum, t) => sum + Math.abs(t.quantity), 0)
 
     return totalQuantity > 0 ? totalValue / totalQuantity : 0
   }
 
-  const printReport = (report: any) => {
-    if (typeof window === "undefined") return
-
+  const printReport = (report: InventoryReport) => {
     const printWindow = window.open("", "_blank")
     if (!printWindow) return
 
@@ -782,6 +982,245 @@ export default function InventoryManagement() {
     doc.save(fileName)
   }
 
+  const printTransactionReceipt = (transaction: any) => {
+    const printWindow = window.open("", "_blank")
+    if (!printWindow) return
+
+    const printContent = generateTransactionReceiptHTML(transaction)
+    printWindow.document.write(printContent)
+    printWindow.document.close()
+    printWindow.print()
+  }
+
+  const printThermalTransactionReceipt = (transaction: any) => {
+    const printWindow = window.open("", "_blank")
+    if (!printWindow) return
+
+    const printContent = generateThermalTransactionReceiptHTML(transaction)
+    printWindow.document.write(printContent)
+    printWindow.document.close()
+    printWindow.print()
+  }
+
+  const generateTransactionReceiptHTML = (transaction: any): string => {
+    const currentDate = format(new Date(), "MMM dd, yyyy HH:mm")
+
+    return `
+      <!DOCTYPE html>
+      <html>
+        <head>
+          <title>${transaction.type.toUpperCase()} Receipt - ${transaction.transactionNumber}</title>
+          <style>
+            body { font-family: Arial, sans-serif; margin: 0; padding: 20px; }
+            .receipt { max-width: 800px; margin: 0 auto; }
+            table { width: 100%; border-collapse: collapse; margin: 10px 0; }
+            th, td { border: 1px solid #000; padding: 8px; text-align: left; }
+            th { background-color: #f5f5f5; font-weight: bold; }
+            .text-right { text-align: right; }
+            .text-center { text-align: center; }
+            .header { text-align: center; margin-bottom: 20px; border-bottom: 2px solid #000; padding-bottom: 20px; }
+            .company-name { font-size: 24px; font-weight: bold; margin-bottom: 5px; }
+            .receipt-title { font-size: 18px; margin-bottom: 10px; }
+            .receipt-info { margin-bottom: 20px; }
+            .summary { margin-top: 20px; padding: 15px; background-color: #f9f9f9; border: 1px solid #ddd; }
+            @media print {
+              body { margin: 0; }
+              .no-print { display: none; }
+            }
+          </style>
+        </head>
+        <body>
+          <div class="receipt">
+            <div class="header">
+              <div class="company-name">SL SALAR</div>
+              <div class="receipt-title">${transaction.type.toUpperCase()} RECEIPT</div>
+              <div>Jodbhavi peth, Solapur | Ph: 8668749859</div>
+            </div>
+
+            <div class="receipt-info">
+              <div><strong>Receipt No:</strong> ${transaction.transactionNumber}</div>
+              <div><strong>Date:</strong> ${transaction.date}</div>
+              <div><strong>Time:</strong> ${format(new Date(transaction.processedAt), "HH:mm:ss")}</div>
+              ${transaction.reference ? `<div><strong>Reference:</strong> ${transaction.reference}</div>` : ""}
+            </div>
+
+            <table>
+              <thead>
+                <tr>
+                  <th>S.No.</th>
+                  <th>Particulars</th>
+                  <th>QTY</th>
+                  <th>Unit</th>
+                  <th>Rate (₹)</th>
+                  <th>Amount (₹)</th>
+                </tr>
+              </thead>
+              <tbody>
+                ${transaction.items
+        .map(
+          (item: any, index: number) => `
+                  <tr>
+                    <td>${index + 1}</td>
+                    <td>${item.name}</td>
+                    <td class="text-center">${item.quantity}</td>
+                    <td class="text-center">${item.unit}</td>
+                    <td class="text-right">${item.unitPrice.toFixed(2)}</td>
+                    <td class="text-right">${item.lineTotal.toFixed(2)}</td>
+                  </tr>
+                `,
+        )
+        .join("")}
+                <tr style="background-color: #f0f0f0;">
+                  <td colspan="5" class="text-right"><strong>Total (INR):</strong></td>
+                  <td class="text-right"><strong>₹${transaction.subtotal.toFixed(2)}</strong></td>
+                </tr>
+              </tbody>
+            </table>
+
+            <div class="summary">
+              <div><strong>Transaction Type:</strong> ${transaction.type.toUpperCase()}</div>
+              <div><strong>Total Items:</strong> ${transaction.items.length}</div>
+              <div><strong>Total Quantity:</strong> ${transaction.items.reduce((sum: number, item: any) => sum + item.quantity, 0)}</div>
+              <div><strong>Total Value:</strong> ₹${transaction.subtotal.toFixed(2)}</div>
+              <div><strong>Processed At:</strong> ${currentDate}</div>
+            </div>
+
+            <div style="margin-top: 30px; text-align: center; font-size: 12px;">
+              <div>Thank you for your business!</div>
+              <div>This is a computer generated receipt.</div>
+            </div>
+          </div>
+        </body>
+      </html>
+    `
+  }
+
+  const generateThermalTransactionReceiptHTML = (transaction: any): string => {
+    const currentDate = format(new Date(), "MMM dd, yyyy HH:mm")
+
+    return `
+      <!DOCTYPE html>
+      <html>
+        <head>
+          <title>Thermal ${transaction.type.toUpperCase()} Receipt - ${transaction.transactionNumber}</title>
+          <style>
+            body {
+              font-family: 'Courier New', monospace;
+              margin: 0;
+              padding: 5px;
+              width: 79mm;
+              font-size: 12px;
+              line-height: 1.2;
+            }
+            .thermal-receipt {
+              width: 100%;
+              max-width: 79mm;
+            }
+            .center { text-align: center; }
+            .left { text-align: left; }
+            .right { text-align: right; }
+            .bold { font-weight: bold; }
+            .line { border-bottom: 1px dashed #000; margin: 2px 0; }
+            .double-line { border-bottom: 2px solid #000; margin: 3px 0; }
+            .item-row {
+              display: flex;
+              justify-content: space-between;
+              margin: 1px 0;
+              font-size: 11px;
+            }
+            .item-name {
+              flex: 1;
+              white-space: nowrap;
+              overflow: hidden;
+              text-overflow: ellipsis;
+              max-width: 35mm;
+            }
+            .item-qty { width: 15mm; text-align: center; }
+            .item-rate { width: 15mm; text-align: right; }
+            .item-amount { width: 18mm; text-align: right; }
+            .total-row {
+              display: flex;
+              justify-content: space-between;
+              font-weight: bold;
+              margin: 2px 0;
+            }
+            .header { font-size: 14px; font-weight: bold; }
+            .sub-header { font-size: 10px; }
+            .footer { font-size: 10px; margin-top: 5px; }
+            @media print {
+              body { margin: 0; padding: 2px; }
+              .no-print { display: none; }
+            }
+          </style>
+        </head>
+        <body>
+          <div class="thermal-receipt">
+            <!-- Store Header -->
+            <div class="center header">SL SALAR</div>
+            <div class="center sub-header">Jodbhavi peth, Solapur</div>
+            <div class="center sub-header">Ph: 8668749859</div>
+            <div class="double-line"></div>
+
+            <!-- Receipt Details -->
+            <div class="center bold">${transaction.type.toUpperCase()} RECEIPT</div>
+            <div class="line"></div>
+            <div class="left">
+              <div><strong>Receipt:</strong> ${transaction.transactionNumber}</div>
+              <div><strong>Date:</strong> ${transaction.date}</div>
+              <div><strong>Time:</strong> ${format(new Date(transaction.processedAt), "HH:mm:ss")}</div>
+              ${transaction.reference ? `<div><strong>Ref:</strong> ${transaction.reference}</div>` : ""}
+            </div>
+            <div class="line"></div>
+
+            <!-- Items Header -->
+            <div class="item-row bold">
+              <div class="item-name">Item</div>
+              <div class="item-qty">Qty</div>
+              <div class="item-rate">Rate</div>
+              <div class="item-amount">Amount</div>
+            </div>
+            <div class="line"></div>
+
+            <!-- Items -->
+            ${transaction.items
+        .map(
+          (item: any) => `
+              <div class="item-row">
+                <div class="item-name">${item.name}</div>
+                <div class="item-qty">${item.quantity}</div>
+                <div class="item-rate">${item.unitPrice.toFixed(2)}</div>
+                <div class="item-amount">${item.lineTotal.toFixed(2)}</div>
+              </div>
+            `,
+        )
+        .join("")}
+
+            <div class="line"></div>
+
+            <!-- Total -->
+            <div class="total-row" style="font-size: 14px;">
+              <div>TOTAL:</div>
+              <div>₹${transaction.subtotal.toFixed(2)}</div>
+            </div>
+            <div class="double-line"></div>
+
+            <!-- Summary -->
+            <div class="center sub-header">
+              <div>Items: ${transaction.items.length} | Qty: ${transaction.items.reduce((sum: number, item: any) => sum + item.quantity, 0)}</div>
+              <div>Type: ${transaction.type.toUpperCase()}</div>
+            </div>
+
+            <!-- Footer -->
+            <div class="center footer">
+              <div>Thank you!</div>
+              <div>${currentDate}</div>
+            </div>
+          </div>
+        </body>
+      </html>
+    `
+  }
+
   const getStockStatus = (item: InventoryItem) => {
     if (item.closingStock <= 0) return { status: "Out of Stock", color: "bg-red-100 text-red-800" }
     if (item.closingStock <= item.reorderLevel) return { status: "Low Stock", color: "bg-yellow-100 text-yellow-800" }
@@ -806,6 +1245,8 @@ export default function InventoryManagement() {
   const lowStockItems = inventoryItems.filter((item) => item.closingStock <= item.reorderLevel).length
   const outOfStockItems = inventoryItems.filter((item) => item.closingStock <= 0).length
 
+  const transactionSubtotal = transactionItems.reduce((sum, item) => sum + item.lineTotal, 0)
+
   return (
     <div className="min-h-screen bg-white relative">
       {/* Grid Background */}
@@ -823,20 +1264,9 @@ export default function InventoryManagement() {
       <div className="relative z-10 p-6">
         {/* Header */}
         <div className="flex items-center justify-between mb-6">
-          <div className="flex items-center gap-4">
-            <Button
-              onClick={() => window.open("/", "_blank")}
-              variant="outline"
-              className="rounded-[9px] border-gray-300"
-              size="sm"
-            >
-              <ArrowLeft className="w-4 h-4 mr-2" />
-              Back to POS
-            </Button>
-            <div>
-              <h1 className="text-3xl font-bold text-black">Inventory Management</h1>
-              <p className="text-gray-600 mt-1">Manage stock levels, track movements, and generate reports</p>
-            </div>
+          <div>
+            <h1 className="text-3xl font-bold text-black">Inventory Management</h1>
+            <p className="text-gray-600 mt-1">Manage stock levels, track movements, and generate reports</p>
           </div>
           <div className="flex gap-2">
             <Button
@@ -847,12 +1277,37 @@ export default function InventoryManagement() {
               Add Item
             </Button>
             <Button
-              onClick={() => setShowTransactionDialog(true)}
+              onClick={() => {
+                setTransactionType("purchase")
+                setShowTransactionDialog(true)
+              }}
               variant="outline"
               className="rounded-[9px] border-gray-300"
             >
               <Package className="w-4 h-4 mr-2" />
-              Add Transaction
+              Purchase
+            </Button>
+            <Button
+              onClick={() => {
+                setTransactionType("sale")
+                setShowTransactionDialog(true)
+              }}
+              variant="outline"
+              className="rounded-[9px] border-gray-300"
+            >
+              <ShoppingCart className="w-4 h-4 mr-2" />
+              Sale
+            </Button>
+            <Button
+              onClick={() => {
+                setTransactionType("adjustment")
+                setShowTransactionDialog(true)
+              }}
+              variant="outline"
+              className="rounded-[9px] border-gray-300"
+            >
+              <TrendingUp className="w-4 h-4 mr-2" />
+              Adjust
             </Button>
           </div>
         </div>
@@ -1020,22 +1475,6 @@ export default function InventoryManagement() {
                           <Button
                             size="sm"
                             variant="outline"
-                            onClick={() => prefillTransactionForm(item, "purchase")}
-                            className="rounded-[9px]"
-                          >
-                            <Plus className="w-4 h-4" />
-                          </Button>
-                          <Button
-                            size="sm"
-                            variant="outline"
-                            onClick={() => prefillTransactionForm(item, "sale")}
-                            className="rounded-[9px]"
-                          >
-                            <Minus className="w-4 h-4" />
-                          </Button>
-                          <Button
-                            size="sm"
-                            variant="outline"
                             onClick={() => {
                               setSelectedItem(item)
                               setShowItemDetailsDialog(true)
@@ -1104,7 +1543,7 @@ export default function InventoryManagement() {
                           <div className="text-sm text-gray-600">
                             <span>{format(new Date(transaction.date), "MMM dd, yyyy")}</span>
                             <span className="mx-2">•</span>
-                            <span>Qty: {transaction.quantity}</span>
+                            <span>Qty: {Math.abs(transaction.quantity)}</span>
                             {transaction.unitPrice && (
                               <>
                                 <span className="mx-2">•</span>
@@ -1244,6 +1683,8 @@ export default function InventoryManagement() {
                         onClick={() => {
                           const report = generateReport()
                           setShowReportDialog(true)
+                            // Store the generated report for viewing
+                            ; (window as any).currentReport = report
                         }}
                         className="w-full bg-yellow-400 hover:bg-yellow-500 text-black rounded-[9px]"
                       >
@@ -1374,6 +1815,158 @@ export default function InventoryManagement() {
         </Tabs>
       </div>
 
+      {/* Transaction Dialog - POS Style */}
+      <Dialog open={showTransactionDialog} onOpenChange={setShowTransactionDialog}>
+        <DialogContent className="max-w-6xl max-h-[90vh] overflow-hidden">
+          <DialogHeader>
+            <DialogTitle>{transactionType.charAt(0).toUpperCase() + transactionType.slice(1)} Transaction</DialogTitle>
+          </DialogHeader>
+
+          <div className="flex gap-6 h-[70vh]">
+            {/* Product Selection - Left Side */}
+            <div className="flex-1 overflow-y-auto">
+              {currentView === "super" && renderSuperCategories()}
+              {currentView === "sub" && renderSubCategories()}
+              {currentView === "products" && renderProducts()}
+            </div>
+
+            {/* Transaction Items - Right Side */}
+            <div className="w-96 border-l border-gray-200 flex flex-col">
+              <div className="p-4 border-b border-gray-200">
+                <h3 className="font-medium text-lg">
+                  {transactionType.charAt(0).toUpperCase() + transactionType.slice(1)} Items
+                </h3>
+              </div>
+
+              <div className="flex-1 overflow-y-auto p-4">
+                {transactionItems.length === 0 ? (
+                  <div className="text-center py-8 text-gray-500">
+                    <Package className="w-12 h-12 mx-auto mb-3 opacity-50" />
+                    <p className="text-sm">No items selected</p>
+                  </div>
+                ) : (
+                  <div className="space-y-3">
+                    {transactionItems.map((item) => (
+                      <Card key={item.id} className="rounded-lg border-gray-200">
+                        <CardContent className="p-3">
+                          <div className="space-y-3">
+                            <div className="font-medium text-sm">{item.name}</div>
+
+                            <div className="flex items-center gap-2">
+                              <Button
+                                size="sm"
+                                variant="outline"
+                                onClick={() => updateTransactionQuantity(item.id, item.quantity - 1)}
+                                className="w-8 h-8 p-0 rounded-lg"
+                              >
+                                <Minus className="w-3 h-3" />
+                              </Button>
+                              <Input
+                                type="number"
+                                value={item.quantity}
+                                onChange={(e) =>
+                                  updateTransactionQuantity(item.id, Number.parseInt(e.target.value) || 0)
+                                }
+                                className="w-16 h-8 text-center rounded-lg border-gray-300"
+                                min="1"
+                              />
+                              <Button
+                                size="sm"
+                                variant="outline"
+                                onClick={() => updateTransactionQuantity(item.id, item.quantity + 1)}
+                                className="w-8 h-8 p-0 rounded-lg"
+                              >
+                                <Plus className="w-3 h-3" />
+                              </Button>
+                              <span className="text-xs text-gray-500 ml-1">{item.unit}</span>
+                            </div>
+
+                            <div className="flex items-center gap-2">
+                              <span className="text-xs text-gray-500">Rate:</span>
+                              <Input
+                                type="number"
+                                value={item.unitPrice}
+                                onChange={(e) =>
+                                  updateTransactionUnitPrice(item.id, Number.parseFloat(e.target.value) || 0)
+                                }
+                                className="w-20 h-7 text-xs rounded-lg border-gray-300"
+                                step="0.01"
+                                min="0"
+                              />
+                              <span className="text-xs text-gray-500">₹</span>
+                            </div>
+
+                            <div className="flex justify-between items-center">
+                              <span className="font-bold text-sm">₹{item.lineTotal.toFixed(2)}</span>
+                              <Button
+                                size="sm"
+                                variant="outline"
+                                onClick={() => removeFromTransaction(item.id)}
+                                className="w-7 h-7 p-0 rounded-lg text-red-500 hover:text-red-700"
+                              >
+                                <Trash2 className="w-3 h-3" />
+                              </Button>
+                            </div>
+                          </div>
+                        </CardContent>
+                      </Card>
+                    ))}
+                  </div>
+                )}
+              </div>
+
+              {/* Transaction Summary */}
+              <div className="border-t border-gray-200 p-4 space-y-4">
+                <div>
+                  <Label>Reference (Optional)</Label>
+                  <Input
+                    placeholder="Reference number or note"
+                    value={transactionReference}
+                    onChange={(e) => setTransactionReference(e.target.value)}
+                    className="rounded-lg border-gray-300"
+                  />
+                </div>
+
+                <div>
+                  <Label>Transaction Date</Label>
+                  <Input
+                    type="date"
+                    value={transactionDate}
+                    onChange={(e) => setTransactionDate(e.target.value)}
+                    className="rounded-lg border-gray-300"
+                  />
+                </div>
+
+                <div className="bg-gray-50 p-3 rounded-lg">
+                  <div className="flex justify-between text-lg font-bold">
+                    <span>Total:</span>
+                    <span>₹{transactionSubtotal.toFixed(2)}</span>
+                  </div>
+                </div>
+
+                <div className="space-y-2">
+                  <Button
+                    onClick={clearTransactionItems}
+                    variant="outline"
+                    className="w-full rounded-lg"
+                    disabled={transactionItems.length === 0}
+                  >
+                    Clear Items
+                  </Button>
+                  <Button
+                    onClick={processTransaction}
+                    className="w-full bg-yellow-500 hover:bg-yellow-600 text-white rounded-lg font-medium"
+                    disabled={transactionItems.length === 0}
+                  >
+                    Process {transactionType.charAt(0).toUpperCase() + transactionType.slice(1)}
+                  </Button>
+                </div>
+              </div>
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
+
       {/* Add Item Dialog */}
       <Dialog open={showAddItemDialog} onOpenChange={setShowAddItemDialog}>
         <DialogContent className="max-w-md">
@@ -1449,139 +2042,6 @@ export default function InventoryManagement() {
                 onClick={() => {
                   setItemForm({ productId: "", openingStock: 0, reorderLevel: 0, notes: "" })
                   setShowAddItemDialog(false)
-                }}
-                variant="outline"
-                className="rounded-[9px]"
-              >
-                Cancel
-              </Button>
-            </div>
-          </div>
-        </DialogContent>
-      </Dialog>
-
-      {/* Add Transaction Dialog */}
-      <Dialog open={showTransactionDialog} onOpenChange={setShowTransactionDialog}>
-        <DialogContent className="max-w-md">
-          <DialogHeader>
-            <DialogTitle>Add Stock Transaction</DialogTitle>
-            <DialogDescription>Record a purchase, sale, or stock adjustment</DialogDescription>
-          </DialogHeader>
-          <div className="space-y-4">
-            <div>
-              <Label>Product</Label>
-              <Select
-                value={transactionForm.productId}
-                onValueChange={(value) => setTransactionForm({ ...transactionForm, productId: value })}
-              >
-                <SelectTrigger className="rounded-[9px]">
-                  <SelectValue placeholder="Select a product" />
-                </SelectTrigger>
-                <SelectContent>
-                  {inventoryItems.map((item) => (
-                    <SelectItem key={item.productId} value={item.productId}>
-                      {item.productName} (Current: {item.closingStock} {item.unit})
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-
-            <div className="grid grid-cols-2 gap-2">
-              <div>
-                <Label>Transaction Type</Label>
-                <Select
-                  value={transactionForm.type}
-                  onValueChange={(value: any) => setTransactionForm({ ...transactionForm, type: value })}
-                >
-                  <SelectTrigger className="rounded-[9px]">
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="purchase">Purchase (+)</SelectItem>
-                    <SelectItem value="sale">Sale (-)</SelectItem>
-                    <SelectItem value="adjustment">Adjustment (±)</SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
-              <div>
-                <Label>Date</Label>
-                <Input
-                  type="date"
-                  value={transactionForm.date}
-                  onChange={(e) => setTransactionForm({ ...transactionForm, date: e.target.value })}
-                  className="rounded-[9px]"
-                />
-              </div>
-            </div>
-
-            <div className="grid grid-cols-2 gap-2">
-              <div>
-                <Label>Quantity</Label>
-                <Input
-                  type="number"
-                  value={transactionForm.quantity}
-                  onChange={(e) =>
-                    setTransactionForm({ ...transactionForm, quantity: Number.parseInt(e.target.value) || 0 })
-                  }
-                  className="rounded-[9px]"
-                />
-              </div>
-              <div>
-                <Label>Unit Price (Optional)</Label>
-                <Input
-                  type="number"
-                  step="0.01"
-                  value={transactionForm.unitPrice}
-                  onChange={(e) =>
-                    setTransactionForm({ ...transactionForm, unitPrice: Number.parseFloat(e.target.value) || 0 })
-                  }
-                  className="rounded-[9px]"
-                />
-              </div>
-            </div>
-
-            <div>
-              <Label>Reference (Optional)</Label>
-              <Input
-                value={transactionForm.reference}
-                onChange={(e) => setTransactionForm({ ...transactionForm, reference: e.target.value })}
-                className="rounded-[9px]"
-                placeholder="Invoice number, PO number, etc."
-              />
-            </div>
-
-            <div>
-              <Label>Notes (Optional)</Label>
-              <Textarea
-                value={transactionForm.notes}
-                onChange={(e) => setTransactionForm({ ...transactionForm, notes: e.target.value })}
-                className="rounded-[9px]"
-                placeholder="Any additional notes..."
-              />
-            </div>
-
-            <div className="flex gap-2">
-              <Button
-                onClick={handleAddTransaction}
-                className="flex-1 bg-yellow-400 hover:bg-yellow-500 text-black rounded-[9px]"
-                disabled={!transactionForm.productId || transactionForm.quantity === 0}
-              >
-                <Save className="w-4 h-4 mr-2" />
-                Add Transaction
-              </Button>
-              <Button
-                onClick={() => {
-                  setTransactionForm({
-                    productId: "",
-                    type: "purchase",
-                    quantity: 0,
-                    unitPrice: 0,
-                    reference: "",
-                    notes: "",
-                    date: format(new Date(), "yyyy-MM-dd"),
-                  })
-                  setShowTransactionDialog(false)
                 }}
                 variant="outline"
                 className="rounded-[9px]"
@@ -1681,7 +2141,7 @@ export default function InventoryManagement() {
                             {transaction.type.toUpperCase()}
                           </Badge>
                           <span className="text-sm">
-                            {transaction.quantity} {selectedItem.unit}
+                            {Math.abs(transaction.quantity)} {selectedItem.unit}
                           </span>
                         </div>
                         <span className="text-xs text-gray-500">{format(new Date(transaction.date), "MMM dd")}</span>
@@ -1703,7 +2163,8 @@ export default function InventoryManagement() {
               <div className="flex gap-2">
                 <Button
                   onClick={() => {
-                    if (currentReport) printReport(currentReport)
+                    const report = (window as any).currentReport
+                    if (report) printReport(report)
                   }}
                   variant="outline"
                   size="sm"
@@ -1714,7 +2175,8 @@ export default function InventoryManagement() {
                 </Button>
                 <Button
                   onClick={() => {
-                    if (currentReport) exportToPDF(currentReport)
+                    const report = (window as any).currentReport
+                    if (report) exportToPDF(report)
                   }}
                   variant="outline"
                   size="sm"
@@ -1728,18 +2190,17 @@ export default function InventoryManagement() {
           </DialogHeader>
 
           <div ref={reportRef} className="space-y-4">
-            {currentReport && (
+            {(window as any).currentReport && (
               <div className="bg-white p-6">
-                {/* Replace window.currentReport with currentReport */}
                 <div className="text-center border-b-2 border-black pb-4 mb-6">
                   <h1 className="text-2xl font-bold">SL SALAR</h1>
-                  <h2 className="text-lg mt-2">{currentReport.title}</h2>
+                  <h2 className="text-lg mt-2">{(window as any).currentReport.title}</h2>
                   <p className="text-sm text-gray-600 mt-2">
-                    Period: {format(new Date(currentReport.dateRange.start), "MMM dd, yyyy")} to{" "}
-                    {format(new Date(currentReport.dateRange.end), "MMM dd, yyyy")}
+                    Period: {format(new Date((window as any).currentReport.dateRange.start), "MMM dd, yyyy")} to{" "}
+                    {format(new Date((window as any).currentReport.dateRange.end), "MMM dd, yyyy")}
                   </p>
                   <p className="text-sm text-gray-600">
-                    Generated: {format(new Date(currentReport.generatedAt), "MMM dd, yyyy HH:mm")}
+                    Generated: {format(new Date((window as any).currentReport.generatedAt), "MMM dd, yyyy HH:mm")}
                   </p>
                 </div>
 
@@ -1747,7 +2208,7 @@ export default function InventoryManagement() {
                   <table className="w-full border-collapse border border-gray-300">
                     <thead>
                       <tr className="bg-gray-100">
-                        {currentReport.reportType === "closing_stock" && (
+                        {(window as any).currentReport.reportType === "closing_stock" && (
                           <>
                             <th className="border border-gray-300 p-2 text-left">Product Name</th>
                             <th className="border border-gray-300 p-2 text-left">Category</th>
@@ -1762,7 +2223,7 @@ export default function InventoryManagement() {
                             <th className="border border-gray-300 p-2 text-center">Status</th>
                           </>
                         )}
-                        {currentReport.reportType === "stock_movement" && (
+                        {(window as any).currentReport.reportType === "stock_movement" && (
                           <>
                             <th className="border border-gray-300 p-2 text-left">Date</th>
                             <th className="border border-gray-300 p-2 text-left">Product Name</th>
@@ -1773,7 +2234,7 @@ export default function InventoryManagement() {
                             <th className="border border-gray-300 p-2 text-left">Reference</th>
                           </>
                         )}
-                        {currentReport.reportType === "low_stock" && (
+                        {(window as any).currentReport.reportType === "low_stock" && (
                           <>
                             <th className="border border-gray-300 p-2 text-left">Product Name</th>
                             <th className="border border-gray-300 p-2 text-left">Category</th>
@@ -1783,7 +2244,7 @@ export default function InventoryManagement() {
                             <th className="border border-gray-300 p-2 text-center">Last Updated</th>
                           </>
                         )}
-                        {currentReport.reportType === "valuation" && (
+                        {(window as any).currentReport.reportType === "valuation" && (
                           <>
                             <th className="border border-gray-300 p-2 text-left">Product Name</th>
                             <th className="border border-gray-300 p-2 text-left">Category</th>
@@ -1795,9 +2256,9 @@ export default function InventoryManagement() {
                       </tr>
                     </thead>
                     <tbody>
-                      {currentReport.data.map((item: any, index: number) => (
+                      {(window as any).currentReport.data.map((item: any, index: number) => (
                         <tr key={index} className={index % 2 === 0 ? "bg-white" : "bg-gray-50"}>
-                          {currentReport.reportType === "closing_stock" && (
+                          {(window as any).currentReport.reportType === "closing_stock" && (
                             <>
                               <td className="border border-gray-300 p-2">{item.productName}</td>
                               <td className="border border-gray-300 p-2">{item.category}</td>
@@ -1822,7 +2283,7 @@ export default function InventoryManagement() {
                               </td>
                             </>
                           )}
-                          {currentReport.reportType === "stock_movement" && (
+                          {(window as any).currentReport.reportType === "stock_movement" && (
                             <>
                               <td className="border border-gray-300 p-2">
                                 {format(new Date(item.date), "MMM dd, yyyy")}
@@ -1841,13 +2302,13 @@ export default function InventoryManagement() {
                                   {item.type.toUpperCase()}
                                 </Badge>
                               </td>
-                              <td className="border border-gray-300 p-2 text-center">{item.quantity}</td>
+                              <td className="border border-gray-300 p-2 text-center">{Math.abs(item.quantity)}</td>
                               <td className="border border-gray-300 p-2 text-right">₹{item.unitPrice.toFixed(2)}</td>
                               <td className="border border-gray-300 p-2 text-right">₹{item.totalValue.toFixed(2)}</td>
                               <td className="border border-gray-300 p-2">{item.reference || "-"}</td>
                             </>
                           )}
-                          {currentReport.reportType === "low_stock" && (
+                          {(window as any).currentReport.reportType === "low_stock" && (
                             <>
                               <td className="border border-gray-300 p-2">{item.productName}</td>
                               <td className="border border-gray-300 p-2">{item.category}</td>
@@ -1857,7 +2318,7 @@ export default function InventoryManagement() {
                               <td className="border border-gray-300 p-2 text-center">{item.lastUpdated}</td>
                             </>
                           )}
-                          {currentReport.reportType === "valuation" && (
+                          {(window as any).currentReport.reportType === "valuation" && (
                             <>
                               <td className="border border-gray-300 p-2">{item.productName}</td>
                               <td className="border border-gray-300 p-2">{item.category}</td>
@@ -1875,20 +2336,120 @@ export default function InventoryManagement() {
                 <div className="mt-6 p-4 bg-gray-50 border rounded-[9px]">
                   <div className="grid grid-cols-1 md:grid-cols-3 gap-4 text-sm">
                     <div>
-                      <strong>Total Items:</strong> {currentReport.totalItems}
+                      <strong>Total Items:</strong> {(window as any).currentReport.totalItems}
                     </div>
                     <div>
-                      <strong>Total Value:</strong> {formatCurrency(currentReport.totalValue)}
+                      <strong>Total Value:</strong> {formatCurrency((window as any).currentReport.totalValue)}
                     </div>
                     <div>
                       <strong>Generated At:</strong>{" "}
-                      {format(new Date(currentReport.generatedAt), "MMM dd, yyyy HH:mm")}
+                      {format(new Date((window as any).currentReport.generatedAt), "MMM dd, yyyy HH:mm")}
                     </div>
                   </div>
                 </div>
               </div>
             )}
           </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* Transaction Receipt Dialog */}
+      <Dialog open={showTransactionReceipt} onOpenChange={setShowTransactionReceipt}>
+        <DialogContent className="max-w-2xl">
+          <DialogHeader>
+            <DialogTitle>
+              {lastProcessedTransaction?.type.charAt(0).toUpperCase() + lastProcessedTransaction?.type.slice(1)}{" "}
+              Transaction Completed
+            </DialogTitle>
+          </DialogHeader>
+
+          {lastProcessedTransaction && (
+            <div className="space-y-4">
+              <div className="bg-green-50 border border-green-200 rounded-lg p-4">
+                <div className="flex items-center gap-2 text-green-800">
+                  <div className="w-2 h-2 bg-green-500 rounded-full"></div>
+                  <span className="font-medium">
+                    {lastProcessedTransaction.type.charAt(0).toUpperCase() + lastProcessedTransaction.type.slice(1)}{" "}
+                    transaction processed successfully!
+                  </span>
+                </div>
+              </div>
+
+              <div className="grid grid-cols-2 gap-4 text-sm">
+                <div>
+                  <strong>Transaction No:</strong> {lastProcessedTransaction.transactionNumber}
+                </div>
+                <div>
+                  <strong>Date:</strong> {lastProcessedTransaction.date}
+                </div>
+                <div>
+                  <strong>Type:</strong> {lastProcessedTransaction.type.toUpperCase()}
+                </div>
+                <div>
+                  <strong>Reference:</strong> {lastProcessedTransaction.reference || "N/A"}
+                </div>
+              </div>
+
+              {/* Items Summary */}
+              <div className="border rounded-lg overflow-hidden">
+                <table className="w-full">
+                  <thead className="bg-gray-50">
+                    <tr>
+                      <th className="px-3 py-2 text-left text-xs font-medium text-gray-500 uppercase">Item</th>
+                      <th className="px-3 py-2 text-center text-xs font-medium text-gray-500 uppercase">Qty</th>
+                      <th className="px-3 py-2 text-right text-xs font-medium text-gray-500 uppercase">Rate</th>
+                      <th className="px-3 py-2 text-right text-xs font-medium text-gray-500 uppercase">Amount</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-gray-200">
+                    {lastProcessedTransaction.items.map((item: any, index: number) => (
+                      <tr key={index}>
+                        <td className="px-3 py-2 text-sm">{item.name}</td>
+                        <td className="px-3 py-2 text-sm text-center">
+                          {item.quantity} {item.unit}
+                        </td>
+                        <td className="px-3 py-2 text-sm text-right">₹{item.unitPrice.toFixed(2)}</td>
+                        <td className="px-3 py-2 text-sm text-right">₹{item.lineTotal.toFixed(2)}</td>
+                      </tr>
+                    ))}
+                    <tr className="bg-gray-50">
+                      <td colSpan={3} className="px-3 py-2 text-sm font-bold text-right">
+                        Total:
+                      </td>
+                      <td className="px-3 py-2 text-sm font-bold text-right">
+                        ₹{lastProcessedTransaction.subtotal.toFixed(2)}
+                      </td>
+                    </tr>
+                  </tbody>
+                </table>
+              </div>
+
+              <div className="flex justify-end space-x-2">
+                <Button
+                  variant="outline"
+                  onClick={() => printTransactionReceipt(lastProcessedTransaction)}
+                  className="rounded-lg"
+                >
+                  <Printer className="w-4 h-4 mr-2" />
+                  Print Receipt
+                </Button>
+                <Button
+                  variant="outline"
+                  onClick={() => printThermalTransactionReceipt(lastProcessedTransaction)}
+                  className="rounded-lg"
+                >
+                  <Printer className="w-4 h-4 mr-2" />
+                  Thermal Print
+                </Button>
+                <Button
+                  onClick={() => setShowTransactionReceipt(false)}
+                  className="bg-yellow-500 hover:bg-yellow-600 text-white rounded-lg"
+                >
+                  Close
+                </Button>
+              </div>
+            </div>
+          )}
         </DialogContent>
       </Dialog>
     </div>

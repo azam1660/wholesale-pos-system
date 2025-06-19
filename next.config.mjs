@@ -7,7 +7,6 @@ const nextConfig = {
   typescript: {
     ignoreBuildErrors: true,
   },
-  output: 'export',            // Required for static export
   images: {
     unoptimized: true,         // Required for export mode
   },
