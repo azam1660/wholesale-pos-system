@@ -18,6 +18,7 @@ import {
   AlertCircle,
   BarChart3,
   Eye,
+  Edit,
 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -63,8 +64,6 @@ interface StockTransaction {
   productName: string
   type: "opening" | "purchase" | "sale" | "adjustment"
   quantity: number
-  unitPrice?: number
-  totalValue?: number
   date: string
   reference?: string
   notes?: string
@@ -75,8 +74,6 @@ interface TransactionItem {
   id: string
   name: string
   quantity: number
-  unitPrice: number
-  lineTotal: number
   unit: string
 }
 
@@ -256,8 +253,6 @@ export default function InventoryManagement() {
         id: product.id,
         name: product.name,
         quantity: 1,
-        unitPrice: product.price,
-        lineTotal: product.price,
         unit: product.unit,
       }
       setTransactionItems([...transactionItems, newItem])
@@ -270,20 +265,7 @@ export default function InventoryManagement() {
       return
     }
     setTransactionItems((items) =>
-      items.map((item) =>
-        item.id === itemId ? { ...item, quantity: newQuantity, lineTotal: newQuantity * item.unitPrice } : item,
-      ),
-    )
-  }
-
-  const updateTransactionUnitPrice = (itemId: string, newPrice: number) => {
-    setTransactionItems((items) =>
-      items.map((item) => {
-        if (item.id === itemId) {
-          return { ...item, unitPrice: newPrice, lineTotal: item.quantity * newPrice }
-        }
-        return item
-      }),
+      items.map((item) => (item.id === itemId ? { ...item, quantity: newQuantity } : item)),
     )
   }
 
@@ -299,14 +281,12 @@ export default function InventoryManagement() {
     if (transactionItems.length === 0) return
 
     try {
-      const transactionSubtotal = transactionItems.reduce((sum, item) => sum + item.lineTotal, 0)
       const transactionRecord = {
         id: generateId(),
         type: transactionType,
         date: transactionDate,
         reference: transactionReference,
         items: [...transactionItems],
-        subtotal: transactionSubtotal,
         processedAt: new Date().toISOString(),
         transactionNumber: `${transactionType.toUpperCase()}-${format(new Date(), "yyyyMMdd")}-${Date.now().toString().slice(-4)}`,
       }
@@ -319,8 +299,6 @@ export default function InventoryManagement() {
           productName: item.name,
           type: transactionType,
           quantity: transactionType === "sale" ? -item.quantity : item.quantity,
-          unitPrice: item.unitPrice,
-          totalValue: item.lineTotal,
           date: transactionDate,
           reference: transactionReference,
           notes: `${transactionType.charAt(0).toUpperCase() + transactionType.slice(1)} transaction`,
@@ -467,12 +445,12 @@ export default function InventoryManagement() {
 
   // Render functions for transaction interface
   const renderSuperCategories = () => (
-    <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-4">
+    <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-3">
       {superCategories.map((category) => (
         <Button
           key={category.id}
           onClick={() => handleSuperCategorySelect(category.id)}
-          className="h-28 sm:h-32 w-full bg-white border-2 border-gray-200 hover:border-yellow-400 hover:bg-yellow-50 text-gray-900 rounded-xl flex flex-col items-center justify-center gap-3 transition-all duration-200 shadow-sm hover:shadow-md"
+          className="h-20 sm:h-24 w-full bg-white border-2 border-gray-200 hover:border-yellow-400 hover:bg-yellow-50 text-gray-900 rounded-xl flex flex-col items-center justify-center gap-2 transition-all duration-200 shadow-sm hover:shadow-md p-2"
           variant="outline"
         >
           <div className="relative">
@@ -480,13 +458,13 @@ export default function InventoryManagement() {
               <img
                 src={category.image || "/placeholder.svg"}
                 alt={category.name}
-                className="w-12 h-12 sm:w-14 sm:h-14 object-cover rounded-lg border border-gray-200"
+                className="w-8 h-8 sm:w-10 sm:h-10 object-cover rounded-lg border border-gray-200"
               />
             ) : (
-              <span className="text-2xl sm:text-3xl">{category.icon}</span>
+              <span className="text-lg sm:text-xl">{category.icon}</span>
             )}
           </div>
-          <span className="font-medium text-xs sm:text-sm text-center px-2 leading-tight">{category.name}</span>
+          <span className="font-medium text-xs text-center px-1 leading-tight">{category.name}</span>
         </Button>
       ))}
     </div>
@@ -495,16 +473,16 @@ export default function InventoryManagement() {
   const renderSubCategories = () => {
     const filteredSubCategories = subCategories.filter((sub) => sub.superCategoryId === selectedSuperCategory)
     return (
-      <div className="space-y-6">
+      <div className="space-y-4">
         <Button onClick={handleBackToSuper} variant="outline" className="rounded-lg border-gray-300 hover:bg-gray-50">
           ← Back to Categories
         </Button>
-        <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-4">
+        <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-3">
           {filteredSubCategories.map((subCategory) => (
             <Button
               key={subCategory.id}
               onClick={() => handleSubCategorySelect(subCategory.id)}
-              className="h-24 sm:h-28 w-full bg-white border-2 border-gray-200 hover:border-yellow-400 hover:bg-yellow-50 text-gray-900 rounded-xl flex flex-col items-center justify-center gap-2 transition-all duration-200 shadow-sm hover:shadow-md"
+              className="h-18 sm:h-20 w-full bg-white border-2 border-gray-200 hover:border-yellow-400 hover:bg-yellow-50 text-gray-900 rounded-xl flex flex-col items-center justify-center gap-2 transition-all duration-200 shadow-sm hover:shadow-md p-2"
               variant="outline"
             >
               <div className="relative">
@@ -512,13 +490,13 @@ export default function InventoryManagement() {
                   <img
                     src={subCategory.image || "/placeholder.svg"}
                     alt={subCategory.name}
-                    className="w-10 h-10 sm:w-12 sm:h-12 object-cover rounded-lg border border-gray-200"
+                    className="w-8 h-8 sm:w-10 sm:h-10 object-cover rounded-lg border border-gray-200"
                   />
                 ) : (
-                  <span className="text-xl sm:text-2xl">{subCategory.icon}</span>
+                  <span className="text-lg sm:text-xl">{subCategory.icon}</span>
                 )}
               </div>
-              <span className="font-medium text-xs sm:text-sm text-center px-2 leading-tight">{subCategory.name}</span>
+              <span className="font-medium text-xs text-center px-1 leading-tight">{subCategory.name}</span>
             </Button>
           ))}
         </div>
@@ -529,45 +507,50 @@ export default function InventoryManagement() {
   const renderProducts = () => {
     const filteredProducts = products.filter((prod) => prod.subCategoryId === selectedSubCategory)
     return (
-      <div className="space-y-6">
-        <div className="flex flex-wrap gap-3">
-          <Button onClick={handleBackToSub} variant="outline" className="rounded-lg border-gray-300 hover:bg-gray-50">
+      <div className="space-y-4">
+        <div className="flex flex-wrap gap-2">
+          <Button
+            onClick={handleBackToSub}
+            variant="outline"
+            className="rounded-lg border-gray-300 hover:bg-gray-50 text-xs"
+          >
             ← Back to Subcategories
           </Button>
-          <Button onClick={handleBackToSuper} variant="outline" className="rounded-lg border-gray-300 hover:bg-gray-50">
+          <Button
+            onClick={handleBackToSuper}
+            variant="outline"
+            className="rounded-lg border-gray-300 hover:bg-gray-50 text-xs"
+          >
             ← Back to Categories
           </Button>
         </div>
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
           {filteredProducts.map((product) => (
             <Card
               key={product.id}
               className="rounded-xl border-gray-200 shadow-sm hover:shadow-md transition-shadow duration-200"
             >
-              <CardContent className="p-4">
-                <div className="space-y-4">
-                  <div className="flex items-start gap-3">
+              <CardContent className="p-3">
+                <div className="space-y-3">
+                  <div className="flex items-start gap-2">
                     {product.image && (
                       <img
                         src={product.image || "/placeholder.svg"}
                         alt={product.name}
-                        className="w-16 h-16 object-cover rounded-lg border border-gray-200 flex-shrink-0"
+                        className="w-12 h-12 object-cover rounded-lg border border-gray-200 flex-shrink-0"
                       />
                     )}
                     <div className="flex-1 min-w-0">
-                      <h3 className="font-medium text-sm text-gray-900 mb-2">{product.name}</h3>
-                      <div className="flex justify-between items-center">
-                        <span className="text-lg font-bold text-gray-900">₹{product.price.toFixed(2)}</span>
-                      </div>
-                      <div className="text-xs text-gray-500 mt-1">Unit: {product.unit}</div>
+                      <h3 className="font-medium text-sm text-gray-900 mb-1 line-clamp-2">{product.name}</h3>
+                      <div className="text-xs text-gray-500">Unit: {product.unit}</div>
                     </div>
                   </div>
                   <Button
                     onClick={() => addToTransaction(product)}
-                    className="w-full bg-yellow-500 hover:bg-yellow-600 text-white rounded-lg font-medium shadow-sm"
+                    className="w-full bg-yellow-500 hover:bg-yellow-600 text-white rounded-lg font-medium shadow-sm text-xs py-2"
                   >
-                    <Plus className="w-4 h-4 mr-2" />
-                    Add to {transactionType.charAt(0).toUpperCase() + transactionType.slice(1)}
+                    <Plus className="w-3 h-3 mr-1" />
+                    Add
                   </Button>
                 </div>
               </CardContent>
@@ -578,11 +561,11 @@ export default function InventoryManagement() {
     )
   }
 
-  // Rest of the existing functions (generateReport, printReport, etc.) remain the same...
+  // Generate report functions (simplified for inventory without prices)
   const generateReport = () => {
     let reportData: any[] = []
     let title = ""
-    let totalValue = 0
+    const totalValue = 0
 
     const startDate = new Date(reportForm.startDate)
     const endDate = new Date(reportForm.endDate)
@@ -590,23 +573,17 @@ export default function InventoryManagement() {
     switch (reportForm.type) {
       case "closing_stock":
         title = "Closing Stock Report"
-        reportData = filteredItems.map((item) => {
-          const value = item.closingStock * (getAverageUnitPrice(item.productId) || 0)
-          totalValue += value
-          return {
-            productName: item.productName,
-            category: item.category,
-            unit: item.unit,
-            openingStock: item.openingStock,
-            purchases: item.purchases,
-            sales: item.sales,
-            adjustments: item.adjustments,
-            closingStock: item.closingStock,
-            avgUnitPrice: getAverageUnitPrice(item.productId) || 0,
-            totalValue: value,
-            status: item.closingStock <= item.reorderLevel ? "Low Stock" : "Normal",
-          }
-        })
+        reportData = filteredItems.map((item) => ({
+          productName: item.productName,
+          category: item.category,
+          unit: item.unit,
+          openingStock: item.openingStock,
+          purchases: item.purchases,
+          sales: item.sales,
+          adjustments: item.adjustments,
+          closingStock: item.closingStock,
+          status: item.closingStock <= item.reorderLevel ? "Low Stock" : "Normal",
+        }))
         break
 
       case "stock_movement":
@@ -621,12 +598,9 @@ export default function InventoryManagement() {
             productName: t.productName,
             type: t.type,
             quantity: t.quantity,
-            unitPrice: t.unitPrice || 0,
-            totalValue: t.totalValue || 0,
             reference: t.reference,
             notes: t.notes,
           }))
-        totalValue = reportData.reduce((sum, item) => sum + (item.totalValue || 0), 0)
         break
 
       case "low_stock":
@@ -645,18 +619,11 @@ export default function InventoryManagement() {
 
       case "valuation":
         title = "Inventory Valuation Report"
-        reportData = filteredItems.map((item) => {
-          const avgPrice = getAverageUnitPrice(item.productId) || 0
-          const value = item.closingStock * avgPrice
-          totalValue += value
-          return {
-            productName: item.productName,
-            category: item.category,
-            closingStock: item.closingStock,
-            avgUnitPrice: avgPrice,
-            totalValue: value,
-          }
-        })
+        reportData = filteredItems.map((item) => ({
+          productName: item.productName,
+          category: item.category,
+          closingStock: item.closingStock,
+        }))
         break
     }
 
@@ -675,19 +642,6 @@ export default function InventoryManagement() {
     }
 
     return report
-  }
-
-  const getAverageUnitPrice = (productId: string): number => {
-    const purchaseTransactions = stockTransactions.filter(
-      (t) => t.productId === productId && t.type === "purchase" && t.unitPrice,
-    )
-
-    if (purchaseTransactions.length === 0) return 0
-
-    const totalValue = purchaseTransactions.reduce((sum, t) => sum + (t.totalValue || 0), 0)
-    const totalQuantity = purchaseTransactions.reduce((sum, t) => sum + Math.abs(t.quantity), 0)
-
-    return totalQuantity > 0 ? totalValue / totalQuantity : 0
   }
 
   const printReport = (report: InventoryReport) => {
@@ -718,8 +672,6 @@ export default function InventoryManagement() {
             <th>Sales</th>
             <th>Adjustments</th>
             <th>Closing</th>
-            <th>Avg Price</th>
-            <th>Total Value</th>
             <th>Status</th>
           </tr>
         `
@@ -735,8 +687,6 @@ export default function InventoryManagement() {
             <td>${item.sales}</td>
             <td>${item.adjustments}</td>
             <td>${item.closingStock}</td>
-            <td>₹${item.avgUnitPrice.toFixed(2)}</td>
-            <td>₹${item.totalValue.toFixed(2)}</td>
             <td>${item.status}</td>
           </tr>
         `,
@@ -751,8 +701,6 @@ export default function InventoryManagement() {
             <th>Product Name</th>
             <th>Type</th>
             <th>Quantity</th>
-            <th>Unit Price</th>
-            <th>Total Value</th>
             <th>Reference</th>
           </tr>
         `
@@ -764,8 +712,6 @@ export default function InventoryManagement() {
             <td>${item.productName}</td>
             <td>${item.type.toUpperCase()}</td>
             <td>${item.quantity}</td>
-            <td>₹${item.unitPrice.toFixed(2)}</td>
-            <td>₹${item.totalValue.toFixed(2)}</td>
             <td>${item.reference || "-"}</td>
           </tr>
         `,
@@ -806,8 +752,6 @@ export default function InventoryManagement() {
             <th>Product Name</th>
             <th>Category</th>
             <th>Closing Stock</th>
-            <th>Avg Unit Price</th>
-            <th>Total Value</th>
           </tr>
         `
         tableRows = report.data
@@ -817,8 +761,6 @@ export default function InventoryManagement() {
             <td>${item.productName}</td>
             <td>${item.category}</td>
             <td>${item.closingStock}</td>
-            <td>₹${item.avgUnitPrice.toFixed(2)}</td>
-            <td>₹${item.totalValue.toFixed(2)}</td>
           </tr>
         `,
           )
@@ -869,7 +811,6 @@ export default function InventoryManagement() {
 
           <div class="summary">
             <div class="summary-item"><strong>Total Items:</strong> ${report.totalItems}</div>
-            <div class="summary-item"><strong>Total Value:</strong> ₹${report.totalValue.toFixed(2)}</div>
             <div class="summary-item"><strong>Generated At:</strong> ${currentDate}</div>
           </div>
         </body>
@@ -898,19 +839,7 @@ export default function InventoryManagement() {
 
     switch (report.reportType) {
       case "closing_stock":
-        columns = [
-          "Product",
-          "Category",
-          "Unit",
-          "Opening",
-          "Purchases",
-          "Sales",
-          "Adjustments",
-          "Closing",
-          "Avg Price",
-          "Total Value",
-          "Status",
-        ]
+        columns = ["Product", "Category", "Unit", "Opening", "Purchases", "Sales", "Adjustments", "Closing", "Status"]
         tableData = report.data.map((item) => [
           item.productName,
           item.category,
@@ -920,21 +849,17 @@ export default function InventoryManagement() {
           item.sales,
           item.adjustments,
           item.closingStock,
-          `₹${item.avgUnitPrice.toFixed(2)}`,
-          `₹${item.totalValue.toFixed(2)}`,
           item.status,
         ])
         break
 
       case "stock_movement":
-        columns = ["Date", "Product", "Type", "Quantity", "Unit Price", "Total Value", "Reference"]
+        columns = ["Date", "Product", "Type", "Quantity", "Reference"]
         tableData = report.data.map((item) => [
           format(new Date(item.date), "MMM dd"),
           item.productName,
           item.type.toUpperCase(),
           item.quantity,
-          `₹${item.unitPrice.toFixed(2)}`,
-          `₹${item.totalValue.toFixed(2)}`,
           item.reference || "-",
         ])
         break
@@ -952,14 +877,8 @@ export default function InventoryManagement() {
         break
 
       case "valuation":
-        columns = ["Product", "Category", "Closing Stock", "Avg Unit Price", "Total Value"]
-        tableData = report.data.map((item) => [
-          item.productName,
-          item.category,
-          item.closingStock,
-          `₹${item.avgUnitPrice.toFixed(2)}`,
-          `₹${item.totalValue.toFixed(2)}`,
-        ])
+        columns = ["Product", "Category", "Closing Stock"]
+        tableData = report.data.map((item) => [item.productName, item.category, item.closingStock])
         break
     }
 
@@ -975,7 +894,6 @@ export default function InventoryManagement() {
     const finalY = (doc as any).lastAutoTable.finalY + 10
     doc.setFontSize(10)
     doc.text(`Total Items: ${report.totalItems}`, 20, finalY)
-    doc.text(`Total Value: ₹${report.totalValue.toFixed(2)}`, 20, finalY + 5)
 
     // Save
     const fileName = `${report.title.replace(/\s+/g, "_")}_${format(new Date(), "yyyy-MM-dd")}.pdf`
@@ -1051,29 +969,21 @@ export default function InventoryManagement() {
                   <th>Particulars</th>
                   <th>QTY</th>
                   <th>Unit</th>
-                  <th>Rate (₹)</th>
-                  <th>Amount (₹)</th>
                 </tr>
               </thead>
               <tbody>
                 ${transaction.items
-        .map(
-          (item: any, index: number) => `
+                  .map(
+                    (item: any, index: number) => `
                   <tr>
                     <td>${index + 1}</td>
                     <td>${item.name}</td>
                     <td class="text-center">${item.quantity}</td>
                     <td class="text-center">${item.unit}</td>
-                    <td class="text-right">${item.unitPrice.toFixed(2)}</td>
-                    <td class="text-right">${item.lineTotal.toFixed(2)}</td>
                   </tr>
                 `,
-        )
-        .join("")}
-                <tr style="background-color: #f0f0f0;">
-                  <td colspan="5" class="text-right"><strong>Total (INR):</strong></td>
-                  <td class="text-right"><strong>₹${transaction.subtotal.toFixed(2)}</strong></td>
-                </tr>
+                  )
+                  .join("")}
               </tbody>
             </table>
 
@@ -1081,7 +991,6 @@ export default function InventoryManagement() {
               <div><strong>Transaction Type:</strong> ${transaction.type.toUpperCase()}</div>
               <div><strong>Total Items:</strong> ${transaction.items.length}</div>
               <div><strong>Total Quantity:</strong> ${transaction.items.reduce((sum: number, item: any) => sum + item.quantity, 0)}</div>
-              <div><strong>Total Value:</strong> ₹${transaction.subtotal.toFixed(2)}</div>
               <div><strong>Processed At:</strong> ${currentDate}</div>
             </div>
 
@@ -1133,11 +1042,9 @@ export default function InventoryManagement() {
               white-space: nowrap;
               overflow: hidden;
               text-overflow: ellipsis;
-              max-width: 35mm;
+              max-width: 40mm;
             }
-            .item-qty { width: 15mm; text-align: center; }
-            .item-rate { width: 15mm; text-align: right; }
-            .item-amount { width: 18mm; text-align: right; }
+            .item-qty { width: 20mm; text-align: center; }
             .total-row {
               display: flex;
               justify-content: space-between;
@@ -1176,37 +1083,33 @@ export default function InventoryManagement() {
             <div class="item-row bold">
               <div class="item-name">Item</div>
               <div class="item-qty">Qty</div>
-              <div class="item-rate">Rate</div>
-              <div class="item-amount">Amount</div>
             </div>
             <div class="line"></div>
 
             <!-- Items -->
             ${transaction.items
-        .map(
-          (item: any) => `
+              .map(
+                (item: any) => `
               <div class="item-row">
                 <div class="item-name">${item.name}</div>
-                <div class="item-qty">${item.quantity}</div>
-                <div class="item-rate">${item.unitPrice.toFixed(2)}</div>
-                <div class="item-amount">${item.lineTotal.toFixed(2)}</div>
+                <div class="item-qty">${item.quantity} ${item.unit}</div>
               </div>
             `,
-        )
-        .join("")}
+              )
+              .join("")}
 
             <div class="line"></div>
 
             <!-- Total -->
             <div class="total-row" style="font-size: 14px;">
-              <div>TOTAL:</div>
-              <div>₹${transaction.subtotal.toFixed(2)}</div>
+              <div>TOTAL QTY:</div>
+              <div>${transaction.items.reduce((sum: number, item: any) => sum + item.quantity, 0)}</div>
             </div>
             <div class="double-line"></div>
 
             <!-- Summary -->
             <div class="center sub-header">
-              <div>Items: ${transaction.items.length} | Qty: ${transaction.items.reduce((sum: number, item: any) => sum + item.quantity, 0)}</div>
+              <div>Items: ${transaction.items.length}</div>
               <div>Type: ${transaction.type.toUpperCase()}</div>
             </div>
 
@@ -1238,14 +1141,9 @@ export default function InventoryManagement() {
 
   // Calculate summary statistics
   const totalItems = inventoryItems.length
-  const totalStockValue = inventoryItems.reduce(
-    (sum, item) => sum + item.closingStock * (getAverageUnitPrice(item.productId) || 0),
-    0,
-  )
+  const totalStockValue = 0 // No pricing in inventory
   const lowStockItems = inventoryItems.filter((item) => item.closingStock <= item.reorderLevel).length
   const outOfStockItems = inventoryItems.filter((item) => item.closingStock <= 0).length
-
-  const transactionSubtotal = transactionItems.reduce((sum, item) => sum + item.lineTotal, 0)
 
   return (
     <div className="min-h-screen bg-white relative">
@@ -1330,8 +1228,8 @@ export default function InventoryManagement() {
             <CardContent className="p-4">
               <div className="flex items-center justify-between">
                 <div>
-                  <p className="text-sm text-gray-600">Stock Value</p>
-                  <p className="text-2xl font-bold">{formatCurrency(totalStockValue)}</p>
+                  <p className="text-sm text-gray-600">Total Products</p>
+                  <p className="text-2xl font-bold">{products.length}</p>
                 </div>
                 <TrendingUp className="w-8 h-8 text-green-500" />
               </div>
@@ -1544,12 +1442,6 @@ export default function InventoryManagement() {
                             <span>{format(new Date(transaction.date), "MMM dd, yyyy")}</span>
                             <span className="mx-2">•</span>
                             <span>Qty: {Math.abs(transaction.quantity)}</span>
-                            {transaction.unitPrice && (
-                              <>
-                                <span className="mx-2">•</span>
-                                <span>Price: {formatCurrency(transaction.unitPrice)}</span>
-                              </>
-                            )}
                             {transaction.reference && (
                               <>
                                 <span className="mx-2">•</span>
@@ -1559,9 +1451,59 @@ export default function InventoryManagement() {
                           </div>
                         </div>
                         <div className="flex items-center gap-2">
-                          {transaction.totalValue && (
-                            <span className="font-medium">{formatCurrency(transaction.totalValue)}</span>
-                          )}
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            onClick={() => {
+                              // Create a transaction record for reprinting
+                              const transactionRecord = {
+                                id: transaction.id,
+                                type: transaction.type,
+                                date: transaction.date,
+                                reference: transaction.reference,
+                                items: [
+                                  {
+                                    id: transaction.productId,
+                                    name: transaction.productName,
+                                    quantity: Math.abs(transaction.quantity),
+                                    unit: "unit", // Default unit
+                                  },
+                                ],
+                                processedAt: transaction.createdAt,
+                                transactionNumber: `${transaction.type.toUpperCase()}-${format(new Date(transaction.date), "yyyyMMdd")}-${transaction.id.slice(-4)}`,
+                              }
+                              setLastProcessedTransaction(transactionRecord)
+                              setShowTransactionReceipt(true)
+                            }}
+                            className="rounded-[9px]"
+                          >
+                            <Printer className="w-4 h-4" />
+                          </Button>
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            onClick={() => {
+                              // Find the product and add to transaction for editing
+                              const product = products.find((p) => p.id === transaction.productId)
+                              if (product) {
+                                setTransactionType(transaction.type as "sale" | "purchase" | "adjustment")
+                                setTransactionItems([
+                                  {
+                                    id: product.id,
+                                    name: product.name,
+                                    quantity: Math.abs(transaction.quantity),
+                                    unit: product.unit,
+                                  },
+                                ])
+                                setTransactionReference(transaction.reference || "")
+                                setTransactionDate(transaction.date)
+                                setShowTransactionDialog(true)
+                              }
+                            }}
+                            className="rounded-[9px]"
+                          >
+                            <Edit className="w-4 h-4" />
+                          </Button>
                           <Button
                             size="sm"
                             variant="outline"
@@ -1672,9 +1614,6 @@ export default function InventoryManagement() {
                         <p>
                           <strong>Items:</strong> {filteredItems.length} products
                         </p>
-                        <p>
-                          <strong>Total Value:</strong> {formatCurrency(totalStockValue)}
-                        </p>
                       </div>
                     </div>
 
@@ -1683,8 +1622,8 @@ export default function InventoryManagement() {
                         onClick={() => {
                           const report = generateReport()
                           setShowReportDialog(true)
-                            // Store the generated report for viewing
-                            ; (window as any).currentReport = report
+                          // Store the generated report for viewing
+                          ;(window as any).currentReport = report
                         }}
                         className="w-full bg-yellow-400 hover:bg-yellow-500 text-black rounded-[9px]"
                       >
@@ -1815,49 +1754,49 @@ export default function InventoryManagement() {
         </Tabs>
       </div>
 
-      {/* Transaction Dialog - POS Style */}
+      {/* Transaction Dialog - Responsive */}
       <Dialog open={showTransactionDialog} onOpenChange={setShowTransactionDialog}>
-        <DialogContent className="max-w-6xl max-h-[90vh] overflow-hidden">
-          <DialogHeader>
+        <DialogContent className="max-w-7xl max-h-[95vh] overflow-hidden p-0">
+          <DialogHeader className="p-4 border-b">
             <DialogTitle>{transactionType.charAt(0).toUpperCase() + transactionType.slice(1)} Transaction</DialogTitle>
           </DialogHeader>
 
-          <div className="flex gap-6 h-[70vh]">
+          <div className="flex flex-col lg:flex-row h-[80vh]">
             {/* Product Selection - Left Side */}
-            <div className="flex-1 overflow-y-auto">
+            <div className="flex-1 overflow-y-auto p-4">
               {currentView === "super" && renderSuperCategories()}
               {currentView === "sub" && renderSubCategories()}
               {currentView === "products" && renderProducts()}
             </div>
 
             {/* Transaction Items - Right Side */}
-            <div className="w-96 border-l border-gray-200 flex flex-col">
-              <div className="p-4 border-b border-gray-200">
-                <h3 className="font-medium text-lg">
+            <div className="w-full lg:w-80 xl:w-96 border-t lg:border-t-0 lg:border-l border-gray-200 flex flex-col bg-gray-50">
+              <div className="p-3 border-b border-gray-200">
+                <h3 className="font-medium text-base">
                   {transactionType.charAt(0).toUpperCase() + transactionType.slice(1)} Items
                 </h3>
               </div>
 
-              <div className="flex-1 overflow-y-auto p-4">
+              <div className="flex-1 overflow-y-auto p-3">
                 {transactionItems.length === 0 ? (
                   <div className="text-center py-8 text-gray-500">
-                    <Package className="w-12 h-12 mx-auto mb-3 opacity-50" />
+                    <Package className="w-8 h-8 mx-auto mb-2 opacity-50" />
                     <p className="text-sm">No items selected</p>
                   </div>
                 ) : (
-                  <div className="space-y-3">
+                  <div className="space-y-2">
                     {transactionItems.map((item) => (
                       <Card key={item.id} className="rounded-lg border-gray-200">
                         <CardContent className="p-3">
-                          <div className="space-y-3">
-                            <div className="font-medium text-sm">{item.name}</div>
+                          <div className="space-y-2">
+                            <div className="font-medium text-sm truncate">{item.name}</div>
 
                             <div className="flex items-center gap-2">
                               <Button
                                 size="sm"
                                 variant="outline"
                                 onClick={() => updateTransactionQuantity(item.id, item.quantity - 1)}
-                                className="w-8 h-8 p-0 rounded-lg"
+                                className="w-7 h-7 p-0 rounded-lg"
                               >
                                 <Minus className="w-3 h-3" />
                               </Button>
@@ -1867,42 +1806,29 @@ export default function InventoryManagement() {
                                 onChange={(e) =>
                                   updateTransactionQuantity(item.id, Number.parseInt(e.target.value) || 0)
                                 }
-                                className="w-16 h-8 text-center rounded-lg border-gray-300"
+                                className="w-14 h-7 text-center rounded-lg border-gray-300 text-xs"
                                 min="1"
                               />
                               <Button
                                 size="sm"
                                 variant="outline"
                                 onClick={() => updateTransactionQuantity(item.id, item.quantity + 1)}
-                                className="w-8 h-8 p-0 rounded-lg"
+                                className="w-7 h-7 p-0 rounded-lg"
                               >
                                 <Plus className="w-3 h-3" />
                               </Button>
                               <span className="text-xs text-gray-500 ml-1">{item.unit}</span>
                             </div>
 
-                            <div className="flex items-center gap-2">
-                              <span className="text-xs text-gray-500">Rate:</span>
-                              <Input
-                                type="number"
-                                value={item.unitPrice}
-                                onChange={(e) =>
-                                  updateTransactionUnitPrice(item.id, Number.parseFloat(e.target.value) || 0)
-                                }
-                                className="w-20 h-7 text-xs rounded-lg border-gray-300"
-                                step="0.01"
-                                min="0"
-                              />
-                              <span className="text-xs text-gray-500">₹</span>
-                            </div>
-
                             <div className="flex justify-between items-center">
-                              <span className="font-bold text-sm">₹{item.lineTotal.toFixed(2)}</span>
+                              <span className="text-xs text-gray-600">
+                                Total: {item.quantity} {item.unit}
+                              </span>
                               <Button
                                 size="sm"
                                 variant="outline"
                                 onClick={() => removeFromTransaction(item.id)}
-                                className="w-7 h-7 p-0 rounded-lg text-red-500 hover:text-red-700"
+                                className="w-6 h-6 p-0 rounded-lg text-red-500 hover:text-red-700"
                               >
                                 <Trash2 className="w-3 h-3" />
                               </Button>
@@ -1916,31 +1842,31 @@ export default function InventoryManagement() {
               </div>
 
               {/* Transaction Summary */}
-              <div className="border-t border-gray-200 p-4 space-y-4">
+              <div className="border-t border-gray-200 p-3 space-y-3">
                 <div>
-                  <Label>Reference (Optional)</Label>
+                  <Label className="text-xs">Reference (Optional)</Label>
                   <Input
                     placeholder="Reference number or note"
                     value={transactionReference}
                     onChange={(e) => setTransactionReference(e.target.value)}
-                    className="rounded-lg border-gray-300"
+                    className="rounded-lg border-gray-300 text-xs h-8"
                   />
                 </div>
 
                 <div>
-                  <Label>Transaction Date</Label>
+                  <Label className="text-xs">Transaction Date</Label>
                   <Input
                     type="date"
                     value={transactionDate}
                     onChange={(e) => setTransactionDate(e.target.value)}
-                    className="rounded-lg border-gray-300"
+                    className="rounded-lg border-gray-300 text-xs h-8"
                   />
                 </div>
 
-                <div className="bg-gray-50 p-3 rounded-lg">
-                  <div className="flex justify-between text-lg font-bold">
-                    <span>Total:</span>
-                    <span>₹{transactionSubtotal.toFixed(2)}</span>
+                <div className="bg-white p-2 rounded-lg border">
+                  <div className="text-sm font-bold">Total Items: {transactionItems.length}</div>
+                  <div className="text-xs text-gray-600">
+                    Total Quantity: {transactionItems.reduce((sum, item) => sum + item.quantity, 0)}
                   </div>
                 </div>
 
@@ -1948,14 +1874,14 @@ export default function InventoryManagement() {
                   <Button
                     onClick={clearTransactionItems}
                     variant="outline"
-                    className="w-full rounded-lg"
+                    className="w-full rounded-lg text-xs h-8"
                     disabled={transactionItems.length === 0}
                   >
                     Clear Items
                   </Button>
                   <Button
                     onClick={processTransaction}
-                    className="w-full bg-yellow-500 hover:bg-yellow-600 text-white rounded-lg font-medium"
+                    className="w-full bg-yellow-500 hover:bg-yellow-600 text-white rounded-lg font-medium text-xs h-8"
                     disabled={transactionItems.length === 0}
                   >
                     Process {transactionType.charAt(0).toUpperCase() + transactionType.slice(1)}
@@ -2218,8 +2144,6 @@ export default function InventoryManagement() {
                             <th className="border border-gray-300 p-2 text-center">Sales</th>
                             <th className="border border-gray-300 p-2 text-center">Adjustments</th>
                             <th className="border border-gray-300 p-2 text-center">Closing</th>
-                            <th className="border border-gray-300 p-2 text-right">Avg Price</th>
-                            <th className="border border-gray-300 p-2 text-right">Total Value</th>
                             <th className="border border-gray-300 p-2 text-center">Status</th>
                           </>
                         )}
@@ -2229,8 +2153,6 @@ export default function InventoryManagement() {
                             <th className="border border-gray-300 p-2 text-left">Product Name</th>
                             <th className="border border-gray-300 p-2 text-center">Type</th>
                             <th className="border border-gray-300 p-2 text-center">Quantity</th>
-                            <th className="border border-gray-300 p-2 text-right">Unit Price</th>
-                            <th className="border border-gray-300 p-2 text-right">Total Value</th>
                             <th className="border border-gray-300 p-2 text-left">Reference</th>
                           </>
                         )}
@@ -2249,8 +2171,6 @@ export default function InventoryManagement() {
                             <th className="border border-gray-300 p-2 text-left">Product Name</th>
                             <th className="border border-gray-300 p-2 text-left">Category</th>
                             <th className="border border-gray-300 p-2 text-center">Closing Stock</th>
-                            <th className="border border-gray-300 p-2 text-right">Avg Unit Price</th>
-                            <th className="border border-gray-300 p-2 text-right">Total Value</th>
                           </>
                         )}
                       </tr>
@@ -2268,8 +2188,6 @@ export default function InventoryManagement() {
                               <td className="border border-gray-300 p-2 text-center">{item.sales}</td>
                               <td className="border border-gray-300 p-2 text-center">{item.adjustments}</td>
                               <td className="border border-gray-300 p-2 text-center">{item.closingStock}</td>
-                              <td className="border border-gray-300 p-2 text-right">₹{item.avgUnitPrice.toFixed(2)}</td>
-                              <td className="border border-gray-300 p-2 text-right">₹{item.totalValue.toFixed(2)}</td>
                               <td className="border border-gray-300 p-2 text-center">
                                 <Badge
                                   className={
@@ -2303,8 +2221,6 @@ export default function InventoryManagement() {
                                 </Badge>
                               </td>
                               <td className="border border-gray-300 p-2 text-center">{Math.abs(item.quantity)}</td>
-                              <td className="border border-gray-300 p-2 text-right">₹{item.unitPrice.toFixed(2)}</td>
-                              <td className="border border-gray-300 p-2 text-right">₹{item.totalValue.toFixed(2)}</td>
                               <td className="border border-gray-300 p-2">{item.reference || "-"}</td>
                             </>
                           )}
@@ -2323,8 +2239,6 @@ export default function InventoryManagement() {
                               <td className="border border-gray-300 p-2">{item.productName}</td>
                               <td className="border border-gray-300 p-2">{item.category}</td>
                               <td className="border border-gray-300 p-2 text-center">{item.closingStock}</td>
-                              <td className="border border-gray-300 p-2 text-right">₹{item.avgUnitPrice.toFixed(2)}</td>
-                              <td className="border border-gray-300 p-2 text-right">₹{item.totalValue.toFixed(2)}</td>
                             </>
                           )}
                         </tr>
@@ -2334,12 +2248,9 @@ export default function InventoryManagement() {
                 </div>
 
                 <div className="mt-6 p-4 bg-gray-50 border rounded-[9px]">
-                  <div className="grid grid-cols-1 md:grid-cols-3 gap-4 text-sm">
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-sm">
                     <div>
                       <strong>Total Items:</strong> {(window as any).currentReport.totalItems}
-                    </div>
-                    <div>
-                      <strong>Total Value:</strong> {formatCurrency((window as any).currentReport.totalValue)}
                     </div>
                     <div>
                       <strong>Generated At:</strong>{" "}
@@ -2397,8 +2308,6 @@ export default function InventoryManagement() {
                     <tr>
                       <th className="px-3 py-2 text-left text-xs font-medium text-gray-500 uppercase">Item</th>
                       <th className="px-3 py-2 text-center text-xs font-medium text-gray-500 uppercase">Qty</th>
-                      <th className="px-3 py-2 text-right text-xs font-medium text-gray-500 uppercase">Rate</th>
-                      <th className="px-3 py-2 text-right text-xs font-medium text-gray-500 uppercase">Amount</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-gray-200">
@@ -2408,18 +2317,8 @@ export default function InventoryManagement() {
                         <td className="px-3 py-2 text-sm text-center">
                           {item.quantity} {item.unit}
                         </td>
-                        <td className="px-3 py-2 text-sm text-right">₹{item.unitPrice.toFixed(2)}</td>
-                        <td className="px-3 py-2 text-sm text-right">₹{item.lineTotal.toFixed(2)}</td>
                       </tr>
                     ))}
-                    <tr className="bg-gray-50">
-                      <td colSpan={3} className="px-3 py-2 text-sm font-bold text-right">
-                        Total:
-                      </td>
-                      <td className="px-3 py-2 text-sm font-bold text-right">
-                        ₹{lastProcessedTransaction.subtotal.toFixed(2)}
-                      </td>
-                    </tr>
                   </tbody>
                 </table>
               </div>

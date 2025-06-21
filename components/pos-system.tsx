@@ -11,7 +11,6 @@ import {
   Printer,
   Settings,
   UserPlus,
-  Download,
   Save,
   Eye,
   Edit,
@@ -225,6 +224,24 @@ export default function POSSystem() {
     }
   }, [includeHamali, calculateHamaliCharges])
 
+  const saveEstimateChanges = () => {
+    if (!editableEstimate) return
+    console.log(estimateItems);
+
+    const updatedSubtotal = estimateItems.reduce((sum, item) => sum + item.lineTotal, 0)
+    const updatedEstimate = {
+      ...editableEstimate,
+      items: [...estimateItems],
+      subtotal: updatedSubtotal,
+      total: updatedSubtotal + (editableEstimate.hamaliCharges || 0),
+    }
+    console.log("updatedEstimate", updatedEstimate);
+
+    setCurrentEstimate(updatedEstimate)
+    setShowEditEstimate(false)
+    setShowEstimate(true)
+  }
+
   const editEstimate = (estimate: Estimate) => {
     setEditableEstimate({ ...estimate })
     setEstimateItems([...estimate.items])
@@ -274,22 +291,6 @@ export default function POSSystem() {
   const filteredProductsForEstimate = products.filter((product) =>
     product.name.toLowerCase().includes(productSearchForEstimate.toLowerCase()),
   )
-
-  const saveEstimateChanges = () => {
-    if (!editableEstimate) return
-
-    const updatedSubtotal = estimateItems.reduce((sum, item) => sum + item.lineTotal, 0)
-    const updatedEstimate = {
-      ...editableEstimate,
-      items: [...estimateItems],
-      subtotal: updatedSubtotal,
-      total: updatedSubtotal + editableEstimate.hamaliCharges,
-    }
-
-    setCurrentEstimate(updatedEstimate)
-    setShowEditEstimate(false)
-    setShowEstimate(true)
-  }
 
   const exportEstimateToPDF = (estimate: Estimate) => {
     const doc = new jsPDF()
@@ -808,7 +809,7 @@ export default function POSSystem() {
                 th, td { border: 1px solid #000; padding: 8px; text-align: left; }
                 th { background-color: #f5f5f5; font-weight: bold; }
                 .text-right { text-align: right; }
-                .text-center { text-align: center; }
+                .text-center { text-align: center; margin-bottom: 20px; }
                 .header { text-align: center; margin-bottom: 20px; }
                 .store-info { margin-bottom: 20px; }
                 .customer-info { margin-bottom: 20px; }
@@ -858,6 +859,15 @@ export default function POSSystem() {
 
       // Generate and show estimate
       generateEstimate()
+
+      // Navigate back to main page after a short delay
+      setTimeout(() => {
+        setShowEstimate(false)
+        // Reset to super category view
+        setCurrentView("super")
+        setSelectedSuperCategory("")
+        setSelectedSubCategory("")
+      }, 2000)
 
       // Clear cart and reset form completely
       clearCart()
@@ -1668,23 +1678,6 @@ export default function POSSystem() {
                   Thermal
                 </Button>
                 <Button
-                  onClick={() => downloadEstimatePDF(currentEstimate!)}
-                  variant="outline"
-                  className="rounded-[9px] text-xs sm:text-sm"
-                  size="sm"
-                >
-                  <Download className="w-4 h-4 mr-1 sm:mr-2" />
-                  PDF
-                </Button>
-                <Button
-                  onClick={() => shareEstimatePDF(currentEstimate!)}
-                  className="bg-green-500 hover:bg-green-600 text-white rounded-[9px] text-xs sm:text-sm"
-                  size="sm"
-                >
-                  <FileText className="w-4 h-4 mr-1 sm:mr-2" />
-                  Share
-                </Button>
-                <Button
                   onClick={() => {
                     setShowEstimate(false)
                     setCurrentView("super")
@@ -1849,6 +1842,48 @@ export default function POSSystem() {
                 <div>
                   <Label className="text-sm font-medium">Payment Method</Label>
                   <p className="text-sm">{editableEstimate.paymentMethod.toUpperCase()}</p>
+                </div>
+              </div>
+
+              {/* Hamali/Freight Charges */}
+              <div className="p-4 bg-gray-50 rounded-[9px]">
+                <div className="space-y-3">
+                  <div className="flex items-center space-x-2">
+                    <Checkbox
+                      id="include-hamali-edit"
+                      checked={editableEstimate.hamaliCharges > 0}
+                      onCheckedChange={(checked) => {
+                        if (checked) {
+                          const autoCalculated = estimateItems.reduce((sum, item) => {
+                            const product = products.find((p) => p.id === item.id)
+                            return sum + (product?.hamaliValue || 0) * item.quantity
+                          }, 0)
+                          setEditableEstimate({ ...editableEstimate, hamaliCharges: autoCalculated })
+                        } else {
+                          setEditableEstimate({ ...editableEstimate, hamaliCharges: 0 })
+                        }
+                      }}
+                    />
+                    <Label htmlFor="include-hamali-edit" className="text-sm font-medium">
+                      Include Hamali/Freight Charges
+                    </Label>
+                  </div>
+                  {editableEstimate.hamaliCharges > 0 && (
+                    <Input
+                      type="number"
+                      placeholder="Hamali charges"
+                      value={editableEstimate.hamaliCharges}
+                      onChange={(e) =>
+                        setEditableEstimate({
+                          ...editableEstimate,
+                          hamaliCharges: Number.parseFloat(e.target.value) || 0,
+                        })
+                      }
+                      className="rounded-[9px]"
+                      step="0.01"
+                      min="0"
+                    />
+                  )}
                 </div>
               </div>
 
