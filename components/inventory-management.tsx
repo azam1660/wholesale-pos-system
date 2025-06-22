@@ -160,6 +160,20 @@ export default function InventoryManagement() {
     applyFilters()
   }, [inventoryItems, searchQuery, categoryFilter, stockFilter])
 
+  // Add this useEffect after the existing useEffect for loading data
+  useEffect(() => {
+    // Listen for storage changes to sync data in real-time
+    const handleStorageChange = (e: StorageEvent) => {
+      if (e.key === "products" || e.key === "sales" || e.key === "inventory_items" || e.key === "stock_transactions") {
+        loadData()
+      }
+    }
+
+    window.addEventListener("storage", handleStorageChange)
+    return () => window.removeEventListener("storage", handleStorageChange)
+  }, [])
+
+  // Update the loadData function to sync with POS data
   const loadData = () => {
     // Load inventory data
     const storedItems = localStorage.getItem(STORAGE_KEYS.INVENTORY_ITEMS)
@@ -181,6 +195,55 @@ export default function InventoryManagement() {
     setSubCategories(subCategoriesData)
     setSuperCategories(superCategoriesData)
     setCategories([...superCategoriesData, ...subCategoriesData])
+
+    // Sync inventory with POS data
+    syncInventoryWithPOSData(productsData)
+  }
+
+  // Add this new function to sync inventory with POS data
+  const syncInventoryWithPOSData = (productsData: any[]) => {
+    const sales = DataManager.getSales()
+    const currentInventoryItems = DataManager.getInventoryItems()
+    const currentStockTransactions = DataManager.getStockTransactions()
+
+    // Create a map of existing inventory items
+    const inventoryMap = new Map(currentInventoryItems.map((item) => [item.productId, item]))
+
+    // Process each product to ensure it has inventory tracking
+    for (const product of productsData) {
+      if (!inventoryMap.has(product.id)) {
+        // Create inventory item for products that don't have one
+        const subCategory = subCategories.find((c) => c.id === product.subCategoryId)
+        const newInventoryItem = {
+          id: generateId(),
+          productId: product.id,
+          productName: product.name,
+          category: subCategory?.name || "Unknown",
+          unit: product.unit,
+          openingStock: product.stock,
+          purchases: 0,
+          sales: 0,
+          adjustments: 0,
+          closingStock: product.stock,
+          reorderLevel: 10,
+          lastUpdated: new Date().toISOString(),
+          notes: "Auto-synced from POS",
+        }
+        currentInventoryItems.push(newInventoryItem)
+        inventoryMap.set(product.id, newInventoryItem)
+      } else {
+        // Update closing stock to match current product stock
+        const inventoryItem = inventoryMap.get(product.id)
+        if (inventoryItem && inventoryItem.closingStock !== product.stock) {
+          inventoryItem.closingStock = product.stock
+          inventoryItem.lastUpdated = new Date().toISOString()
+        }
+      }
+    }
+
+    // Save updated inventory
+    DataManager.setInventoryItems(currentInventoryItems)
+    setInventoryItems(currentInventoryItems)
   }
 
   const saveInventoryItems = (items: InventoryItem[]) => {
@@ -277,6 +340,7 @@ export default function InventoryManagement() {
     setTransactionItems([])
   }
 
+  // Update the processTransaction function to sync with DataManager
   const processTransaction = async () => {
     if (transactionItems.length === 0) return
 
@@ -310,7 +374,38 @@ export default function InventoryManagement() {
 
         // Update inventory item
         updateInventoryFromTransaction(newTransaction)
+
+        // Update product stock in DataManager
+        const product = products.find((p) => p.id === item.id)
+        if (product) {
+          let newStock = product.stock
+          if (transactionType === "purchase") {
+            newStock += item.quantity
+          } else if (transactionType === "sale") {
+            newStock = Math.max(0, newStock - item.quantity)
+          } else if (transactionType === "adjustment") {
+            newStock += item.quantity // Can be negative for adjustments
+          }
+
+          await DataManager.updateProductStock(product.id, Math.max(0, newStock))
+        }
       }
+
+      // Update DataManager inventory if it's a purchase
+      if (transactionType === "purchase") {
+        DataManager.updateInventoryFromPurchase(
+          transactionItems.map((item) => ({
+            productId: item.id,
+            quantity: item.quantity,
+            productName: item.name,
+            unit: item.unit,
+            reference: transactionReference,
+          })),
+        )
+      }
+
+      // Refresh products data
+      setProducts(DataManager.getProducts())
 
       // Set the transaction record and show receipt
       setLastProcessedTransaction(transactionRecord)

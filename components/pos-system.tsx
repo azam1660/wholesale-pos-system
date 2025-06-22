@@ -224,22 +224,107 @@ export default function POSSystem() {
     }
   }, [includeHamali, calculateHamaliCharges])
 
-  const saveEstimateChanges = () => {
+  const saveEstimateChanges = async () => {
     if (!editableEstimate) return
-    console.log(estimateItems);
 
-    const updatedSubtotal = estimateItems.reduce((sum, item) => sum + item.lineTotal, 0)
-    const updatedEstimate = {
-      ...editableEstimate,
-      items: [...estimateItems],
-      subtotal: updatedSubtotal,
-      total: updatedSubtotal + (editableEstimate.hamaliCharges || 0),
+    try {
+      const updatedSubtotal = estimateItems.reduce((sum, item) => sum + item.lineTotal, 0)
+      const updatedTotal = updatedSubtotal + (editableEstimate.hamaliCharges || 0)
+
+      const updatedEstimate = {
+        ...editableEstimate,
+        items: [...estimateItems],
+        subtotal: updatedSubtotal,
+        total: updatedTotal,
+      }
+
+      // Find and update the corresponding sale in the database
+      const sales = DataManager.getSales()
+      const saleIndex = sales.findIndex((sale) => sale.estimateNumber === editableEstimate.estimateNumber)
+
+      if (saleIndex !== -1) {
+        // Update the sale record with new data
+        const updatedSale = {
+          ...sales[saleIndex],
+          items: estimateItems.map((item) => ({
+            productId: item.id,
+            productName: item.name,
+            quantity: item.quantity,
+            unitPrice: item.unitPrice,
+            lineTotal: item.lineTotal,
+            unit: item.unit,
+            subCategoryId:
+              sales[saleIndex].items.find((saleItem) => saleItem.productId === item.id)?.subCategoryId || "",
+            subCategoryName:
+              sales[saleIndex].items.find((saleItem) => saleItem.productId === item.id)?.subCategoryName || "",
+            superCategoryId:
+              sales[saleIndex].items.find((saleItem) => saleItem.productId === item.id)?.superCategoryId || "",
+            superCategoryName:
+              sales[saleIndex].items.find((saleItem) => saleItem.productId === item.id)?.superCategoryName || "",
+          })),
+          subtotal: updatedSubtotal,
+          hamaliCharges: editableEstimate.hamaliCharges || 0,
+          total: updatedTotal,
+          updatedAt: new Date().toISOString(),
+        }
+
+        // Update the sale in the database
+        await DataManager.updateSale(sales[saleIndex].id, {
+          items: updatedSale.items,
+          subtotal: updatedSale.subtotal,
+          hamaliCharges: updatedSale.hamaliCharges,
+          total: updatedSale.total,
+        })
+
+        // Update product stock based on quantity changes
+        const originalItems = sales[saleIndex].items
+        for (const newItem of estimateItems) {
+          const originalItem = originalItems.find((item) => item.productId === newItem.id)
+          if (originalItem) {
+            const quantityDiff = newItem.quantity - originalItem.quantity
+            if (quantityDiff !== 0) {
+              const product = products.find((p) => p.id === newItem.id)
+              if (product) {
+                const newStock = Math.max(0, product.stock - quantityDiff)
+                await DataManager.updateProductStock(product.id, newStock)
+              }
+            }
+          } else {
+            // New item added - reduce stock
+            const product = products.find((p) => p.id === newItem.id)
+            if (product) {
+              const newStock = Math.max(0, product.stock - newItem.quantity)
+              await DataManager.updateProductStock(product.id, newStock)
+            }
+          }
+        }
+
+        // Handle removed items - restore stock
+        for (const originalItem of originalItems) {
+          const stillExists = estimateItems.find((item) => item.id === originalItem.productId)
+          if (!stillExists) {
+            const product = products.find((p) => p.id === originalItem.productId)
+            if (product) {
+              const newStock = product.stock + originalItem.quantity
+              await DataManager.updateProductStock(product.id, newStock)
+            }
+          }
+        }
+
+        // Refresh product data
+        setProducts(DataManager.getProducts())
+      }
+
+      setCurrentEstimate(updatedEstimate)
+      setShowEditEstimate(false)
+      setShowEstimate(true)
+
+      // Show success message
+      alert("Estimate updated successfully!")
+    } catch (error) {
+      console.error("Error saving estimate changes:", error)
+      alert("Error saving changes. Please try again.")
     }
-    console.log("updatedEstimate", updatedEstimate);
-
-    setCurrentEstimate(updatedEstimate)
-    setShowEditEstimate(false)
-    setShowEstimate(true)
   }
 
   const editEstimate = (estimate: Estimate) => {
@@ -254,6 +339,13 @@ export default function POSSystem() {
         if (item.id === itemId) {
           const updatedItem = { ...item, [field]: value }
           updatedItem.lineTotal = updatedItem.quantity * updatedItem.unitPrice
+
+          // Save last used rate if price is updated
+          if (field === "unitPrice") {
+            saveLastUsedRate(itemId, value)
+            updatedItem.lastUsedRate = value
+          }
+
           return updatedItem
         }
         return item
@@ -274,13 +366,15 @@ export default function POSSystem() {
     if (existingItem) {
       updateEstimateItem(product.id, "quantity", existingItem.quantity + 1)
     } else {
+      const lastUsedRate = getLastUsedRate(product.id) || product.price
       const newItem: OrderItem = {
         id: product.id,
         name: product.name,
         quantity: 1,
-        unitPrice: product.price,
-        lineTotal: product.price,
+        unitPrice: lastUsedRate,
+        lineTotal: lastUsedRate,
         unit: product.unit,
+        lastUsedRate: lastUsedRate,
       }
       setEstimateItems((prev) => [...prev, newItem])
     }

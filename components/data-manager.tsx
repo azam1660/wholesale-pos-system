@@ -624,6 +624,16 @@ export class DataManager {
       }
     }
 
+    // Update inventory system
+    this.updateInventoryFromSale(
+      saleItems.map((item) => ({
+        productId: item.productId,
+        quantity: item.quantity,
+        productName: item.productName,
+        unit: item.unit,
+      })),
+    )
+
     const updated = [...sales, newSale]
     this.setItem("sales", updated)
     return newSale
@@ -651,6 +661,153 @@ export class DataManager {
 
     this.setItem("sales", filtered)
     return true
+  }
+
+  // Add these methods after the existing sales methods
+
+  // Inventory Management Integration
+  static getInventoryItems(): any[] {
+    return this.getItem<any>("inventory_items", [])
+  }
+
+  static setInventoryItems(items: any[]): void {
+    this.setItem("inventory_items", items)
+  }
+
+  static getStockTransactions(): any[] {
+    return this.getItem<any>("stock_transactions", [])
+  }
+
+  static setStockTransactions(transactions: any[]): void {
+    this.setItem("stock_transactions", transactions)
+  }
+
+  static updateInventoryFromSale(
+    saleItems: Array<{ productId: string; quantity: number; productName: string; unit: string }>,
+  ) {
+    const inventoryItems = this.getInventoryItems()
+    const stockTransactions = this.getStockTransactions()
+
+    for (const saleItem of saleItems) {
+      // Find or create inventory item
+      let inventoryItem = inventoryItems.find((item) => item.productId === saleItem.productId)
+
+      if (!inventoryItem) {
+        // Create new inventory item if it doesn't exist
+        const product = this.getProducts().find((p) => p.id === saleItem.productId)
+        if (product) {
+          const subCategory = this.getSubCategories().find((c) => c.id === product.subCategoryId)
+          inventoryItem = {
+            id: this.generateId(),
+            productId: product.id,
+            productName: product.name,
+            category: subCategory?.name || "Unknown",
+            unit: product.unit,
+            openingStock: product.stock + saleItem.quantity, // Assume current stock was the opening
+            purchases: 0,
+            sales: 0,
+            adjustments: 0,
+            closingStock: product.stock,
+            reorderLevel: 10, // Default reorder level
+            lastUpdated: this.getCurrentTimestamp(),
+            notes: "Auto-created from POS sale",
+          }
+          inventoryItems.push(inventoryItem)
+        }
+      }
+
+      if (inventoryItem) {
+        // Update inventory item
+        inventoryItem.sales += saleItem.quantity
+        inventoryItem.closingStock = Math.max(0, inventoryItem.closingStock - saleItem.quantity)
+        inventoryItem.lastUpdated = this.getCurrentTimestamp()
+
+        // Add stock transaction
+        const stockTransaction = {
+          id: this.generateId(),
+          productId: saleItem.productId,
+          productName: saleItem.productName,
+          type: "sale",
+          quantity: -saleItem.quantity, // Negative for sales
+          date: new Date().toISOString().split("T")[0],
+          reference: "POS Sale",
+          notes: "Sale from POS system",
+          createdAt: this.getCurrentTimestamp(),
+        }
+        stockTransactions.push(stockTransaction)
+      }
+    }
+
+    // Save updated data
+    this.setInventoryItems(inventoryItems)
+    this.setStockTransactions(stockTransactions)
+  }
+
+  static updateInventoryFromPurchase(
+    purchaseItems: Array<{
+      productId: string
+      quantity: number
+      productName: string
+      unit: string
+      reference?: string
+    }>,
+  ) {
+    const inventoryItems = this.getInventoryItems()
+    const stockTransactions = this.getStockTransactions()
+
+    for (const purchaseItem of purchaseItems) {
+      // Find or create inventory item
+      let inventoryItem = inventoryItems.find((item) => item.productId === purchaseItem.productId)
+
+      if (!inventoryItem) {
+        // Create new inventory item if it doesn't exist
+        const product = this.getProducts().find((p) => p.id === purchaseItem.productId)
+        if (product) {
+          const subCategory = this.getSubCategories().find((c) => c.id === product.subCategoryId)
+          inventoryItem = {
+            id: this.generateId(),
+            productId: product.id,
+            productName: product.name,
+            category: subCategory?.name || "Unknown",
+            unit: product.unit,
+            openingStock: 0,
+            purchases: 0,
+            sales: 0,
+            adjustments: 0,
+            closingStock: 0,
+            reorderLevel: 10,
+            lastUpdated: this.getCurrentTimestamp(),
+            notes: "Auto-created from purchase",
+          }
+          inventoryItems.push(inventoryItem)
+        }
+      }
+
+      if (inventoryItem) {
+        // Update inventory item
+        inventoryItem.purchases += purchaseItem.quantity
+        inventoryItem.closingStock += purchaseItem.quantity
+        inventoryItem.lastUpdated = this.getCurrentTimestamp()
+
+        // Add stock transaction
+        const stockTransaction = {
+          id: this.generateId(),
+          productId: purchaseItem.productId,
+          productName: purchaseItem.productName,
+          type: "purchase",
+          quantity: purchaseItem.quantity,
+          date: new Date().toISOString().split("T")[0],
+          reference: purchaseItem.reference || "Purchase Entry",
+          notes: "Purchase entry",
+          createdAt: this.getCurrentTimestamp(),
+        }
+        stockTransactions.push(stockTransaction)
+      }
+    }
+
+    // Save updated data
+    this.setInventoryItems(inventoryItems)
+    this.setStockTransactions(stockTransactions)
   }
 
   // Sales Analytics
@@ -1043,6 +1200,8 @@ export class DataManager {
     localStorage.removeItem("products")
     localStorage.removeItem("customers")
     localStorage.removeItem("sales")
+    localStorage.removeItem("inventory_items")
+    localStorage.removeItem("stock_transactions")
     localStorage.removeItem("estimateCounter")
 
     // Trigger storage events
@@ -1051,5 +1210,7 @@ export class DataManager {
     window.dispatchEvent(new StorageEvent("storage", { key: "products", storageArea: localStorage }))
     window.dispatchEvent(new StorageEvent("storage", { key: "customers", storageArea: localStorage }))
     window.dispatchEvent(new StorageEvent("storage", { key: "sales", storageArea: localStorage }))
+    window.dispatchEvent(new StorageEvent("storage", { key: "inventory_items", storageArea: localStorage }))
+    window.dispatchEvent(new StorageEvent("storage", { key: "stock_transactions", storageArea: localStorage }))
   }
 }
