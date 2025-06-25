@@ -63,8 +63,8 @@ interface Supplier {
 }
 
 const storeInfo = {
-  name: "SL SALAR",
-  address: "60/61, Jodhbhavi Peth Chatla Chowk, Main Road, Main Road-413001",
+  name: "SNS",
+  address: "Jodbhavi Peth, Solapur",
   phone: "9420490692",
 }
 
@@ -408,6 +408,142 @@ export default function PurchaseOrderModule({ onBack }: { onBack: () => void }) 
 
     // Redirect to POS
     window.location.href = "/"
+  }
+
+  const printThermalPurchaseOrder = (po: PurchaseOrder) => {
+    const printWindow = window.open("", "_blank")
+    if (!printWindow) return
+
+    const printContent = `
+    <!DOCTYPE html>
+    <html>
+      <head>
+        <title>Thermal Purchase Order - ${po.orderNumber}</title>
+        <style>
+          body {
+            font-family: 'Courier New', monospace;
+            margin: 0;
+            padding: 5px;
+            width: 79mm;
+            font-size: 12px;
+            line-height: 1.2;
+          }
+          .thermal-po {
+            width: 100%;
+            max-width: 79mm;
+          }
+          .center { text-align: center; }
+          .left { text-align: left; }
+          .right { text-align: right; }
+          .bold { font-weight: bold; }
+          .line { border-bottom: 1px dashed #000; margin: 2px 0; }
+          .double-line { border-bottom: 2px solid #000; margin: 3px 0; }
+          .item-row {
+            display: flex;
+            justify-content: space-between;
+            margin: 1px 0;
+            font-size: 11px;
+          }
+          .item-name {
+            flex: 1;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            max-width: 40mm;
+          }
+          .item-qty { width: 20mm; text-align: center; }
+          .total-row {
+            display: flex;
+            justify-content: space-between;
+            font-weight: bold;
+            margin: 2px 0;
+          }
+          .header { font-size: 14px; font-weight: bold; }
+          .sub-header { font-size: 10px; }
+          .footer { font-size: 10px; margin-top: 5px; }
+          @media print {
+            body { margin: 0; padding: 2px; }
+            .no-print { display: none; }
+          }
+        </style>
+      </head>
+      <body>
+        <div class="thermal-po">
+          <!-- Store Header -->
+          <div class="center header">${storeInfo.name}</div>
+          <div class="center sub-header">${storeInfo.address}</div>
+          <div class="center sub-header">Ph: ${storeInfo.phone}</div>
+          <div class="double-line"></div>
+
+          <!-- PO Details -->
+          <div class="center bold">PURCHASE ORDER</div>
+          <div class="line"></div>
+          <div class="left">
+            <div><strong>PO No:</strong> ${po.orderNumber}</div>
+            <div><strong>Date:</strong> ${po.date}</div>
+            <div><strong>Status:</strong> ${po.status.toUpperCase()}</div>
+            ${po.reference ? `<div><strong>Ref:</strong> ${po.reference}</div>` : ""}
+          </div>
+
+          <!-- Supplier Details -->
+          <div class="line"></div>
+          <div class="left">
+            <strong>Supplier:</strong>
+            ${po.isCashPurchase
+        ? "<div>CASH PURCHASE</div>"
+        : `<div>${po.supplierName || ""}</div>
+                   <div>${po.supplierPhone || ""}</div>`
+      }
+          </div>
+          <div class="line"></div>
+
+          <!-- Items Header -->
+          <div class="item-row bold">
+            <div class="item-name">Item</div>
+            <div class="item-qty">Qty</div>
+          </div>
+          <div class="line"></div>
+
+          <!-- Items -->
+          ${po.items
+        .map(
+          (item) => `
+            <div class="item-row">
+              <div class="item-name">${item.name}</div>
+              <div class="item-qty">${item.quantity} ${item.unit}</div>
+            </div>
+          `,
+        )
+        .join("")}
+
+          <div class="line"></div>
+
+          <!-- Total -->
+          <div class="total-row" style="font-size: 14px;">
+            <div>TOTAL QTY:</div>
+            <div>${po.items.reduce((sum, item) => sum + item.quantity, 0)}</div>
+          </div>
+          <div class="double-line"></div>
+
+          <!-- Summary -->
+          <div class="center sub-header">
+            <div>Items: ${po.items.length}</div>
+            <div>Type: ${po.isCashPurchase ? "CASH" : "SUPPLIER"}</div>
+          </div>
+
+          <!-- Footer -->
+          <div class="center footer">
+            <div>Terms & Conditions Apply</div>
+            <div>${new Date().toLocaleDateString()}</div>
+          </div>
+        </div>
+      </body>
+    </html>
+  `
+
+    printWindow.document.write(printContent)
+    printWindow.document.close()
+    printWindow.print()
   }
 
   if (!dataLoaded) {
@@ -847,6 +983,14 @@ export default function PurchaseOrderModule({ onBack }: { onBack: () => void }) 
                 <Button onClick={printPurchaseOrder} variant="outline" className="rounded-[9px]">
                   <Printer className="w-4 h-4 mr-2" />
                   Print
+                </Button>
+                <Button
+                  onClick={() => printThermalPurchaseOrder(currentPO!)}
+                  variant="outline"
+                  className="bg-orange-50 hover:bg-orange-100 text-orange-700 rounded-[9px]"
+                >
+                  <Printer className="w-4 h-4 mr-2" />
+                  Thermal
                 </Button>
                 <Button
                   onClick={() => exportPOToPDF(currentPO!)}

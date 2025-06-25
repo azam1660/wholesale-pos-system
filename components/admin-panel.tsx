@@ -15,6 +15,8 @@ import ImageUpload from "./image-upload"
 import SalesAnalytics from "./sales-analytics"
 import { DataManager } from "./data-manager"
 import SalesDataManagement from "./sales-data-management"
+// Import the new dashboard component at the top
+import InventoryDashboard from "./inventory-dashboard"
 
 interface SuperCategory {
   id: string
@@ -59,9 +61,10 @@ interface Customer {
 }
 
 export default function AdminPanel({ onBack }: { onBack: () => void }) {
+  // Update the activeTab state to include dashboard
   const [activeTab, setActiveTab] = useState<
-    "super" | "sub" | "products" | "customers" | "data" | "analytics" | "sales"
-  >("super")
+    "dashboard" | "super" | "sub" | "products" | "customers" | "data" | "analytics" | "sales"
+  >("dashboard")
   const [superCategories, setSuperCategories] = useState<SuperCategory[]>([])
   const [subCategories, setSubCategories] = useState<SubCategory[]>([])
   const [products, setProducts] = useState<Product[]>([])
@@ -112,6 +115,31 @@ export default function AdminPanel({ onBack }: { onBack: () => void }) {
     setProducts(DataManager.getProducts())
     setCustomers(DataManager.getCustomers())
   }
+
+  // Add this useEffect after the existing loadData useEffect
+  useEffect(() => {
+    // Trigger inventory sync when data changes
+    const handleDataChange = () => {
+      // Trigger a storage event to sync inventory
+      window.dispatchEvent(
+        new StorageEvent("storage", {
+          key: "products",
+          storageArea: localStorage,
+        }),
+      )
+    }
+
+    // Listen for product updates
+    const interval = setInterval(() => {
+      const currentProducts = DataManager.getProducts()
+      if (JSON.stringify(currentProducts) !== JSON.stringify(products)) {
+        setProducts(currentProducts)
+        handleDataChange()
+      }
+    }, 1000)
+
+    return () => clearInterval(interval)
+  }, [products])
 
   // Super Category CRUD
   const handleSaveSuperCategory = async () => {
@@ -211,6 +239,14 @@ export default function AdminPanel({ onBack }: { onBack: () => void }) {
       loadData()
       resetProductForm()
       setErrors([])
+
+      // Trigger inventory sync
+      window.dispatchEvent(
+        new StorageEvent("storage", {
+          key: "products",
+          storageArea: localStorage,
+        }),
+      )
     } catch (error) {
       console.error("Error saving product:", error)
       setErrors(["Failed to save product"])
@@ -374,6 +410,14 @@ export default function AdminPanel({ onBack }: { onBack: () => void }) {
         {/* Tabs */}
         <div className="flex flex-wrap gap-2 mb-6">
           <Button
+            onClick={() => setActiveTab("dashboard")}
+            variant={activeTab === "dashboard" ? "default" : "outline"}
+            className={`rounded-[9px] ${activeTab === "dashboard" ? "bg-yellow-400 text-black hover:bg-yellow-500" : ""}`}
+          >
+            <BarChart3 className="w-4 h-4 mr-2" />
+            Dashboard
+          </Button>
+          <Button
             onClick={() => setActiveTab("super")}
             variant={activeTab === "super" ? "default" : "outline"}
             className={`rounded-[9px] ${activeTab === "super" ? "bg-yellow-400 text-black hover:bg-yellow-500" : ""}`}
@@ -428,6 +472,13 @@ export default function AdminPanel({ onBack }: { onBack: () => void }) {
             Sales Management
           </Button>
         </div>
+
+        {/* Dashboard Tab */}
+        {activeTab === "dashboard" && (
+          <div className="space-y-6">
+            <InventoryDashboard onRefresh={loadData} />
+          </div>
+        )}
 
         {/* Super Categories Tab */}
         {activeTab === "super" && (
@@ -719,13 +770,13 @@ export default function AdminPanel({ onBack }: { onBack: () => void }) {
               />
             </div>
             <div>
-              <Label htmlFor="super-icon">Icon (Emoji)</Label>
+              <Label htmlFor="super-icon">Icon (Emoji) - Optional</Label>
               <Input
                 id="super-icon"
                 value={superForm.icon}
                 onChange={(e) => setSuperForm({ ...superForm, icon: e.target.value })}
                 className="rounded-[9px]"
-                placeholder="🌾"
+                placeholder="🌾 (optional)"
               />
             </div>
             <ImageUpload
@@ -769,13 +820,13 @@ export default function AdminPanel({ onBack }: { onBack: () => void }) {
               />
             </div>
             <div>
-              <Label htmlFor="sub-icon">Icon (Emoji)</Label>
+              <Label htmlFor="sub-icon">Icon (Emoji) - Optional</Label>
               <Input
                 id="sub-icon"
                 value={subForm.icon}
                 onChange={(e) => setSubForm({ ...subForm, icon: e.target.value })}
                 className="rounded-[9px]"
-                placeholder="🍚"
+                placeholder="🍚 (optional)"
               />
             </div>
             <div>
@@ -842,6 +893,7 @@ export default function AdminPanel({ onBack }: { onBack: () => void }) {
                 <Input
                   id="product-price"
                   type="number"
+                  step="0.01"
                   value={productForm.price}
                   onChange={(e) => setProductForm({ ...productForm, price: Number.parseFloat(e.target.value) || 0 })}
                   className="rounded-[9px]"
@@ -866,7 +918,7 @@ export default function AdminPanel({ onBack }: { onBack: () => void }) {
                   value={productForm.unit}
                   onChange={(e) => setProductForm({ ...productForm, unit: e.target.value })}
                   className="rounded-[9px]"
-                  placeholder="kg, pack, bottle, etc."
+                  placeholder="kg, pcs, ltr"
                 />
               </div>
               <div>
@@ -880,7 +932,7 @@ export default function AdminPanel({ onBack }: { onBack: () => void }) {
                     setProductForm({ ...productForm, hamaliValue: Number.parseFloat(e.target.value) || 0 })
                   }
                   className="rounded-[9px]"
-                  placeholder="Per unit hamali charge"
+                  placeholder="0.00"
                 />
               </div>
             </div>
@@ -905,9 +957,9 @@ export default function AdminPanel({ onBack }: { onBack: () => void }) {
             <ImageUpload
               currentImage={productForm.image || undefined}
               onImageChange={(imageData) => setProductForm({ ...productForm, image: imageData || "" })}
-              aspectRatio={4 / 3}
+              aspectRatio={1}
               maxWidth={300}
-              maxHeight={225}
+              maxHeight={300}
             />
             <div className="flex gap-2">
               <Button

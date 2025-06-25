@@ -122,8 +122,8 @@ interface Sale {
 }
 
 const storeInfo = {
-  name: "SL SALAR",
-  address: "60/61, Jodhbhavi Peth Chatla Chowk, Main Road, Main Road-413001",
+  name: "SNS",
+  address: "Jodbhavi Peth, Solapur",
   phone: "9420490692",
   contact: "9405842623",
 }
@@ -933,7 +933,7 @@ export default function POSSystem() {
       const estimateNumber = generateEstimateNumber()
       // Record the sale
       await DataManager.recordSale({
-        estimateNumber: estimateNumber, // Change this to estimateNumber
+        estimateNumber: estimateNumber,
         customerId: isCashSale ? undefined : selectedCustomer,
         isCashSale,
         items: orderItems.map((item) => ({
@@ -954,19 +954,10 @@ export default function POSSystem() {
       // Generate and show estimate
       generateEstimate()
 
-      // Navigate back to main page after a short delay
-      setTimeout(() => {
-        setShowEstimate(false)
-        // Reset to super category view
-        setCurrentView("super")
-        setSelectedSuperCategory("")
-        setSelectedSubCategory("")
-      }, 2000)
-
       // Clear cart and reset form completely
       clearCart()
       setSelectedCustomer("")
-      setIsCashSale(true) // Always reset to cash sale
+      setIsCashSale(true)
       setPaymentMethod("cash")
       setEstimateReference("")
       setEstimateDate(new Date().toISOString().split("T")[0])

@@ -1037,9 +1037,7 @@ export class DataManager {
       errors.push("Name is required")
     }
 
-    if (!data.icon?.trim()) {
-      errors.push("Icon is required")
-    }
+    // Removed icon validation - icon is now optional
 
     return errors
   }
@@ -1051,9 +1049,7 @@ export class DataManager {
       errors.push("Name is required")
     }
 
-    if (!data.icon?.trim()) {
-      errors.push("Icon is required")
-    }
+    // Removed icon validation - icon is now optional
 
     if (!data.superCategoryId?.trim()) {
       errors.push("Super category is required")

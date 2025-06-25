@@ -1068,8 +1068,8 @@ export default function InventoryManagement() {
               </thead>
               <tbody>
                 ${transaction.items
-                  .map(
-                    (item: any, index: number) => `
+        .map(
+          (item: any, index: number) => `
                   <tr>
                     <td>${index + 1}</td>
                     <td>${item.name}</td>
@@ -1077,8 +1077,8 @@ export default function InventoryManagement() {
                     <td class="text-center">${item.unit}</td>
                   </tr>
                 `,
-                  )
-                  .join("")}
+        )
+        .join("")}
               </tbody>
             </table>
 
@@ -1183,15 +1183,15 @@ export default function InventoryManagement() {
 
             <!-- Items -->
             ${transaction.items
-              .map(
-                (item: any) => `
+        .map(
+          (item: any) => `
               <div class="item-row">
                 <div class="item-name">${item.name}</div>
                 <div class="item-qty">${item.quantity} ${item.unit}</div>
               </div>
             `,
-              )
-              .join("")}
+        )
+        .join("")}
 
             <div class="line"></div>
 
@@ -1262,13 +1262,6 @@ export default function InventoryManagement() {
             <p className="text-gray-600 mt-1">Manage stock levels, track movements, and generate reports</p>
           </div>
           <div className="flex gap-2">
-            <Button
-              onClick={() => setShowAddItemDialog(true)}
-              className="bg-yellow-400 hover:bg-yellow-500 text-black rounded-[9px]"
-            >
-              <Plus className="w-4 h-4 mr-2" />
-              Add Item
-            </Button>
             <Button
               onClick={() => {
                 setTransactionType("purchase")
@@ -1717,8 +1710,8 @@ export default function InventoryManagement() {
                         onClick={() => {
                           const report = generateReport()
                           setShowReportDialog(true)
-                          // Store the generated report for viewing
-                          ;(window as any).currentReport = report
+                            // Store the generated report for viewing
+                            ; (window as any).currentReport = report
                         }}
                         className="w-full bg-yellow-400 hover:bg-yellow-500 text-black rounded-[9px]"
                       >
@@ -2184,11 +2177,11 @@ export default function InventoryManagement() {
               <div className="flex gap-2">
                 <Button
                   onClick={() => {
-                    const report = (window as any).currentReport
-                    if (report) printReport(report)
+                    if ((window as any).currentReport) {
+                      printReport((window as any).currentReport)
+                    }
                   }}
                   variant="outline"
-                  size="sm"
                   className="rounded-[9px]"
                 >
                   <Printer className="w-4 h-4 mr-2" />
@@ -2196,11 +2189,11 @@ export default function InventoryManagement() {
                 </Button>
                 <Button
                   onClick={() => {
-                    const report = (window as any).currentReport
-                    if (report) exportToPDF(report)
+                    if ((window as any).currentReport) {
+                      exportToPDF((window as any).currentReport)
+                    }
                   }}
                   variant="outline"
-                  size="sm"
                   className="rounded-[9px]"
                 >
                   <Download className="w-4 h-4 mr-2" />
@@ -2209,150 +2202,14 @@ export default function InventoryManagement() {
               </div>
             </DialogTitle>
           </DialogHeader>
-
-          <div ref={reportRef} className="space-y-4">
-            {(window as any).currentReport && (
-              <div className="bg-white p-6">
-                <div className="text-center border-b-2 border-black pb-4 mb-6">
-                  <h1 className="text-2xl font-bold">SL SALAR</h1>
-                  <h2 className="text-lg mt-2">{(window as any).currentReport.title}</h2>
-                  <p className="text-sm text-gray-600 mt-2">
-                    Period: {format(new Date((window as any).currentReport.dateRange.start), "MMM dd, yyyy")} to{" "}
-                    {format(new Date((window as any).currentReport.dateRange.end), "MMM dd, yyyy")}
-                  </p>
-                  <p className="text-sm text-gray-600">
-                    Generated: {format(new Date((window as any).currentReport.generatedAt), "MMM dd, yyyy HH:mm")}
-                  </p>
-                </div>
-
-                <div className="overflow-x-auto">
-                  <table className="w-full border-collapse border border-gray-300">
-                    <thead>
-                      <tr className="bg-gray-100">
-                        {(window as any).currentReport.reportType === "closing_stock" && (
-                          <>
-                            <th className="border border-gray-300 p-2 text-left">Product Name</th>
-                            <th className="border border-gray-300 p-2 text-left">Category</th>
-                            <th className="border border-gray-300 p-2 text-center">Unit</th>
-                            <th className="border border-gray-300 p-2 text-center">Opening</th>
-                            <th className="border border-gray-300 p-2 text-center">Purchases</th>
-                            <th className="border border-gray-300 p-2 text-center">Sales</th>
-                            <th className="border border-gray-300 p-2 text-center">Adjustments</th>
-                            <th className="border border-gray-300 p-2 text-center">Closing</th>
-                            <th className="border border-gray-300 p-2 text-center">Status</th>
-                          </>
-                        )}
-                        {(window as any).currentReport.reportType === "stock_movement" && (
-                          <>
-                            <th className="border border-gray-300 p-2 text-left">Date</th>
-                            <th className="border border-gray-300 p-2 text-left">Product Name</th>
-                            <th className="border border-gray-300 p-2 text-center">Type</th>
-                            <th className="border border-gray-300 p-2 text-center">Quantity</th>
-                            <th className="border border-gray-300 p-2 text-left">Reference</th>
-                          </>
-                        )}
-                        {(window as any).currentReport.reportType === "low_stock" && (
-                          <>
-                            <th className="border border-gray-300 p-2 text-left">Product Name</th>
-                            <th className="border border-gray-300 p-2 text-left">Category</th>
-                            <th className="border border-gray-300 p-2 text-center">Current Stock</th>
-                            <th className="border border-gray-300 p-2 text-center">Reorder Level</th>
-                            <th className="border border-gray-300 p-2 text-center">Shortage</th>
-                            <th className="border border-gray-300 p-2 text-center">Last Updated</th>
-                          </>
-                        )}
-                        {(window as any).currentReport.reportType === "valuation" && (
-                          <>
-                            <th className="border border-gray-300 p-2 text-left">Product Name</th>
-                            <th className="border border-gray-300 p-2 text-left">Category</th>
-                            <th className="border border-gray-300 p-2 text-center">Closing Stock</th>
-                          </>
-                        )}
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {(window as any).currentReport.data.map((item: any, index: number) => (
-                        <tr key={index} className={index % 2 === 0 ? "bg-white" : "bg-gray-50"}>
-                          {(window as any).currentReport.reportType === "closing_stock" && (
-                            <>
-                              <td className="border border-gray-300 p-2">{item.productName}</td>
-                              <td className="border border-gray-300 p-2">{item.category}</td>
-                              <td className="border border-gray-300 p-2 text-center">{item.unit}</td>
-                              <td className="border border-gray-300 p-2 text-center">{item.openingStock}</td>
-                              <td className="border border-gray-300 p-2 text-center">{item.purchases}</td>
-                              <td className="border border-gray-300 p-2 text-center">{item.sales}</td>
-                              <td className="border border-gray-300 p-2 text-center">{item.adjustments}</td>
-                              <td className="border border-gray-300 p-2 text-center">{item.closingStock}</td>
-                              <td className="border border-gray-300 p-2 text-center">
-                                <Badge
-                                  className={
-                                    item.status === "Low Stock"
-                                      ? "bg-yellow-100 text-yellow-800"
-                                      : "bg-green-100 text-green-800"
-                                  }
-                                >
-                                  {item.status}
-                                </Badge>
-                              </td>
-                            </>
-                          )}
-                          {(window as any).currentReport.reportType === "stock_movement" && (
-                            <>
-                              <td className="border border-gray-300 p-2">
-                                {format(new Date(item.date), "MMM dd, yyyy")}
-                              </td>
-                              <td className="border border-gray-300 p-2">{item.productName}</td>
-                              <td className="border border-gray-300 p-2 text-center">
-                                <Badge
-                                  variant={
-                                    item.type === "purchase"
-                                      ? "default"
-                                      : item.type === "sale"
-                                        ? "destructive"
-                                        : "secondary"
-                                  }
-                                >
-                                  {item.type.toUpperCase()}
-                                </Badge>
-                              </td>
-                              <td className="border border-gray-300 p-2 text-center">{Math.abs(item.quantity)}</td>
-                              <td className="border border-gray-300 p-2">{item.reference || "-"}</td>
-                            </>
-                          )}
-                          {(window as any).currentReport.reportType === "low_stock" && (
-                            <>
-                              <td className="border border-gray-300 p-2">{item.productName}</td>
-                              <td className="border border-gray-300 p-2">{item.category}</td>
-                              <td className="border border-gray-300 p-2 text-center">{item.currentStock}</td>
-                              <td className="border border-gray-300 p-2 text-center">{item.reorderLevel}</td>
-                              <td className="border border-gray-300 p-2 text-center text-red-600">{item.shortage}</td>
-                              <td className="border border-gray-300 p-2 text-center">{item.lastUpdated}</td>
-                            </>
-                          )}
-                          {(window as any).currentReport.reportType === "valuation" && (
-                            <>
-                              <td className="border border-gray-300 p-2">{item.productName}</td>
-                              <td className="border border-gray-300 p-2">{item.category}</td>
-                              <td className="border border-gray-300 p-2 text-center">{item.closingStock}</td>
-                            </>
-                          )}
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
-
-                <div className="mt-6 p-4 bg-gray-50 border rounded-[9px]">
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-sm">
-                    <div>
-                      <strong>Total Items:</strong> {(window as any).currentReport.totalItems}
-                    </div>
-                    <div>
-                      <strong>Generated At:</strong>{" "}
-                      {format(new Date((window as any).currentReport.generatedAt), "MMM dd, yyyy HH:mm")}
-                    </div>
-                  </div>
-                </div>
+          <div ref={reportRef} className="p-4">
+            {(window as any).currentReport ? (
+              <div dangerouslySetInnerHTML={{ __html: generatePrintableReport((window as any).currentReport) }} />
+            ) : (
+              <div className="text-center py-8 text-gray-500">
+                <FileText className="w-12 h-12 mx-auto mb-4 opacity-50" />
+                <p>No report generated</p>
+                <p className="text-sm">Generate a report to view it here</p>
               </div>
             )}
           </div>
@@ -2361,84 +2218,32 @@ export default function InventoryManagement() {
 
       {/* Transaction Receipt Dialog */}
       <Dialog open={showTransactionReceipt} onOpenChange={setShowTransactionReceipt}>
-        <DialogContent className="max-w-2xl">
+        <DialogContent className="max-w-4xl">
           <DialogHeader>
-            <DialogTitle>
-              {lastProcessedTransaction?.type.charAt(0).toUpperCase() + lastProcessedTransaction?.type.slice(1)}{" "}
-              Transaction Completed
-            </DialogTitle>
+            <DialogTitle>Transaction Receipt</DialogTitle>
+            <DialogDescription>View and print the transaction receipt</DialogDescription>
           </DialogHeader>
-
           {lastProcessedTransaction && (
             <div className="space-y-4">
-              <div className="bg-green-50 border border-green-200 rounded-lg p-4">
-                <div className="flex items-center gap-2 text-green-800">
-                  <div className="w-2 h-2 bg-green-500 rounded-full"></div>
-                  <span className="font-medium">
-                    {lastProcessedTransaction.type.charAt(0).toUpperCase() + lastProcessedTransaction.type.slice(1)}{" "}
-                    transaction processed successfully!
-                  </span>
-                </div>
-              </div>
-
-              <div className="grid grid-cols-2 gap-4 text-sm">
-                <div>
-                  <strong>Transaction No:</strong> {lastProcessedTransaction.transactionNumber}
-                </div>
-                <div>
-                  <strong>Date:</strong> {lastProcessedTransaction.date}
-                </div>
-                <div>
-                  <strong>Type:</strong> {lastProcessedTransaction.type.toUpperCase()}
-                </div>
-                <div>
-                  <strong>Reference:</strong> {lastProcessedTransaction.reference || "N/A"}
-                </div>
-              </div>
-
-              {/* Items Summary */}
-              <div className="border rounded-lg overflow-hidden">
-                <table className="w-full">
-                  <thead className="bg-gray-50">
-                    <tr>
-                      <th className="px-3 py-2 text-left text-xs font-medium text-gray-500 uppercase">Item</th>
-                      <th className="px-3 py-2 text-center text-xs font-medium text-gray-500 uppercase">Qty</th>
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-gray-200">
-                    {lastProcessedTransaction.items.map((item: any, index: number) => (
-                      <tr key={index}>
-                        <td className="px-3 py-2 text-sm">{item.name}</td>
-                        <td className="px-3 py-2 text-sm text-center">
-                          {item.quantity} {item.unit}
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-
-              <div className="flex justify-end space-x-2">
+              <div dangerouslySetInnerHTML={{ __html: generateTransactionReceiptHTML(lastProcessedTransaction) }} />
+              <div className="flex justify-end gap-2">
                 <Button
-                  variant="outline"
                   onClick={() => printTransactionReceipt(lastProcessedTransaction)}
-                  className="rounded-lg"
+                  variant="outline"
+                  className="rounded-[9px]"
                 >
                   <Printer className="w-4 h-4 mr-2" />
                   Print Receipt
                 </Button>
                 <Button
-                  variant="outline"
                   onClick={() => printThermalTransactionReceipt(lastProcessedTransaction)}
-                  className="rounded-lg"
+                  variant="outline"
+                  className="rounded-[9px]"
                 >
                   <Printer className="w-4 h-4 mr-2" />
-                  Thermal Print
+                  Print Thermal Receipt
                 </Button>
-                <Button
-                  onClick={() => setShowTransactionReceipt(false)}
-                  className="bg-yellow-500 hover:bg-yellow-600 text-white rounded-lg"
-                >
+                <Button onClick={() => setShowTransactionReceipt(false)} variant="secondary" className="rounded-[9px]">
                   Close
                 </Button>
               </div>
