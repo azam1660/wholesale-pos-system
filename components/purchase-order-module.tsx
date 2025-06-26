@@ -320,61 +320,6 @@ export default function PurchaseOrderModule({ onBack }: { onBack: () => void }) 
     }
   }
 
-  const exportPOToPDF = (po: PurchaseOrder) => {
-    const doc = new jsPDF()
-
-    // Header
-    doc.setFontSize(20)
-    doc.text(storeInfo.name, 105, 20, { align: "center" })
-
-    doc.setFontSize(10)
-    doc.text(storeInfo.address, 105, 30, { align: "center" })
-    doc.text(`Contact: ${storeInfo.phone}`, 105, 35, { align: "center" })
-
-    // PO details
-    doc.setFontSize(16)
-    doc.text("PURCHASE ORDER", 20, 50)
-
-    doc.setFontSize(10)
-    doc.text(`PO No: ${po.orderNumber}`, 20, 60)
-    doc.text(`Date: ${po.date}`, 20, 65)
-    doc.text(`Status: ${po.status.toUpperCase()}`, 20, 70)
-
-    // Supplier details
-    if (!po.isCashPurchase && po.supplierName) {
-      doc.text("Supplier:", 120, 60)
-      doc.text(po.supplierName, 120, 65)
-      if (po.supplierPhone) {
-        doc.text(po.supplierPhone, 120, 70)
-      }
-    } else {
-      doc.text("CASH PURCHASE", 120, 65)
-    }
-
-    // Items table
-    const tableData = po.items.map((item, index) => [index + 1, item.name, item.quantity, item.unit])
-
-    doc.autoTable({
-      head: [["S.No.", "Item", "QTY", "Unit"]],
-      body: tableData,
-      startY: 85,
-      styles: { fontSize: 9 },
-      headStyles: { fillColor: [245, 245, 245], textColor: [0, 0, 0] },
-    })
-
-    // Total
-    const finalY = (doc as any).lastAutoTable.finalY + 10
-    doc.setFontSize(12)
-
-    // Notes
-    if (po.notes) {
-      doc.setFontSize(10)
-      doc.text(`Notes: ${po.notes}`, 20, finalY + 15)
-    }
-
-    doc.save(`PO_${po.orderNumber}.pdf`)
-  }
-
   const confirmOrder = () => {
     if (orderItems.length === 0) return
     if (!isCashPurchase && !selectedSupplier) return
@@ -992,13 +937,6 @@ export default function PurchaseOrderModule({ onBack }: { onBack: () => void }) 
                   <Printer className="w-4 h-4 mr-2" />
                   Thermal
                 </Button>
-                <Button
-                  onClick={() => exportPOToPDF(currentPO!)}
-                  className="bg-green-500 hover:bg-green-600 text-white rounded-[9px]"
-                >
-                  <Download className="w-4 h-4 mr-2" />
-                  Export PDF
-                </Button>
               </div>
             </DialogTitle>
           </DialogHeader>
@@ -1153,9 +1091,6 @@ export default function PurchaseOrderModule({ onBack }: { onBack: () => void }) 
                           className="rounded-[9px]"
                         >
                           <Eye className="w-4 h-4" />
-                        </Button>
-                        <Button size="sm" variant="outline" onClick={() => exportPOToPDF(po)} className="rounded-[9px]">
-                          <Download className="w-4 h-4" />
                         </Button>
                       </div>
                     </div>

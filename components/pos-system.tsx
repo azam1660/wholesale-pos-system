@@ -318,9 +318,6 @@ export default function POSSystem() {
       setCurrentEstimate(updatedEstimate)
       setShowEditEstimate(false)
       setShowEstimate(true)
-
-      // Show success message
-      alert("Estimate updated successfully!")
     } catch (error) {
       console.error("Error saving estimate changes:", error)
       alert("Error saving changes. Please try again.")
@@ -750,7 +747,6 @@ export default function POSSystem() {
     const date = new Date(estimateDate)
     const dateStr = date.toISOString().split("T")[0].replace(/-/g, "")
     const estimateNumber = `EST/${dateStr}/${counter.toString().padStart(4, "0")}`
-    setEstimateCounter(counter + 1)
     return estimateNumber
   }
 
