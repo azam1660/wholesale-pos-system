@@ -8,11 +8,13 @@ import {
   ShoppingCart,
   FileText,
   Printer,
-  Download,
   User,
   UserPlus,
   Package,
   Eye,
+  Edit,
+  Trash2,
+  Save,
 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -23,7 +25,6 @@ import { Label } from "@/components/ui/label"
 import { Textarea } from "@/components/ui/textarea"
 import { Badge } from "@/components/ui/badge"
 import { format } from "date-fns"
-import jsPDF from "jspdf"
 import "jspdf-autotable"
 import { DataManager } from "./data-manager"
 
@@ -94,6 +95,8 @@ export default function PurchaseOrderModule({ onBack }: { onBack: () => void }) 
   const [orderDate, setOrderDate] = useState(new Date().toISOString().split("T")[0])
   const [showPOHistory, setShowPOHistory] = useState(false)
   const [purchaseOrders, setPurchaseOrders] = useState<PurchaseOrder[]>([])
+  const [editingPO, setEditingPO] = useState<PurchaseOrder | null>(null)
+  const [isEditMode, setIsEditMode] = useState(false)
 
   // Data states
   const [superCategories, setSuperCategories] = useState<any[]>([])
@@ -254,34 +257,57 @@ export default function PurchaseOrderModule({ onBack }: { onBack: () => void }) 
 
   const clearCart = () => {
     setOrderItems([])
+    setEditingPO(null)
+    setIsEditMode(false)
   }
 
   const subtotal = orderItems.reduce((sum, item) => sum + item.lineTotal, 0)
 
   const generatePurchaseOrder = () => {
-    const orderNumber = generatePONumber()
-    const purchaseOrder: PurchaseOrder = {
-      id: Date.now().toString(),
-      orderNumber,
-      date: orderDate,
-      supplierId: isCashPurchase ? undefined : selectedSupplier,
-      supplierName: isCashPurchase ? "Cash Purchase" : selectedSupplierData?.name,
-      supplierPhone: isCashPurchase ? undefined : selectedSupplierData?.phone,
-      isCashPurchase,
-      items: [...orderItems],
-      subtotal: 0,
-      total: 0,
-      status: "pending",
-      reference: orderReference,
-      notes: orderNotes,
-      createdAt: new Date().toISOString(),
-      updatedAt: new Date().toISOString(),
+    if (isEditMode && editingPO) {
+      // Update existing purchase order
+      const updatedPO: PurchaseOrder = {
+        ...editingPO,
+        date: orderDate,
+        supplierId: isCashPurchase ? undefined : selectedSupplier,
+        supplierName: isCashPurchase ? "Cash Purchase" : selectedSupplierData?.name,
+        supplierPhone: isCashPurchase ? undefined : selectedSupplierData?.phone,
+        isCashPurchase,
+        items: [...orderItems],
+        reference: orderReference,
+        notes: orderNotes,
+        updatedAt: new Date().toISOString(),
+      }
+
+      const updatedOrders = purchaseOrders.map((po) => (po.id === editingPO.id ? updatedPO : po))
+      savePurchaseOrders(updatedOrders)
+      setCurrentPO(updatedPO)
+    } else {
+      // Create new purchase order
+      const orderNumber = generatePONumber()
+      const purchaseOrder: PurchaseOrder = {
+        id: Date.now().toString(),
+        orderNumber,
+        date: orderDate,
+        supplierId: isCashPurchase ? undefined : selectedSupplier,
+        supplierName: isCashPurchase ? "Cash Purchase" : selectedSupplierData?.name,
+        supplierPhone: isCashPurchase ? undefined : selectedSupplierData?.phone,
+        isCashPurchase,
+        items: [...orderItems],
+        subtotal: 0,
+        total: 0,
+        status: "pending",
+        reference: orderReference,
+        notes: orderNotes,
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString(),
+      }
+
+      const updatedOrders = [...purchaseOrders, purchaseOrder]
+      savePurchaseOrders(updatedOrders)
+      setCurrentPO(purchaseOrder)
     }
 
-    const updatedOrders = [...purchaseOrders, purchaseOrder]
-    savePurchaseOrders(updatedOrders)
-
-    setCurrentPO(purchaseOrder)
     setShowPurchaseOrder(true)
   }
 
@@ -491,6 +517,42 @@ export default function PurchaseOrderModule({ onBack }: { onBack: () => void }) 
     printWindow.print()
   }
 
+  const editPurchaseOrder = (po: PurchaseOrder) => {
+    // Load the purchase order data into the form for editing
+    setEditingPO(po)
+    setIsEditMode(true)
+    setOrderItems([...po.items])
+    setOrderDate(po.date)
+    setOrderReference(po.reference || "")
+    setOrderNotes(po.notes || "")
+    setIsCashPurchase(po.isCashPurchase)
+    if (!po.isCashPurchase && po.supplierId) {
+      setSelectedSupplier(po.supplierId)
+    }
+
+    // Close history dialog
+    setShowPOHistory(false)
+
+    // Navigate back to main view
+    setCurrentView("super")
+    setSelectedSuperCategory("")
+    setSelectedSubCategory("")
+  }
+
+  const editCurrentPO = () => {
+    if (currentPO) {
+      editPurchaseOrder(currentPO)
+      setShowPurchaseOrder(false)
+    }
+  }
+
+  const deletePurchaseOrder = (poId: string) => {
+    if (confirm("Are you sure you want to delete this purchase order? This action cannot be undone.")) {
+      const updatedOrders = purchaseOrders.filter((po) => po.id !== poId)
+      savePurchaseOrders(updatedOrders)
+    }
+  }
+
   if (!dataLoaded) {
     return (
       <div className="min-h-screen bg-white flex items-center justify-center">
@@ -635,7 +697,9 @@ export default function PurchaseOrderModule({ onBack }: { onBack: () => void }) 
                   <ArrowLeft className="w-4 h-4 mr-2" />
                   Back
                 </Button>
-                <h1 className="text-xl sm:text-2xl font-bold text-black">Purchase Orders</h1>
+                <h1 className="text-xl sm:text-2xl font-bold text-black">
+                  {isEditMode ? "Edit Purchase Order" : "Purchase Orders"}
+                </h1>
                 <Button
                   onClick={() => setShowPOHistory(true)}
                   variant="outline"
@@ -645,6 +709,11 @@ export default function PurchaseOrderModule({ onBack }: { onBack: () => void }) 
                   <FileText className="w-4 h-4 mr-2" />
                   History
                 </Button>
+                {isEditMode && (
+                  <Badge variant="secondary" className="text-xs">
+                    Editing: {editingPO?.orderNumber}
+                  </Badge>
+                )}
               </div>
 
               {/* Supplier Selection */}
@@ -851,8 +920,17 @@ export default function PurchaseOrderModule({ onBack }: { onBack: () => void }) 
               className="w-full bg-yellow-400 hover:bg-yellow-500 text-black rounded-[9px] font-medium"
               disabled={orderItems.length === 0 || (!isCashPurchase && !selectedSupplier)}
             >
-              <FileText className="w-4 h-4 mr-2" />
-              Generate Purchase Order
+              {isEditMode ? (
+                <>
+                  <Save className="w-4 h-4 mr-2" />
+                  Update Purchase Order
+                </>
+              ) : (
+                <>
+                  <FileText className="w-4 h-4 mr-2" />
+                  Generate Purchase Order
+                </>
+              )}
             </Button>
           </div>
         </div>
@@ -923,7 +1001,7 @@ export default function PurchaseOrderModule({ onBack }: { onBack: () => void }) 
         <DialogContent className="max-w-4xl max-h-[90vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle className="flex items-center justify-between">
-              <span>Purchase Order Generated</span>
+              <span>{isEditMode ? "Purchase Order Updated" : "Purchase Order Generated"}</span>
               <div className="flex gap-2">
                 <Button onClick={printPurchaseOrder} variant="outline" className="rounded-[9px]">
                   <Printer className="w-4 h-4 mr-2" />
@@ -936,6 +1014,14 @@ export default function PurchaseOrderModule({ onBack }: { onBack: () => void }) 
                 >
                   <Printer className="w-4 h-4 mr-2" />
                   Thermal
+                </Button>
+                <Button
+                  onClick={editCurrentPO}
+                  variant="outline"
+                  className="bg-blue-50 hover:bg-blue-100 text-blue-700 rounded-[9px]"
+                >
+                  <Edit className="w-4 h-4 mr-2" />
+                  Edit
                 </Button>
               </div>
             </DialogTitle>
@@ -1077,7 +1163,7 @@ export default function PurchaseOrderModule({ onBack }: { onBack: () => void }) 
                           <span>{po.items.length} items</span>
                         </div>
                       </div>
-                      <div className="flex items-center gap-3">
+                      <div className="flex items-center gap-2">
                         <div className="text-right">
                           <div className="font-bold">₹{po.total.toFixed(2)}</div>
                         </div>
@@ -1091,6 +1177,22 @@ export default function PurchaseOrderModule({ onBack }: { onBack: () => void }) 
                           className="rounded-[9px]"
                         >
                           <Eye className="w-4 h-4" />
+                        </Button>
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          onClick={() => editPurchaseOrder(po)}
+                          className="rounded-[9px] bg-blue-50 hover:bg-blue-100 text-blue-700"
+                        >
+                          <Edit className="w-4 h-4" />
+                        </Button>
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          onClick={() => deletePurchaseOrder(po.id)}
+                          className="rounded-[9px] bg-red-50 hover:bg-red-100 text-red-700"
+                        >
+                          <Trash2 className="w-4 h-4" />
                         </Button>
                       </div>
                     </div>
