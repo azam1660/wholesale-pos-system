@@ -169,7 +169,7 @@ export default function EnhancedSalesReports({ onBack }: EnhancedSalesReportsPro
 
     // Header
     doc.setFontSize(20)
-    doc.text("SL SALAR", 105, 20, { align: "center" })
+    doc.text("SNS", 105, 20, { align: "center" })
 
     doc.setFontSize(16)
     doc.text("Sales Report", 105, 30, { align: "center" })
@@ -252,7 +252,7 @@ export default function EnhancedSalesReports({ onBack }: EnhancedSalesReportsPro
         })
         await navigator.share({
           title: "Sales Report",
-          text: `Sales report from SL SALAR for ${format(new Date(), "MMM dd, yyyy")}`,
+          text: `Sales report from SNS for ${format(new Date(), "MMM dd, yyyy")}`,
           files: [file],
         })
       } catch (error) {
@@ -352,10 +352,6 @@ export default function EnhancedSalesReports({ onBack }: EnhancedSalesReportsPro
             <Button onClick={printReport} variant="outline" className="rounded-[9px]">
               <Printer className="w-4 h-4 mr-2" />
               Print
-            </Button>
-            <Button onClick={exportReportToPDF} variant="outline" className="rounded-[9px]">
-              <Download className="w-4 h-4 mr-2" />
-              Export PDF
             </Button>
             <Button onClick={shareReportPDF} className="bg-green-500 hover:bg-green-600 text-white rounded-[9px]">
               <Share2 className="w-4 h-4 mr-2" />

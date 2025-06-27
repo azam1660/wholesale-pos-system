@@ -128,7 +128,7 @@ const storeInfo = {
   contact: "9405842623",
 }
 
-// Estimate counter - stored in localStorage
+// Estimate counter - stored in localStorage with proper increment logic
 const getEstimateCounter = () => {
   const stored = localStorage.getItem("estimateCounter")
   return stored ? Number.parseInt(stored) : 1
@@ -136,6 +136,24 @@ const getEstimateCounter = () => {
 
 const setEstimateCounter = (counter: number) => {
   localStorage.setItem("estimateCounter", counter.toString())
+}
+
+// Get next estimate number without incrementing counter
+const getNextEstimateNumber = (date: string) => {
+  const counter = getEstimateCounter()
+  const dateObj = new Date(date)
+  const dateStr = dateObj.toISOString().split("T")[0].replace(/-/g, "")
+  return `EST/${dateStr}/${counter.toString().padStart(4, "0")}`
+}
+
+// Generate estimate number and increment counter
+const generateEstimateNumber = (date: string) => {
+  const counter = getEstimateCounter()
+  const dateObj = new Date(date)
+  const dateStr = dateObj.toISOString().split("T")[0].replace(/-/g, "")
+  const estimateNumber = `EST/${dateStr}/${counter.toString().padStart(4, "0")}`
+  setEstimateCounter(counter + 1)
+  return estimateNumber
 }
 
 const formatCurrency = (amount: number) => {
@@ -160,7 +178,6 @@ export default function POSSystem() {
   const [showAddCustomer, setShowAddCustomer] = useState(false)
   const [paymentMethod, setPaymentMethod] = useState<"cash" | "card" | "upi" | "credit">("cash")
   const invoiceRef = useRef<HTMLDivElement>(null)
-  console.log(currentEstimate)
 
   const [showEditEstimate, setShowEditEstimate] = useState(false)
   const [editableEstimate, setEditableEstimate] = useState<Estimate | null>(null)
@@ -680,9 +697,6 @@ export default function POSSystem() {
           setEstimateReference(`PO Ref: ${orderData.reference}`)
         }
 
-        // Show notification
-        alert(`Purchase Order converted to POS with ${posItems.length} items`)
-
         // Clear the prefilled data
         localStorage.removeItem("posPrefilledOrder")
       } catch (error) {
@@ -733,22 +747,6 @@ export default function POSSystem() {
   const selectedCustomerData = useMemo(() => {
     return customers.find((c) => c.id === selectedCustomer)
   }, [customers, selectedCustomer])
-
-  const generateEstimateNumberwithoutincrement = () => {
-    const counter = getEstimateCounter()
-    const date = new Date(estimateDate)
-    const dateStr = date.toISOString().split("T")[0].replace(/-/g, "")
-
-    const estimateNumber = `EST/${dateStr}/${counter.toString().padStart(4, "0")}`
-    return estimateNumber
-  }
-  const generateEstimateNumber = () => {
-    const counter = getEstimateCounter()
-    const date = new Date(estimateDate)
-    const dateStr = date.toISOString().split("T")[0].replace(/-/g, "")
-    const estimateNumber = `EST/${dateStr}/${counter.toString().padStart(4, "0")}`
-    return estimateNumber
-  }
 
   const handleSaveCustomer = async () => {
     if (!customerForm.name.trim() || !customerForm.phone.trim()) return
@@ -866,10 +864,10 @@ export default function POSSystem() {
   }, [subtotal, hamaliCharges, includeHamali])
 
   const generateEstimate = () => {
-    const estimateNumber = generateEstimateNumberwithoutincrement()
+    const estimateNumber = getNextEstimateNumber(estimateDate)
     const estimate: Estimate = {
       estimateNumber,
-      date: estimateDate,
+      date: new Date(estimateDate).toLocaleDateString("en-IN"),
       customer: isCashSale ? null : selectedCustomerData,
       items: [...orderItems],
       subtotal,
@@ -926,7 +924,7 @@ export default function POSSystem() {
     if (!isCashSale && !selectedCustomer) return
 
     try {
-      const estimateNumber = generateEstimateNumber()
+      const estimateNumber = generateEstimateNumber(estimateDate)
       // Record the sale
       await DataManager.recordSale({
         estimateNumber: estimateNumber,
@@ -947,8 +945,21 @@ export default function POSSystem() {
         reference: estimateReference,
       })
 
-      // Generate and show estimate
-      generateEstimate()
+      // Generate and show estimate with the same number
+      const estimate: Estimate = {
+        estimateNumber,
+        date: new Date(estimateDate).toLocaleDateString("en-IN"),
+        customer: isCashSale ? null : selectedCustomerData,
+        items: [...orderItems],
+        subtotal,
+        hamaliCharges: includeHamali ? hamaliCharges : 0,
+        total: total,
+        isCashSale,
+        paymentMethod,
+        reference: estimateReference,
+      }
+      setCurrentEstimate(estimate)
+      setShowEstimate(true)
 
       // Clear cart and reset form completely
       clearCart()
@@ -1030,7 +1041,7 @@ export default function POSSystem() {
     const filteredSubCategories = subCategories.filter((sub) => sub.superCategoryId === selectedSuperCategory)
     return (
       <div className="space-y-4">
-        <Button onClick={handleBackToSuper} variant="outline" className="rounded-[9px] border-gray-300">
+        <Button onClick={handleBackToSuper} variant="outline" className="rounded-[9px] border-gray-300 bg-transparent">
           ← Back to Categories
         </Button>
         <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-3 md:gap-4">
@@ -1073,14 +1084,14 @@ export default function POSSystem() {
           <Button
             onClick={handleBackToSub}
             variant="outline"
-            className="rounded-[9px] border-gray-300 text-xs sm:text-sm"
+            className="rounded-[9px] border-gray-300 text-xs sm:text-sm bg-transparent"
           >
             ← Back to Subcategories
           </Button>
           <Button
             onClick={handleBackToSuper}
             variant="outline"
-            className="rounded-[9px] border-gray-300 text-xs sm:text-sm"
+            className="rounded-[9px] border-gray-300 text-xs sm:text-sm bg-transparent"
           >
             ← Back to Categories
           </Button>
@@ -1260,7 +1271,7 @@ export default function POSSystem() {
               <Button
                 onClick={clearCart}
                 variant="outline"
-                className="w-full rounded-[9px] border-gray-300"
+                className="w-full rounded-[9px] border-gray-300 bg-transparent"
                 disabled={orderItems.length === 0}
               >
                 Clear Cart
@@ -1301,7 +1312,7 @@ export default function POSSystem() {
             {/* Top Header Row */}
             <div className="flex items-center justify-between">
               <div className="flex items-center gap-2 sm:gap-4">
-                <h1 className="text-lg sm:text-xl lg:text-2xl font-bold text-black">SL SALAR</h1>
+                <h1 className="text-lg sm:text-xl lg:text-2xl font-bold text-black">SNS</h1>
                 <Button
                   onClick={() => setShowAdmin(true)}
                   variant="outline"
@@ -1440,7 +1451,7 @@ export default function POSSystem() {
                                 size="sm"
                                 variant="outline"
                                 onClick={loadAllTransactions}
-                                className="rounded-[9px] border-yellow-300"
+                                className="rounded-[9px] border-yellow-300 bg-transparent"
                               >
                                 <FileText className="w-4 h-4" />
                               </Button>
@@ -1619,7 +1630,7 @@ export default function POSSystem() {
                         <Button
                           onClick={clearCart}
                           variant="outline"
-                          className="w-full rounded-[9px] border-gray-300"
+                          className="w-full rounded-[9px] border-gray-300 bg-transparent"
                           disabled={orderItems.length === 0}
                         >
                           Clear Cart
@@ -1705,7 +1716,7 @@ export default function POSSystem() {
               >
                 Add Customer
               </Button>
-              <Button onClick={resetCustomerForm} variant="outline" className="rounded-[9px]">
+              <Button onClick={resetCustomerForm} variant="outline" className="rounded-[9px] bg-transparent">
                 Cancel
               </Button>
             </div>
@@ -1743,7 +1754,7 @@ export default function POSSystem() {
                 <Button
                   onClick={printEstimate}
                   variant="outline"
-                  className="rounded-[9px] text-xs sm:text-sm"
+                  className="rounded-[9px] text-xs sm:text-sm bg-transparent"
                   size="sm"
                 >
                   <Printer className="w-4 h-4 mr-1 sm:mr-2" />

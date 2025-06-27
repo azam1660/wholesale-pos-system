@@ -887,7 +887,7 @@ export default function InventoryManagement() {
         </head>
         <body>
           <div class="header">
-            <div class="company-name">SL SALAR</div>
+            <div class="company-name">SNS</div>
             <div class="report-title">${report.title}</div>
             <div class="report-info">
               Generated on: ${currentDate} |
@@ -918,7 +918,7 @@ export default function InventoryManagement() {
 
     // Header
     doc.setFontSize(20)
-    doc.text("SL SALAR", 105, 20, { align: "center" })
+    doc.text("SNS", 105, 20, { align: "center" })
 
     doc.setFontSize(16)
     doc.text(report.title, 105, 30, { align: "center" })
@@ -1045,7 +1045,7 @@ export default function InventoryManagement() {
         <body>
           <div class="receipt">
             <div class="header">
-              <div class="company-name">SL SALAR</div>
+              <div class="company-name">SNS</div>
               <div class="receipt-title">${transaction.type.toUpperCase()} RECEIPT</div>
               <div>Jodbhavi peth, Solapur | Ph: 8668749859</div>
             </div>
@@ -1158,7 +1158,7 @@ export default function InventoryManagement() {
         <body>
           <div class="thermal-receipt">
             <!-- Store Header -->
-            <div class="center header">SL SALAR</div>
+            <div class="center header">SNS</div>
             <div class="center sub-header">Jodbhavi peth, Solapur</div>
             <div class="center sub-header">Ph: 8668749859</div>
             <div class="double-line"></div>
@@ -1731,17 +1731,6 @@ export default function InventoryManagement() {
                           <Printer className="w-4 h-4 mr-2" />
                           Print
                         </Button>
-                        <Button
-                          onClick={() => {
-                            const report = generateReport()
-                            exportToPDF(report)
-                          }}
-                          variant="outline"
-                          className="rounded-[9px]"
-                        >
-                          <Download className="w-4 h-4 mr-2" />
-                          Export PDF
-                        </Button>
                       </div>
                     </div>
                   </div>
@@ -2186,18 +2175,6 @@ export default function InventoryManagement() {
                 >
                   <Printer className="w-4 h-4 mr-2" />
                   Print
-                </Button>
-                <Button
-                  onClick={() => {
-                    if ((window as any).currentReport) {
-                      exportToPDF((window as any).currentReport)
-                    }
-                  }}
-                  variant="outline"
-                  className="rounded-[9px]"
-                >
-                  <Download className="w-4 h-4 mr-2" />
-                  Export PDF
                 </Button>
               </div>
             </DialogTitle>
