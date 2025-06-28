@@ -432,7 +432,7 @@ export default function InventoryManagement() {
           type: transactionType,
           quantity: transactionType === "sale" ? -item.quantity : item.quantity,
           date: transactionDate,
-          reference: transactionReference,
+          reference: transactionReference || `${transactionType.toUpperCase()}-${Date.now().toString().slice(-4)}`,
           notes: `${transactionType.charAt(0).toUpperCase() + transactionType.slice(1)} transaction`,
           createdAt: new Date().toISOString(),
         }
@@ -751,14 +751,22 @@ export default function InventoryManagement() {
             const transactionDate = new Date(t.date)
             return transactionDate >= startDate && transactionDate <= endDate
           })
+          .filter((t) => {
+            // Apply category filter if not "all"
+            if (reportForm.categoryFilter !== "all") {
+              const item = inventoryItems.find((item) => item.productId === t.productId)
+              return item && item.category === reportForm.categoryFilter
+            }
+            return true
+          })
           .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())
           .map((t) => ({
             date: t.date,
             productName: t.productName,
             type: t.type,
             quantity: t.quantity,
-            reference: t.reference,
-            notes: t.notes,
+            reference: t.reference || "-",
+            notes: t.notes || "-",
           }))
         break
 
@@ -1111,7 +1119,7 @@ export default function InventoryManagement() {
             <div class="header">
               <div class="company-name">SNS</div>
               <div class="receipt-title">${transaction.type.toUpperCase()} RECEIPT</div>
-              <div>Jodbhavi peth, Solapur | Ph: 9405842623</div>
+              <div>Jodbhavi peth, Solapur | Ph: 8668749859</div>
             </div>
 
             <div class="receipt-info">
@@ -1224,7 +1232,7 @@ export default function InventoryManagement() {
             <!-- Store Header -->
             <div class="center header">SNS</div>
             <div class="center sub-header">Jodbhavi peth, Solapur</div>
-            <div class="center sub-header">Ph: 9405842623</div>
+            <div class="center sub-header">Ph: 8668749859</div>
             <div class="double-line"></div>
 
             <!-- Receipt Details -->
@@ -1806,17 +1814,6 @@ export default function InventoryManagement() {
                           <Printer className="w-4 h-4 mr-2" />
                           Print
                         </Button>
-                        <Button
-                          onClick={() => {
-                            const report = generateReport()
-                            exportToPDF(report)
-                          }}
-                          variant="outline"
-                          className="rounded-[9px]"
-                        >
-                          <Download className="w-4 h-4 mr-2" />
-                          Export PDF
-                        </Button>
                       </div>
                     </div>
                   </div>
@@ -2353,18 +2350,6 @@ export default function InventoryManagement() {
                 >
                   <Printer className="w-4 h-4 mr-2" />
                   Print
-                </Button>
-                <Button
-                  onClick={() => {
-                    if ((window as any).currentReport) {
-                      exportToPDF((window as any).currentReport)
-                    }
-                  }}
-                  variant="outline"
-                  className="rounded-[9px]"
-                >
-                  <Download className="w-4 h-4 mr-2" />
-                  Export PDF
                 </Button>
               </div>
             </DialogTitle>
