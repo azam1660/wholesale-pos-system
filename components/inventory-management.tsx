@@ -173,12 +173,24 @@ export default function InventoryManagement() {
     return () => window.removeEventListener("storage", handleStorageChange)
   }, [])
 
-  // Update the loadData function to sync with POS data
+  // Helper function to get category name for a product
+  const getCategoryNameForProduct = (productId: string): string => {
+    const product = products.find((p) => p.id === productId)
+    if (!product) return "Unknown"
+
+    const subCategory = subCategories.find((sc) => sc.id === product.subCategoryId)
+    if (!subCategory) return "Unknown"
+
+    return subCategory.name
+  }
+
+  // Update the loadData function to sync with POS data and fix category mapping
   const loadData = () => {
     // Load inventory data
     const storedItems = localStorage.getItem(STORAGE_KEYS.INVENTORY_ITEMS)
+    let currentInventoryItems: InventoryItem[] = []
     if (storedItems) {
-      setInventoryItems(JSON.parse(storedItems))
+      currentInventoryItems = JSON.parse(storedItems)
     }
 
     const storedTransactions = localStorage.getItem(STORAGE_KEYS.STOCK_TRANSACTIONS)
@@ -196,25 +208,48 @@ export default function InventoryManagement() {
     setSuperCategories(superCategoriesData)
     setCategories([...superCategoriesData, ...subCategoriesData])
 
+    // Fix category mapping for existing inventory items
+    const updatedInventoryItems = currentInventoryItems.map((item) => {
+      if (item.category === "Unknown" || !item.category) {
+        const product = productsData.find((p) => p.id === item.productId)
+        if (product) {
+          const subCategory = subCategoriesData.find((sc) => sc.id === product.subCategoryId)
+          return {
+            ...item,
+            category: subCategory?.name || "Unknown",
+            lastUpdated: new Date().toISOString(),
+          }
+        }
+      }
+      return item
+    })
+
+    // Save the updated inventory items with fixed categories
+    if (JSON.stringify(updatedInventoryItems) !== JSON.stringify(currentInventoryItems)) {
+      saveInventoryItems(updatedInventoryItems)
+    } else {
+      setInventoryItems(updatedInventoryItems)
+    }
+
     // Sync inventory with POS data
-    syncInventoryWithPOSData(productsData)
+    syncInventoryWithPOSData(productsData, updatedInventoryItems)
   }
 
   // Add this new function to sync inventory with POS data
-  const syncInventoryWithPOSData = (productsData: any[]) => {
+  const syncInventoryWithPOSData = (productsData: any[], currentInventoryItems: InventoryItem[]) => {
     const sales = DataManager.getSales()
-    const currentInventoryItems = DataManager.getInventoryItems()
-    const currentStockTransactions = DataManager.getStockTransactions()
 
     // Create a map of existing inventory items
     const inventoryMap = new Map(currentInventoryItems.map((item) => [item.productId, item]))
+
+    let hasChanges = false
 
     // Process each product to ensure it has inventory tracking
     for (const product of productsData) {
       if (!inventoryMap.has(product.id)) {
         // Create inventory item for products that don't have one
         const subCategory = subCategories.find((c) => c.id === product.subCategoryId)
-        const newInventoryItem = {
+        const newInventoryItem: InventoryItem = {
           id: generateId(),
           productId: product.id,
           productName: product.name,
@@ -231,28 +266,53 @@ export default function InventoryManagement() {
         }
         currentInventoryItems.push(newInventoryItem)
         inventoryMap.set(product.id, newInventoryItem)
+        hasChanges = true
       } else {
-        // Update closing stock to match current product stock
+        // Update closing stock to match current product stock and fix category
         const inventoryItem = inventoryMap.get(product.id)
-        if (inventoryItem && inventoryItem.closingStock !== product.stock) {
-          inventoryItem.closingStock = product.stock
-          inventoryItem.lastUpdated = new Date().toISOString()
+        if (inventoryItem) {
+          let itemChanged = false
+
+          // Fix category if it's unknown
+          if (inventoryItem.category === "Unknown" || !inventoryItem.category) {
+            const subCategory = subCategories.find((c) => c.id === product.subCategoryId)
+            if (subCategory) {
+              inventoryItem.category = subCategory.name
+              itemChanged = true
+            }
+          }
+
+          // Update stock if different
+          if (inventoryItem.closingStock !== product.stock) {
+            inventoryItem.closingStock = product.stock
+            itemChanged = true
+          }
+
+          if (itemChanged) {
+            inventoryItem.lastUpdated = new Date().toISOString()
+            hasChanges = true
+          }
         }
       }
     }
 
-    // Save updated inventory
-    DataManager.setInventoryItems(currentInventoryItems)
+    // Save updated inventory if there were changes
+    if (hasChanges) {
+      DataManager.setInventoryItems(currentInventoryItems)
+    }
+
     setInventoryItems(currentInventoryItems)
   }
 
   const saveInventoryItems = (items: InventoryItem[]) => {
     localStorage.setItem(STORAGE_KEYS.INVENTORY_ITEMS, JSON.stringify(items))
+    DataManager.setInventoryItems(items)
     setInventoryItems(items)
   }
 
   const saveStockTransactions = (transactions: StockTransaction[]) => {
     localStorage.setItem(STORAGE_KEYS.STOCK_TRANSACTIONS, JSON.stringify(transactions))
+    DataManager.setStockTransactions(transactions)
     setStockTransactions(transactions)
   }
 
@@ -265,7 +325,7 @@ export default function InventoryManagement() {
       filtered = filtered.filter((item) => item.productName.toLowerCase().includes(query))
     }
 
-    // Category filter
+    // Category filter - now works with proper category names
     if (categoryFilter !== "all") {
       filtered = filtered.filter((item) => item.category === categoryFilter)
     }
@@ -276,6 +336,13 @@ export default function InventoryManagement() {
     } else if (stockFilter === "out") {
       filtered = filtered.filter((item) => item.closingStock <= 0)
     }
+
+    // Sort by last updated date (most recent first)
+    filtered.sort((a, b) => {
+      const dateA = new Date(a.lastUpdated).getTime()
+      const dateB = new Date(b.lastUpdated).getTime()
+      return dateB - dateA
+    })
 
     setFilteredItems(filtered)
   }
@@ -340,7 +407,7 @@ export default function InventoryManagement() {
     setTransactionItems([])
   }
 
-  // Update the processTransaction function to sync with DataManager
+  // Fixed processTransaction function to prevent duplicate transactions
   const processTransaction = async () => {
     if (transactionItems.length === 0) return
 
@@ -357,6 +424,7 @@ export default function InventoryManagement() {
 
       // Process each item in the transaction
       for (const item of transactionItems) {
+        // Create stock transaction record
         const newTransaction: StockTransaction = {
           id: generateId(),
           productId: item.id,
@@ -369,10 +437,11 @@ export default function InventoryManagement() {
           createdAt: new Date().toISOString(),
         }
 
+        // Save stock transaction
         const updatedTransactions = [...stockTransactions, newTransaction]
         saveStockTransactions(updatedTransactions)
 
-        // Update inventory item
+        // Update inventory item directly (without calling DataManager methods to avoid duplication)
         updateInventoryFromTransaction(newTransaction)
 
         // Update product stock in DataManager
@@ -391,18 +460,8 @@ export default function InventoryManagement() {
         }
       }
 
-      // Update DataManager inventory if it's a purchase
-      if (transactionType === "purchase") {
-        DataManager.updateInventoryFromPurchase(
-          transactionItems.map((item) => ({
-            productId: item.id,
-            quantity: item.quantity,
-            productName: item.name,
-            unit: item.unit,
-            reference: transactionReference,
-          })),
-        )
-      }
+      // DO NOT call DataManager.updateInventoryFromPurchase here to avoid duplicate transactions
+      // The inventory is already updated by updateInventoryFromTransaction above
 
       // Refresh products data
       setProducts(DataManager.getProducts())
@@ -569,7 +628,11 @@ export default function InventoryManagement() {
     const filteredSubCategories = subCategories.filter((sub) => sub.superCategoryId === selectedSuperCategory)
     return (
       <div className="space-y-4">
-        <Button onClick={handleBackToSuper} variant="outline" className="rounded-lg border-gray-300 hover:bg-gray-50">
+        <Button
+          onClick={handleBackToSuper}
+          variant="outline"
+          className="rounded-lg border-gray-300 hover:bg-gray-50 bg-transparent"
+        >
           ← Back to Categories
         </Button>
         <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-3">
@@ -607,14 +670,14 @@ export default function InventoryManagement() {
           <Button
             onClick={handleBackToSub}
             variant="outline"
-            className="rounded-lg border-gray-300 hover:bg-gray-50 text-xs"
+            className="rounded-lg border-gray-300 hover:bg-gray-50 text-xs bg-transparent"
           >
             ← Back to Subcategories
           </Button>
           <Button
             onClick={handleBackToSuper}
             variant="outline"
-            className="rounded-lg border-gray-300 hover:bg-gray-50 text-xs"
+            className="rounded-lg border-gray-300 hover:bg-gray-50 text-xs bg-transparent"
           >
             ← Back to Categories
           </Button>
@@ -688,6 +751,7 @@ export default function InventoryManagement() {
             const transactionDate = new Date(t.date)
             return transactionDate >= startDate && transactionDate <= endDate
           })
+          .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())
           .map((t) => ({
             date: t.date,
             productName: t.productName,
@@ -1047,7 +1111,7 @@ export default function InventoryManagement() {
             <div class="header">
               <div class="company-name">SNS</div>
               <div class="receipt-title">${transaction.type.toUpperCase()} RECEIPT</div>
-              <div>Jodbhavi peth, Solapur | Ph: 8668749859</div>
+              <div>Jodbhavi peth, Solapur | Ph: 9405842623</div>
             </div>
 
             <div class="receipt-info">
@@ -1160,7 +1224,7 @@ export default function InventoryManagement() {
             <!-- Store Header -->
             <div class="center header">SNS</div>
             <div class="center sub-header">Jodbhavi peth, Solapur</div>
-            <div class="center sub-header">Ph: 8668749859</div>
+            <div class="center sub-header">Ph: 9405842623</div>
             <div class="double-line"></div>
 
             <!-- Receipt Details -->
@@ -1239,6 +1303,11 @@ export default function InventoryManagement() {
   const totalStockValue = 0 // No pricing in inventory
   const lowStockItems = inventoryItems.filter((item) => item.closingStock <= item.reorderLevel).length
   const outOfStockItems = inventoryItems.filter((item) => item.closingStock <= 0).length
+
+  // Get unique categories for filter dropdown (excluding "Unknown")
+  const uniqueCategories = Array.from(new Set(inventoryItems.map((item) => item.category)))
+    .filter((category) => category && category !== "Unknown")
+    .sort()
 
   return (
     <div className="min-h-screen bg-white relative">
@@ -1391,9 +1460,9 @@ export default function InventoryManagement() {
                       </SelectTrigger>
                       <SelectContent>
                         <SelectItem value="all">All Categories</SelectItem>
-                        {categories.map((category) => (
-                          <SelectItem key={category.id} value={category.name}>
-                            {category.name}
+                        {uniqueCategories.map((category) => (
+                          <SelectItem key={category} value={category}>
+                            {category}
                           </SelectItem>
                         ))}
                       </SelectContent>
@@ -1455,6 +1524,9 @@ export default function InventoryManagement() {
                                 {item.closingStock} {item.unit}
                               </span>
                             </div>
+                          </div>
+                          <div className="text-xs text-gray-500 mt-1">
+                            Last updated: {format(new Date(item.lastUpdated), "MMM dd, yyyy HH:mm")}
                           </div>
                         </div>
                         <div className="flex items-center gap-2">
@@ -1536,6 +1608,9 @@ export default function InventoryManagement() {
                                 <span>Ref: {transaction.reference}</span>
                               </>
                             )}
+                          </div>
+                          <div className="text-xs text-gray-500">
+                            {format(new Date(transaction.createdAt), "MMM dd, yyyy HH:mm")}
                           </div>
                         </div>
                         <div className="flex items-center gap-2">
@@ -1679,9 +1754,9 @@ export default function InventoryManagement() {
                         </SelectTrigger>
                         <SelectContent>
                           <SelectItem value="all">All Categories</SelectItem>
-                          {categories.map((category) => (
-                            <SelectItem key={category.id} value={category.name}>
-                              {category.name}
+                          {uniqueCategories.map((category) => (
+                            <SelectItem key={category} value={category}>
+                              {category}
                             </SelectItem>
                           ))}
                         </SelectContent>
@@ -1730,6 +1805,17 @@ export default function InventoryManagement() {
                         >
                           <Printer className="w-4 h-4 mr-2" />
                           Print
+                        </Button>
+                        <Button
+                          onClick={() => {
+                            const report = generateReport()
+                            exportToPDF(report)
+                          }}
+                          variant="outline"
+                          className="rounded-[9px]"
+                        >
+                          <Download className="w-4 h-4 mr-2" />
+                          Export PDF
                         </Button>
                       </div>
                     </div>
@@ -1823,6 +1909,98 @@ export default function InventoryManagement() {
                   >
                     <Trash2 className="w-4 h-4 mr-2" />
                     Clear All Data
+                  </Button>
+
+                  <Button
+                    onClick={() => {
+                      // Fix all unknown categories
+                      const updatedItems = inventoryItems.map((item) => {
+                        if (item.category === "Unknown" || !item.category) {
+                          const categoryName = getCategoryNameForProduct(item.productId)
+                          return {
+                            ...item,
+                            category: categoryName,
+                            lastUpdated: new Date().toISOString(),
+                          }
+                        }
+                        return item
+                      })
+                      saveInventoryItems(updatedItems)
+                      alert("Category mapping has been fixed for all items!")
+                    }}
+                    variant="outline"
+                    className="rounded-[9px]"
+                  >
+                    <Package className="w-4 h-4 mr-2" />
+                    Fix Category Mapping
+                  </Button>
+
+                  <Button
+                    onClick={() => {
+                      // Remove duplicate transactions
+                      const uniqueTransactions = stockTransactions.filter((transaction, index, self) => {
+                        return (
+                          index ===
+                          self.findIndex(
+                            (t) =>
+                              t.productId === transaction.productId &&
+                              t.type === transaction.type &&
+                              t.quantity === transaction.quantity &&
+                              t.date === transaction.date &&
+                              Math.abs(new Date(t.createdAt).getTime() - new Date(transaction.createdAt).getTime()) <
+                              1000,
+                          )
+                        )
+                      })
+
+                      if (uniqueTransactions.length !== stockTransactions.length) {
+                        saveStockTransactions(uniqueTransactions)
+
+                        // Recalculate inventory based on unique transactions
+                        const recalculatedItems = inventoryItems.map((item) => {
+                          const itemTransactions = uniqueTransactions.filter((t) => t.productId === item.productId)
+
+                          let purchases = 0
+                          let sales = 0
+                          let adjustments = 0
+
+                          itemTransactions.forEach((t) => {
+                            switch (t.type) {
+                              case "purchase":
+                                purchases += Math.abs(t.quantity)
+                                break
+                              case "sale":
+                                sales += Math.abs(t.quantity)
+                                break
+                              case "adjustment":
+                                adjustments += t.quantity
+                                break
+                            }
+                          })
+
+                          return {
+                            ...item,
+                            purchases,
+                            sales,
+                            adjustments,
+                            closingStock: item.openingStock + purchases - sales + adjustments,
+                            lastUpdated: new Date().toISOString(),
+                          }
+                        })
+
+                        saveInventoryItems(recalculatedItems)
+                        alert(
+                          `Removed ${stockTransactions.length - uniqueTransactions.length} duplicate transactions and recalculated inventory!`,
+                        )
+                      } else {
+                        alert("No duplicate transactions found.")
+                      }
+                    }}
+                    variant="outline"
+                    className="rounded-[9px]"
+                  >
+                    <AlertCircle className="w-4 h-4 mr-2" />
+                    Fix Duplicate Transactions
                   </Button>
                 </div>
               </CardContent>
@@ -1951,7 +2129,7 @@ export default function InventoryManagement() {
                   <Button
                     onClick={clearTransactionItems}
                     variant="outline"
-                    className="w-full rounded-lg text-xs h-8"
+                    className="w-full rounded-lg text-xs h-8 bg-transparent"
                     disabled={transactionItems.length === 0}
                   >
                     Clear Items
@@ -2175,6 +2353,18 @@ export default function InventoryManagement() {
                 >
                   <Printer className="w-4 h-4 mr-2" />
                   Print
+                </Button>
+                <Button
+                  onClick={() => {
+                    if ((window as any).currentReport) {
+                      exportToPDF((window as any).currentReport)
+                    }
+                  }}
+                  variant="outline"
+                  className="rounded-[9px]"
+                >
+                  <Download className="w-4 h-4 mr-2" />
+                  Export PDF
                 </Button>
               </div>
             </DialogTitle>
