@@ -720,28 +720,46 @@ export default function InventoryManagement() {
   }
 
   // Generate report functions (simplified for inventory without prices)
+  // ...existing code...
   const generateReport = () => {
     let reportData: any[] = []
     let title = ""
     const totalValue = 0
 
+    // Parse date range
     const startDate = new Date(reportForm.startDate)
     const endDate = new Date(reportForm.endDate)
+    endDate.setHours(23, 59, 59, 999) // include the whole end day
+
+    // Helper: filter by category
+    const filterByCategory = (item: InventoryItem) => {
+      if (reportForm.categoryFilter === "all") return true
+      return item.category === reportForm.categoryFilter
+    }
+
+    // Helper: filter by date (lastUpdated)
+    const filterByDate = (item: InventoryItem) => {
+      const updated = new Date(item.lastUpdated)
+      return updated >= startDate && updated <= endDate
+    }
 
     switch (reportForm.type) {
       case "closing_stock":
         title = "Closing Stock Report"
-        reportData = filteredItems.map((item) => ({
-          productName: item.productName,
-          category: item.category,
-          unit: item.unit,
-          openingStock: item.openingStock,
-          purchases: item.purchases,
-          sales: item.sales,
-          adjustments: item.adjustments,
-          closingStock: item.closingStock,
-          status: item.closingStock <= item.reorderLevel ? "Low Stock" : "Normal",
-        }))
+        reportData = inventoryItems
+          .filter(filterByCategory)
+          .filter(filterByDate)
+          .map((item) => ({
+            productName: item.productName,
+            category: item.category,
+            unit: item.unit,
+            openingStock: item.openingStock,
+            purchases: item.purchases,
+            sales: item.sales,
+            adjustments: item.adjustments,
+            closingStock: item.closingStock,
+            status: item.closingStock <= item.reorderLevel ? "Low Stock" : "Normal",
+          }))
         break
 
       case "stock_movement":
@@ -752,7 +770,6 @@ export default function InventoryManagement() {
             return transactionDate >= startDate && transactionDate <= endDate
           })
           .filter((t) => {
-            // Apply category filter if not "all"
             if (reportForm.categoryFilter !== "all") {
               const item = inventoryItems.find((item) => item.productId === t.productId)
               return item && item.category === reportForm.categoryFilter
@@ -772,8 +789,19 @@ export default function InventoryManagement() {
 
       case "low_stock":
         title = "Low Stock Report"
-        reportData = filteredItems
+        // Find items that are low stock as of now, but only include if their last transaction is in the date range
+        reportData = inventoryItems
+          .filter(filterByCategory)
           .filter((item) => item.closingStock <= item.reorderLevel)
+          .filter((item) => {
+            // Find last transaction for this item
+            const lastTx = stockTransactions
+              .filter((t) => t.productId === item.productId)
+              .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())[0]
+            if (!lastTx) return false
+            const txDate = new Date(lastTx.date)
+            return txDate >= startDate && txDate <= endDate
+          })
           .map((item) => ({
             productName: item.productName,
             category: item.category,
@@ -786,11 +814,14 @@ export default function InventoryManagement() {
 
       case "valuation":
         title = "Inventory Valuation Report"
-        reportData = filteredItems.map((item) => ({
-          productName: item.productName,
-          category: item.category,
-          closingStock: item.closingStock,
-        }))
+        reportData = inventoryItems
+          .filter(filterByCategory)
+          .filter(filterByDate)
+          .map((item) => ({
+            productName: item.productName,
+            category: item.category,
+            closingStock: item.closingStock,
+          }))
         break
     }
 
@@ -810,7 +841,7 @@ export default function InventoryManagement() {
 
     return report
   }
-
+  // ...existing code...
   const printReport = (report: InventoryReport) => {
     const printWindow = window.open("", "_blank")
     if (!printWindow) return
@@ -1600,7 +1631,7 @@ export default function InventoryManagement() {
                                     ? "destructive"
                                     : "secondary"
                               }
-                              className="text-xs"
+                              className="text-xs mr-2"
                             >
                               {transaction.type.toUpperCase()}
                             </Badge>
@@ -2031,6 +2062,7 @@ export default function InventoryManagement() {
 
               <div className="flex-1 overflow-y-auto p-3">
                 {transactionItems.length === 0 ? (
+
                   <div className="text-center py-8 text-gray-500">
                     <Package className="w-8 h-8 mx-auto mb-2 opacity-50" />
                     <p className="text-sm">No items selected</p>
