@@ -197,6 +197,7 @@ export default function POSSystem() {
   // Mobile states
   const [showMobileCart, setShowMobileCart] = useState(false)
   const [isMobile, setIsMobile] = useState(false)
+  const [isTablet, setIsTablet] = useState(false)
 
   // Data states
   const [superCategories, setSuperCategories] = useState<SuperCategory[]>([])
@@ -213,15 +214,17 @@ export default function POSSystem() {
     address: "",
   })
 
-  // Check if mobile on mount and resize
+  // Check if mobile/tablet on mount and resize
   useEffect(() => {
-    const checkMobile = () => {
-      setIsMobile(window.innerWidth < 1024)
+    const checkScreenSize = () => {
+      const width = window.innerWidth
+      setIsMobile(width < 768)
+      setIsTablet(width >= 768 && width < 1024)
     }
 
-    checkMobile()
-    window.addEventListener("resize", checkMobile)
-    return () => window.removeEventListener("resize", checkMobile)
+    checkScreenSize()
+    window.addEventListener("resize", checkScreenSize)
+    return () => window.removeEventListener("resize", checkScreenSize)
   }, [])
 
   // Auto-calculate hamali charges when checkbox is checked
@@ -1007,31 +1010,31 @@ export default function POSSystem() {
   }
 
   const renderSuperCategories = () => (
-    <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-3 md:gap-4">
+    <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-2 sm:gap-3 md:gap-4 p-2 sm:p-4">
       {superCategories.map((category) => (
         <Button
           key={category.id}
           onClick={() => handleSuperCategorySelect(category.id)}
-          className="h-20 sm:h-24 md:h-28 lg:h-32 w-full bg-white border-2 border-gray-200 hover:border-yellow-400 hover:bg-yellow-50 text-black rounded-[15px] sm:rounded-[20px] md:rounded-[23px] flex flex-col items-center justify-center gap-1 sm:gap-2 md:gap-3 transition-colors p-2 sm:p-3 md:p-4"
+          className="h-16 sm:h-20 md:h-24 lg:h-28 w-full bg-white border-2 border-gray-200 hover:border-yellow-400 hover:bg-yellow-50 text-black rounded-[12px] sm:rounded-[15px] md:rounded-[20px] flex flex-col items-center justify-center gap-1 sm:gap-2 transition-colors p-2 sm:p-3"
           variant="outline"
         >
-          <div className="relative">
+          <div className="relative flex-shrink-0">
             {category.image ? (
               <div className="relative">
                 <img
                   src={category.image || "/placeholder.svg"}
                   alt={category.name}
-                  className="w-8 h-8 sm:w-10 sm:h-10 md:w-12 md:h-12 lg:w-16 lg:h-16 object-cover rounded-[8px] sm:rounded-[9px] md:rounded-[11px] border border-gray-200"
+                  className="w-6 h-6 sm:w-8 sm:h-8 md:w-10 md:h-10 lg:w-12 lg:h-12 object-cover rounded-[6px] sm:rounded-[8px] md:rounded-[10px] border border-gray-200"
                 />
-                <span className="absolute -bottom-1 -right-1 text-sm sm:text-base md:text-lg lg:text-xl">
-                  {category.icon}
-                </span>
+                <span className="absolute -bottom-1 -right-1 text-xs sm:text-sm md:text-base">{category.icon}</span>
               </div>
             ) : (
-              <span className="text-lg sm:text-xl md:text-2xl lg:text-3xl">{category.icon}</span>
+              <span className="text-sm sm:text-lg md:text-xl lg:text-2xl">{category.icon}</span>
             )}
           </div>
-          <span className="font-medium text-xs sm:text-sm text-center px-1 leading-tight">{category.name}</span>
+          <span className="font-medium text-[10px] sm:text-xs md:text-sm text-center leading-tight break-words hyphens-auto max-w-full">
+            {category.name}
+          </span>
         </Button>
       ))}
     </div>
@@ -1040,35 +1043,41 @@ export default function POSSystem() {
   const renderSubCategories = () => {
     const filteredSubCategories = subCategories.filter((sub) => sub.superCategoryId === selectedSuperCategory)
     return (
-      <div className="space-y-4">
-        <Button onClick={handleBackToSuper} variant="outline" className="rounded-[9px] border-gray-300 bg-transparent">
+      <div className="space-y-3 sm:space-y-4 p-2 sm:p-4">
+        <Button
+          onClick={handleBackToSuper}
+          variant="outline"
+          className="rounded-[9px] border-gray-300 bg-transparent text-sm"
+        >
           ← Back to Categories
         </Button>
-        <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-3 md:gap-4">
+        <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-2 sm:gap-3 md:gap-4">
           {filteredSubCategories.map((subCategory) => (
             <Button
               key={subCategory.id}
               onClick={() => handleSubCategorySelect(subCategory.id)}
-              className="h-18 sm:h-20 md:h-24 lg:h-28 w-full bg-white border-2 border-gray-200 hover:border-yellow-400 hover:bg-yellow-50 text-black rounded-[12px] sm:rounded-[15px] md:rounded-[18px] flex flex-col items-center justify-center gap-1 sm:gap-2 transition-colors p-2 sm:p-3 md:p-4"
+              className="h-14 sm:h-16 md:h-20 lg:h-24 w-full bg-white border-2 border-gray-200 hover:border-yellow-400 hover:bg-yellow-50 text-black rounded-[10px] sm:rounded-[12px] md:rounded-[15px] flex flex-col items-center justify-center gap-1 sm:gap-2 transition-colors p-2 sm:p-3"
               variant="outline"
             >
-              <div className="relative">
+              <div className="relative flex-shrink-0">
                 {subCategory.image ? (
                   <div className="relative">
                     <img
                       src={subCategory.image || "/placeholder.svg"}
                       alt={subCategory.name}
-                      className="w-6 h-6 sm:w-8 sm:h-8 md:w-10 md:h-10 lg:w-12 lg:w-12 object-cover rounded-[6px] sm:rounded-[7px] md:rounded-[9px] border border-gray-200"
+                      className="w-5 h-5 sm:w-6 sm:h-6 md:w-8 md:h-8 lg:w-10 lg:h-10 object-cover rounded-[5px] sm:rounded-[6px] md:rounded-[8px] border border-gray-200"
                     />
-                    <span className="absolute -bottom-1 -right-1 text-xs sm:text-sm md:text-base">
+                    <span className="absolute -bottom-1 -right-1 text-[10px] sm:text-xs md:text-sm">
                       {subCategory.icon}
                     </span>
                   </div>
                 ) : (
-                  <span className="text-base sm:text-lg md:text-xl lg:text-2xl">{subCategory.icon}</span>
+                  <span className="text-xs sm:text-sm md:text-lg lg:text-xl">{subCategory.icon}</span>
                 )}
               </div>
-              <span className="font-medium text-xs sm:text-sm text-center px-1 leading-tight">{subCategory.name}</span>
+              <span className="font-medium text-[9px] sm:text-[10px] md:text-xs text-center leading-tight break-words hyphens-auto max-w-full">
+                {subCategory.name}
+              </span>
             </Button>
           ))}
         </div>
@@ -1079,7 +1088,7 @@ export default function POSSystem() {
   const renderProducts = () => {
     const filteredProducts = products.filter((prod) => prod.subCategoryId === selectedSubCategory)
     return (
-      <div className="space-y-4">
+      <div className="space-y-3 sm:space-y-4 p-2 sm:p-4">
         <div className="flex flex-wrap gap-2">
           <Button
             onClick={handleBackToSub}
@@ -1096,28 +1105,30 @@ export default function POSSystem() {
             ← Back to Categories
           </Button>
         </div>
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-3 sm:gap-4">
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-2 sm:gap-3 md:gap-4">
           {filteredProducts.map((product) => (
             <Card key={product.id} className="rounded-[11px] border-gray-200">
               <CardContent className="p-3 sm:p-4">
-                <div className="space-y-3">
-                  <div className="flex items-start gap-3">
+                <div className="space-y-2 sm:space-y-3">
+                  <div className="flex items-start gap-2 sm:gap-3">
                     {product.image && (
                       <img
                         src={product.image || "/placeholder.svg"}
                         alt={product.name}
-                        className="w-12 h-12 sm:w-14 sm:h-14 md:w-16 md:h-16 object-cover rounded-[9px] border border-gray-200 flex-shrink-0"
+                        className="w-10 h-10 sm:w-12 sm:h-12 md:w-14 md:h-14 object-cover rounded-[8px] sm:rounded-[9px] border border-gray-200 flex-shrink-0"
                       />
                     )}
                     <div className="flex-1 min-w-0">
-                      <h3 className="font-medium text-sm sm:text-base leading-tight">{product.name}</h3>
-                      <div className="flex justify-between items-center mt-2">
-                        <span className="text-base sm:text-lg font-bold">
+                      <h3 className="font-medium text-xs sm:text-sm md:text-base leading-tight break-words hyphens-auto">
+                        {product.name}
+                      </h3>
+                      <div className="flex justify-between items-center mt-1 sm:mt-2">
+                        <span className="text-sm sm:text-base md:text-lg font-bold">
                           ₹{getLastUsedRate(product.id) || product.price.toFixed(2)}
                         </span>
                       </div>
                       {product.hamaliValue > 0 && (
-                        <div className="text-xs text-gray-500">
+                        <div className="text-[10px] sm:text-xs text-gray-500 break-words">
                           Hamali: ₹{product.hamaliValue.toFixed(2)}/{product.unit}
                         </div>
                       )}
@@ -1125,9 +1136,9 @@ export default function POSSystem() {
                   </div>
                   <Button
                     onClick={() => addToOrder(product)}
-                    className="w-full bg-yellow-400 hover:bg-yellow-500 text-black rounded-[9px] font-medium text-sm sm:text-base"
+                    className="w-full bg-yellow-400 hover:bg-yellow-500 text-black rounded-[9px] font-medium text-xs sm:text-sm md:text-base py-2"
                   >
-                    <Plus className="w-4 h-4 mr-2" />
+                    <Plus className="w-3 h-3 sm:w-4 sm:h-4 mr-1 sm:mr-2" />
                     Add to Order
                   </Button>
                 </div>
@@ -1161,14 +1172,14 @@ export default function POSSystem() {
                 <Card key={item.id} className="rounded-[9px] border-gray-200">
                   <CardContent className="p-3">
                     <div className="space-y-2">
-                      <div className="font-medium text-sm">{item.name}</div>
+                      <div className="font-medium text-sm break-words hyphens-auto leading-tight">{item.name}</div>
 
                       <div className="flex items-center gap-2">
                         <Button
                           size="sm"
                           variant="outline"
                           onClick={() => updateQuantity(item.id, item.quantity - 1)}
-                          className="w-8 h-8 p-0 rounded-[9px]"
+                          className="w-8 h-8 p-0 rounded-[9px] flex-shrink-0"
                         >
                           <Minus className="w-3 h-3" />
                         </Button>
@@ -1176,22 +1187,22 @@ export default function POSSystem() {
                           type="number"
                           value={item.quantity}
                           onChange={(e) => updateQuantity(item.id, Number.parseInt(e.target.value) || 0)}
-                          className="w-16 h-8 text-center rounded-[9px]"
+                          className="w-16 h-8 text-center rounded-[9px] text-sm"
                           min="1"
                         />
                         <Button
                           size="sm"
                           variant="outline"
                           onClick={() => updateQuantity(item.id, item.quantity + 1)}
-                          className="w-8 h-8 p-0 rounded-[9px]"
+                          className="w-8 h-8 p-0 rounded-[9px] flex-shrink-0"
                         >
                           <Plus className="w-3 h-3" />
                         </Button>
-                        <span className="text-xs text-gray-500">{item.unit}</span>
+                        <span className="text-xs text-gray-500 flex-shrink-0">{item.unit}</span>
                       </div>
 
                       <div className="flex items-center gap-2">
-                        <span className="text-xs text-gray-500">Rate:</span>
+                        <span className="text-xs text-gray-500 flex-shrink-0">Rate:</span>
                         <Input
                           type="number"
                           value={item.unitPrice}
@@ -1200,7 +1211,7 @@ export default function POSSystem() {
                           step="0.01"
                           min="0"
                         />
-                        <span className="text-xs text-gray-500">₹</span>
+                        <span className="text-xs text-gray-500 flex-shrink-0">₹</span>
                       </div>
 
                       <div className="flex justify-between items-center">
@@ -1209,7 +1220,7 @@ export default function POSSystem() {
                           size="sm"
                           variant="outline"
                           onClick={() => removeFromOrder(item.id)}
-                          className="w-7 h-7 p-0 rounded-[9px] text-red-500 hover:text-red-700"
+                          className="w-7 h-7 p-0 rounded-[9px] text-red-500 hover:text-red-700 flex-shrink-0"
                         >
                           <Trash2 className="w-3 h-3" />
                         </Button>
@@ -1307,19 +1318,19 @@ export default function POSSystem() {
 
       <div className="relative z-10">
         {/* Main Header */}
-        <header className="bg-white border-b border-gray-200 p-3 sm:p-4 lg:p-6">
-          <div className="flex flex-col gap-4">
+        <header className="bg-white border-b border-gray-200 p-2 sm:p-3 md:p-4 lg:p-6">
+          <div className="flex flex-col gap-3 sm:gap-4">
             {/* Top Header Row */}
             <div className="flex items-center justify-between">
               <div className="flex items-center gap-2 sm:gap-4">
-                <h1 className="text-lg sm:text-xl lg:text-2xl font-bold text-black">SNS</h1>
+                <h1 className="text-base sm:text-lg md:text-xl lg:text-2xl font-bold text-black">SNS</h1>
                 <Button
                   onClick={() => setShowAdmin(true)}
                   variant="outline"
-                  className="rounded-[9px] border-gray-300"
+                  className="rounded-[9px] border-gray-300 text-xs sm:text-sm"
                   size="sm"
                 >
-                  <Settings className="w-4 h-4 mr-1 sm:mr-2" />
+                  <Settings className="w-3 h-3 sm:w-4 sm:h-4 mr-1 sm:mr-2" />
                   <span className="hidden sm:inline">Admin</span>
                 </Button>
               </div>
@@ -1362,7 +1373,7 @@ export default function POSSystem() {
                   {/* POS Content */}
                   <div className="flex-1 flex flex-col">
                     {/* Customer Selection */}
-                    <div className="flex flex-col gap-3 sm:gap-4 w-full mb-4">
+                    <div className="flex flex-col gap-3 sm:gap-4 w-full mb-4 px-2 sm:px-4">
                       <div className="flex items-center space-x-2">
                         <Checkbox
                           id="cash-sale"
@@ -1388,7 +1399,7 @@ export default function POSSystem() {
                               placeholder="Search customers..."
                               value={customerSearch}
                               onChange={(e) => setCustomerSearch(e.target.value)}
-                              className="pl-10 w-full rounded-[9px]"
+                              className="pl-10 w-full rounded-[9px] text-sm"
                             />
                             {customerSearch && filteredCustomers.length > 0 && (
                               <div className="absolute top-full left-0 right-0 bg-white border border-gray-200 rounded-[9px] mt-1 max-h-40 overflow-y-auto z-20 shadow-lg">
@@ -1401,8 +1412,8 @@ export default function POSSystem() {
                                     }}
                                     className="w-full text-left p-3 hover:bg-gray-50 border-b border-gray-100 last:border-b-0"
                                   >
-                                    <div className="font-medium text-sm">{customer.name}</div>
-                                    <div className="text-xs text-gray-500">{customer.phone}</div>
+                                    <div className="font-medium text-sm break-words">{customer.name}</div>
+                                    <div className="text-xs text-gray-500 break-words">{customer.phone}</div>
                                   </button>
                                 ))}
                               </div>
@@ -1422,15 +1433,15 @@ export default function POSSystem() {
                         <Card className="rounded-[11px] border-gray-200">
                           <CardContent className="p-3">
                             <div className="flex items-center justify-between">
-                              <div>
-                                <div className="text-sm font-medium">{selectedCustomerData.name}</div>
-                                <div className="text-xs text-gray-500">{selectedCustomerData.phone}</div>
+                              <div className="flex-1 min-w-0">
+                                <div className="text-sm font-medium break-words">{selectedCustomerData.name}</div>
+                                <div className="text-xs text-gray-500 break-words">{selectedCustomerData.phone}</div>
                               </div>
                               <Button
                                 size="sm"
                                 variant="outline"
                                 onClick={() => loadCustomerTransactions(selectedCustomerData.id)}
-                                className="rounded-[9px]"
+                                className="rounded-[9px] flex-shrink-0"
                               >
                                 <FileText className="w-4 h-4" />
                               </Button>
@@ -1443,7 +1454,7 @@ export default function POSSystem() {
                         <Card className="rounded-[11px] border-yellow-200 bg-yellow-50">
                           <CardContent className="p-3">
                             <div className="flex items-center justify-between">
-                              <div>
+                              <div className="flex-1 min-w-0">
                                 <div className="text-sm font-medium text-yellow-800">CASH SALE</div>
                                 <div className="text-xs text-yellow-600">No customer required</div>
                               </div>
@@ -1451,7 +1462,7 @@ export default function POSSystem() {
                                 size="sm"
                                 variant="outline"
                                 onClick={loadAllTransactions}
-                                className="rounded-[9px] border-yellow-300 bg-transparent"
+                                className="rounded-[9px] border-yellow-300 bg-transparent flex-shrink-0"
                               >
                                 <FileText className="w-4 h-4" />
                               </Button>
@@ -1486,14 +1497,16 @@ export default function POSSystem() {
                               <Card key={item.id} className="rounded-[9px] border-gray-200">
                                 <CardContent className="p-3">
                                   <div className="space-y-2">
-                                    <div className="font-medium text-sm">{item.name}</div>
+                                    <div className="font-medium text-sm break-words hyphens-auto leading-tight">
+                                      {item.name}
+                                    </div>
 
                                     <div className="flex items-center gap-2">
                                       <Button
                                         size="sm"
                                         variant="outline"
                                         onClick={() => updateQuantity(item.id, item.quantity - 1)}
-                                        className="w-8 h-8 p-0 rounded-[9px]"
+                                        className="w-8 h-8 p-0 rounded-[9px] flex-shrink-0"
                                       >
                                         <Minus className="w-3 h-3" />
                                       </Button>
@@ -1501,22 +1514,22 @@ export default function POSSystem() {
                                         type="number"
                                         value={item.quantity}
                                         onChange={(e) => updateQuantity(item.id, Number.parseInt(e.target.value) || 0)}
-                                        className="w-16 h-8 text-center rounded-[9px]"
+                                        className="w-16 h-8 text-center rounded-[9px] text-sm"
                                         min="1"
                                       />
                                       <Button
                                         size="sm"
                                         variant="outline"
                                         onClick={() => updateQuantity(item.id, item.quantity + 1)}
-                                        className="w-8 h-8 p-0 rounded-[9px]"
+                                        className="w-8 h-8 p-0 rounded-[9px] flex-shrink-0"
                                       >
                                         <Plus className="w-3 h-3" />
                                       </Button>
-                                      <span className="text-xs text-gray-500">{item.unit}</span>
+                                      <span className="text-xs text-gray-500 flex-shrink-0">{item.unit}</span>
                                     </div>
 
                                     <div className="flex items-center gap-2">
-                                      <span className="text-xs text-gray-500">Rate:</span>
+                                      <span className="text-xs text-gray-500 flex-shrink-0">Rate:</span>
                                       <Input
                                         type="number"
                                         value={item.unitPrice}
@@ -1527,7 +1540,7 @@ export default function POSSystem() {
                                         step="0.01"
                                         min="0"
                                       />
-                                      <span className="text-xs text-gray-500">₹</span>
+                                      <span className="text-xs text-gray-500 flex-shrink-0">₹</span>
                                     </div>
 
                                     <div className="flex justify-between items-center">
@@ -1536,7 +1549,7 @@ export default function POSSystem() {
                                         size="sm"
                                         variant="outline"
                                         onClick={() => removeFromOrder(item.id)}
-                                        className="w-7 h-7 p-0 rounded-[9px] text-red-500 hover:text-red-700"
+                                        className="w-7 h-7 p-0 rounded-[9px] text-red-500 hover:text-red-700 flex-shrink-0"
                                       >
                                         <Trash2 className="w-3 h-3" />
                                       </Button>
@@ -1740,7 +1753,7 @@ export default function POSSystem() {
         <DialogContent className="max-w-4xl max-h-[90vh] overflow-y-auto mx-4 sm:mx-auto">
           <DialogHeader>
             <DialogTitle className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
-              <span>Estimate Generated</span>
+              <span className="break-words">Estimate Generated</span>
               <div className="flex flex-wrap gap-2">
                 <Button
                   onClick={() => editEstimate(currentEstimate!)}
@@ -1791,8 +1804,8 @@ export default function POSSystem() {
               {/* Store Header */}
               <div className="header text-center border-b-2 border-black pb-4 mb-6">
                 <h1 className="text-2xl sm:text-3xl font-bold">{storeInfo.name}</h1>
-                <p className="text-xs sm:text-sm mt-2">{storeInfo.address}</p>
-                <p className="text-xs sm:text-sm mt-1">
+                <p className="text-xs sm:text-sm mt-2 break-words">{storeInfo.address}</p>
+                <p className="text-xs sm:text-sm mt-1 break-words">
                   Phone: {storeInfo.phone} | Contact: {storeInfo.contact}
                 </p>
               </div>
@@ -1801,14 +1814,14 @@ export default function POSSystem() {
               <div className="flex flex-col sm:flex-row justify-between mb-6 gap-4">
                 <div>
                   <h2 className="text-lg sm:text-xl font-bold">ESTIMATE</h2>
-                  <p className="text-sm">
+                  <p className="text-sm break-words">
                     <strong>Estimate No:</strong> {currentEstimate.estimateNumber}
                   </p>
-                  <p className="text-sm">
+                  <p className="text-sm break-words">
                     <strong>Date:</strong> {currentEstimate.date}
                   </p>
                   {currentEstimate.reference && (
-                    <p className="text-sm">
+                    <p className="text-sm break-words">
                       <strong>Reference:</strong> {currentEstimate.reference}
                     </p>
                   )}
@@ -1819,9 +1832,9 @@ export default function POSSystem() {
                     <p className="text-base sm:text-lg font-bold">CASH CUSTOMER</p>
                   ) : (
                     <div>
-                      <p className="font-medium">{currentEstimate.customer?.name}</p>
-                      <p className="text-sm">{currentEstimate.customer?.address}</p>
-                      <p className="text-sm">{currentEstimate.customer?.phone}</p>
+                      <p className="font-medium break-words">{currentEstimate.customer?.name}</p>
+                      <p className="text-sm break-words">{currentEstimate.customer?.address}</p>
+                      <p className="text-sm break-words">{currentEstimate.customer?.phone}</p>
                     </div>
                   )}
                 </div>
@@ -1844,7 +1857,9 @@ export default function POSSystem() {
                     {currentEstimate.items.map((item, index) => (
                       <tr key={item.id}>
                         <td className="border border-black p-2 text-xs sm:text-sm">{index + 1}</td>
-                        <td className="border border-black p-2 text-xs sm:text-sm">{item.name}</td>
+                        <td className="border border-black p-2 text-xs sm:text-sm break-words hyphens-auto">
+                          {item.name}
+                        </td>
                         <td className="border border-black p-2 text-center text-xs sm:text-sm">{item.quantity}</td>
                         <td className="border border-black p-2 text-center text-xs sm:text-sm">{item.unit}</td>
                         <td className="border border-black p-2 text-right text-xs sm:text-sm">
@@ -1886,7 +1901,7 @@ export default function POSSystem() {
                 <div className="text-center">
                   <div className="border-t border-black pt-2 mt-8 sm:mt-16 w-32 sm:w-48">
                     <p className="text-xs sm:text-sm">Authorized Signature</p>
-                    <p className="text-xs">{storeInfo.name}</p>
+                    <p className="text-xs break-words">{storeInfo.name}</p>
                   </div>
                 </div>
               </div>
@@ -1910,7 +1925,7 @@ export default function POSSystem() {
       >
         <DialogContent className="max-w-4xl max-h-[90vh] overflow-y-auto mx-4 sm:mx-auto">
           <DialogHeader>
-            <DialogTitle>Edit Estimate - {editableEstimate?.estimateNumber}</DialogTitle>
+            <DialogTitle className="break-words">Edit Estimate - {editableEstimate?.estimateNumber}</DialogTitle>
           </DialogHeader>
 
           {editableEstimate && (
@@ -1919,21 +1934,21 @@ export default function POSSystem() {
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 p-4 bg-gray-50 rounded-[9px]">
                 <div>
                   <Label className="text-sm font-medium">Estimate Number</Label>
-                  <p className="text-sm">{editableEstimate.estimateNumber}</p>
+                  <p className="text-sm break-words">{editableEstimate.estimateNumber}</p>
                 </div>
                 <div>
                   <Label className="text-sm font-medium">Date</Label>
-                  <p className="text-sm">{editableEstimate.date}</p>
+                  <p className="text-sm break-words">{editableEstimate.date}</p>
                 </div>
                 <div>
                   <Label className="text-sm font-medium">Customer</Label>
-                  <p className="text-sm">
+                  <p className="text-sm break-words">
                     {editableEstimate.isCashSale ? "Cash Customer" : editableEstimate.customer?.name}
                   </p>
                 </div>
                 <div>
                   <Label className="text-sm font-medium">Payment Method</Label>
-                  <p className="text-sm">{editableEstimate.paymentMethod.toUpperCase()}</p>
+                  <p className="text-sm break-words">{editableEstimate.paymentMethod.toUpperCase()}</p>
                 </div>
               </div>
 
@@ -1999,7 +2014,7 @@ export default function POSSystem() {
                       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-7 gap-4 items-center">
                         <div className="lg:col-span-2">
                           <Label className="text-sm">Product</Label>
-                          <p className="font-medium">{item.name}</p>
+                          <p className="font-medium break-words hyphens-auto">{item.name}</p>
                         </div>
                         <div>
                           <Label className="text-sm">Quantity</Label>
@@ -2028,7 +2043,7 @@ export default function POSSystem() {
                         </div>
                         <div>
                           <Label className="text-sm">Unit</Label>
-                          <p className="text-sm text-gray-600">{item.unit}</p>
+                          <p className="text-sm text-gray-600 break-words">{item.unit}</p>
                         </div>
                         <div>
                           <Label className="text-sm">Line Total</Label>
@@ -2112,7 +2127,7 @@ export default function POSSystem() {
                           />
                         )}
                         <div className="flex-1 min-w-0">
-                          <h3 className="font-medium text-sm">{product.name}</h3>
+                          <h3 className="font-medium text-sm break-words hyphens-auto">{product.name}</h3>
                           <div className="text-sm text-gray-600">
                             <p>Price: ₹{product.price.toFixed(2)}</p>
                             <p>Unit: {product.unit}</p>
@@ -2143,7 +2158,9 @@ export default function POSSystem() {
       >
         <DialogContent className="max-w-4xl max-h-[90vh] overflow-y-auto mx-4 sm:mx-auto">
           <DialogHeader>
-            <DialogTitle>Customer Transaction History - {selectedCustomerData?.name}</DialogTitle>
+            <DialogTitle className="break-words">
+              Customer Transaction History - {selectedCustomerData?.name}
+            </DialogTitle>
           </DialogHeader>
           <div className="space-y-4">
             {customerTransactions.length === 0 ? (
@@ -2158,14 +2175,14 @@ export default function POSSystem() {
                     key={transaction.id}
                     className="flex flex-col sm:flex-row items-start sm:items-center justify-between p-3 border rounded-[9px] hover:bg-gray-50 gap-3"
                   >
-                    <div className="flex-1">
+                    <div className="flex-1 min-w-0">
                       <div className="flex flex-wrap items-center gap-2 mb-1">
-                        <span className="font-medium">{transaction.estimateNumber}</span>
+                        <span className="font-medium break-words">{transaction.estimateNumber}</span>
                         <Badge variant="outline" className="text-xs">
                           {transaction.paymentMethod.toUpperCase()}
                         </Badge>
                       </div>
-                      <div className="text-sm text-gray-600">
+                      <div className="text-sm text-gray-600 break-words">
                         <span>{format(new Date(transaction.timestamp), "MMM dd, yyyy HH:mm")}</span>
                         <span className="mx-2">•</span>
                         <span>{transaction.items.length} items</span>
@@ -2175,7 +2192,7 @@ export default function POSSystem() {
                       <div className="text-right flex-1 sm:flex-none">
                         <div className="font-bold">{formatCurrency(transaction.total)}</div>
                       </div>
-                      <div className="flex gap-2">
+                      <div className="flex gap-2 flex-shrink-0">
                         <Button
                           size="sm"
                           variant="outline"
@@ -2279,9 +2296,9 @@ export default function POSSystem() {
                       key={transaction.id}
                       className="flex flex-col sm:flex-row items-start sm:items-center justify-between p-3 border rounded-[9px] hover:bg-gray-50 gap-3"
                     >
-                      <div className="flex-1">
+                      <div className="flex-1 min-w-0">
                         <div className="flex flex-wrap items-center gap-2 mb-1">
-                          <span className="font-medium">{transaction.estimateNumber}</span>
+                          <span className="font-medium break-words">{transaction.estimateNumber}</span>
                           <Badge variant={transaction.isCashSale ? "secondary" : "default"} className="text-xs">
                             {transaction.isCashSale ? "Cash" : "Customer"}
                           </Badge>
@@ -2289,7 +2306,7 @@ export default function POSSystem() {
                             {transaction.paymentMethod.toUpperCase()}
                           </Badge>
                         </div>
-                        <div className="text-sm text-gray-600">
+                        <div className="text-sm text-gray-600 break-words">
                           <span>{format(new Date(transaction.timestamp), "MMM dd, yyyy HH:mm")}</span>
                           <span className="mx-2">•</span>
                           <span>{transaction.customerName || "Cash Customer"}</span>
@@ -2301,7 +2318,7 @@ export default function POSSystem() {
                         <div className="text-right flex-1 sm:flex-none">
                           <div className="font-bold">{formatCurrency(transaction.total)}</div>
                         </div>
-                        <div className="flex gap-2">
+                        <div className="flex gap-2 flex-shrink-0">
                           <Button
                             size="sm"
                             variant="outline"
