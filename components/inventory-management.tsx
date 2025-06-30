@@ -122,6 +122,8 @@ export default function InventoryManagement() {
   const [transactionItems, setTransactionItems] = useState<TransactionItem[]>([])
   const [transactionReference, setTransactionReference] = useState("")
   const [transactionDate, setTransactionDate] = useState(format(new Date(), "yyyy-MM-dd"))
+  // Add edit mode state
+  const [editingTransactionId, setEditingTransactionId] = useState<string | null>(null)
 
   // Dialog states
   const [showAddItemDialog, setShowAddItemDialog] = useState(false)
@@ -412,6 +414,80 @@ export default function InventoryManagement() {
     if (transactionItems.length === 0) return
 
     try {
+      if (editingTransactionId) {
+        // Edit mode: update existing transaction
+        const oldTransaction = stockTransactions.find((t) => t.id === editingTransactionId)
+        if (!oldTransaction) {
+          alert("Original transaction not found.")
+          return
+        }
+        // Only support editing single-item transactions for now (as per UI)
+        const item = transactionItems[0]
+        const updatedTransaction: StockTransaction = {
+          ...oldTransaction,
+          productId: item.id,
+          productName: item.name,
+          type: transactionType,
+          quantity: transactionType === "sale" ? -item.quantity : item.quantity,
+          date: transactionDate,
+          reference: transactionReference || `${transactionType.toUpperCase()}-${Date.now().toString().slice(-4)}`,
+          notes: `${transactionType.charAt(0).toUpperCase() + transactionType.slice(1)} transaction`,
+          createdAt: oldTransaction.createdAt, // keep original createdAt
+        }
+        updateTransaction(editingTransactionId, updatedTransaction)
+
+        // Update product stock in DataManager
+        const product = products.find((p) => p.id === item.id)
+        if (product) {
+          // Reverse old transaction effect
+          let prevStock = product.stock
+          if (oldTransaction.type === "purchase") prevStock -= Math.abs(oldTransaction.quantity)
+          else if (oldTransaction.type === "sale") prevStock += Math.abs(oldTransaction.quantity)
+          else if (oldTransaction.type === "adjustment") prevStock -= oldTransaction.quantity
+
+          // Apply new transaction effect
+          let newStock = prevStock
+          if (transactionType === "purchase") newStock += item.quantity
+          else if (transactionType === "sale") newStock = Math.max(0, newStock - item.quantity)
+          else if (transactionType === "adjustment") newStock += item.quantity
+
+          await DataManager.updateProductStock(product.id, Math.max(0, newStock))
+        }
+
+        // Refresh products data
+        setProducts(DataManager.getProducts())
+
+        // Set the transaction record and show receipt
+        setLastProcessedTransaction({
+          id: updatedTransaction.id,
+          type: updatedTransaction.type,
+          date: updatedTransaction.date,
+          reference: updatedTransaction.reference,
+          items: [
+            {
+              id: updatedTransaction.productId,
+              name: updatedTransaction.productName,
+              quantity: Math.abs(updatedTransaction.quantity),
+              unit: product ? product.unit : "unit",
+            },
+          ],
+          processedAt: updatedTransaction.createdAt,
+          transactionNumber: `${updatedTransaction.type.toUpperCase()}-${format(new Date(updatedTransaction.date), "yyyyMMdd")}-${updatedTransaction.id.slice(-4)}`,
+        })
+        setShowTransactionReceipt(true)
+
+        // Clear form and close dialog
+        clearTransactionItems()
+        setTransactionReference("")
+        setTransactionDate(format(new Date(), "yyyy-MM-dd"))
+        setCurrentView("super")
+        setSelectedSuperCategory("")
+        setSelectedSubCategory("")
+        setShowTransactionDialog(false)
+        setEditingTransactionId(null)
+        return
+      }
+
       const transactionRecord = {
         id: generateId(),
         type: transactionType,
@@ -460,9 +536,6 @@ export default function InventoryManagement() {
         }
       }
 
-      // DO NOT call DataManager.updateInventoryFromPurchase here to avoid duplicate transactions
-      // The inventory is already updated by updateInventoryFromTransaction above
-
       // Refresh products data
       setProducts(DataManager.getProducts())
 
@@ -478,6 +551,7 @@ export default function InventoryManagement() {
       setSelectedSuperCategory("")
       setSelectedSubCategory("")
       setShowTransactionDialog(false)
+      setEditingTransactionId(null)
     } catch (error) {
       console.error("Error processing transaction:", error)
       alert("Error processing transaction. Please try again.")
@@ -567,6 +641,27 @@ export default function InventoryManagement() {
     })
 
     saveInventoryItems(updatedItems)
+  }
+
+  const updateTransaction = (transactionId: string, updatedTransaction: StockTransaction) => {
+    // Find the old transaction
+    const oldTransaction = stockTransactions.find((t) => t.id === transactionId)
+    if (!oldTransaction) return
+
+    // Reverse the old transaction effect
+    updateInventoryFromTransaction({
+      ...oldTransaction,
+      quantity: -oldTransaction.quantity,
+    })
+
+    // Apply the new transaction effect
+    updateInventoryFromTransaction(updatedTransaction)
+
+    // Replace the transaction in the list
+    const updatedTransactions = stockTransactions.map((t) =>
+      t.id === transactionId ? updatedTransaction : t,
+    )
+    saveStockTransactions(updatedTransactions)
   }
 
   const deleteInventoryItem = (itemId: string) => {
@@ -1700,6 +1795,7 @@ export default function InventoryManagement() {
                                 setTransactionReference(transaction.reference || "")
                                 setTransactionDate(transaction.date)
                                 setShowTransactionDialog(true)
+                                setEditingTransactionId(transaction.id) // Set edit mode
                               }
                             }}
                             className="rounded-[9px]"
