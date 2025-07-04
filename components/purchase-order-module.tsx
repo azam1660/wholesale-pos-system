@@ -27,6 +27,7 @@ import { Badge } from "@/components/ui/badge"
 import { format } from "date-fns"
 import "jspdf-autotable"
 import { DataManager } from "./data-manager"
+import axios from "axios"
 
 interface PurchaseOrderItem {
   id: string
@@ -114,6 +115,10 @@ export default function PurchaseOrderModule({ onBack }: { onBack: () => void }) 
   })
 
   const poRef = useRef<HTMLDivElement>(null)
+
+  const PRINT_UTILITY_API_URL = process.env.NEXT_PUBLIC_PRINT_UTILITY_API_URL || "http://localhost:5000"
+  const THERMAL_PRINTER = process.env.NEXT_PUBLIC_THERMAL_PRINTER || "Microsoft Print to PDF"
+  const LAZER_PRINTER = process.env.NEXT_PUBLIC_LAZER_PRINTER || "Microsoft Print to PDF"
 
   // Load data on component mount
   useEffect(() => {
@@ -311,38 +316,48 @@ export default function PurchaseOrderModule({ onBack }: { onBack: () => void }) 
     setShowPurchaseOrder(true)
   }
 
-  const printPurchaseOrder = () => {
-    if (poRef.current) {
-      const printWindow = window.open("", "_blank")
-      if (printWindow) {
-        printWindow.document.write(`
-          <!DOCTYPE html>
-          <html>
-            <head>
-              <title>Purchase Order - ${currentPO?.orderNumber}</title>
-              <style>
-                body { font-family: Arial, sans-serif; margin: 0; padding: 20px; }
-                .po { max-width: 800px; margin: 0 auto; }
-                table { width: 100%; border-collapse: collapse; margin: 10px 0; }
-                th, td { border: 1px solid #000; padding: 8px; text-align: left; }
-                th { background-color: #f5f5f5; font-weight: bold; }
-                .text-right { text-align: right; }
-                .text-center { text-align: center; }
-                .header { text-align: center; margin-bottom: 20px; }
-                @media print {
-                  body { margin: 0; }
-                  .no-print { display: none; }
-                }
-              </style>
-            </head>
-            <body>
-              ${poRef.current.innerHTML}
-            </body>
-          </html>
-        `)
-        printWindow.document.close()
-        printWindow.print()
+  const printPurchaseOrder = async () => {
+    if (!poRef.current) return
+
+    const printContent = `
+    <!DOCTYPE html>
+    <html>
+      <head>
+        <title>Purchase Order - ${currentPO?.orderNumber}</title>
+        <style>
+          body { font-family: Arial, sans-serif; margin: 0; padding: 20px; }
+          .po { max-width: 800px; margin: 0 auto; }
+          table { width: 100%; border-collapse: collapse; margin: 10px 0; }
+          th, td { border: 1px solid #000; padding: 8px; text-align: left; }
+          th { background-color: #f5f5f5; font-weight: bold; }
+          .text-right { text-align: right; }
+          .text-center { text-align: center; }
+          .header { text-align: center; margin-bottom: 20px; }
+          @media print {
+            body { margin: 0; }
+            .no-print { display: none; }
+          }
+        </style>
+      </head>
+      <body>
+        ${poRef.current.innerHTML}
+      </body>
+    </html>
+  `
+
+    try {
+      const response = await axios.post(`${PRINT_UTILITY_API_URL}/print`, {
+        printer: LAZER_PRINTER,
+        html: printContent,
+      })
+
+      if (response.status === 200) {
+        console.log("Purchase Order sent to printer successfully")
+      } else {
+        console.error("Failed to print Purchase Order:", response.data)
       }
+    } catch (error) {
+      console.error("Error printing Purchase Order:", error)
     }
   }
 
@@ -381,10 +396,7 @@ export default function PurchaseOrderModule({ onBack }: { onBack: () => void }) 
     window.location.href = "/"
   }
 
-  const printThermalPurchaseOrder = (po: PurchaseOrder) => {
-    const printWindow = window.open("", "_blank")
-    if (!printWindow) return
-
+  const printThermalPurchaseOrder = async (po: PurchaseOrder) => {
     const printContent = `
     <!DOCTYPE html>
     <html>
@@ -392,12 +404,14 @@ export default function PurchaseOrderModule({ onBack }: { onBack: () => void }) 
         <title>Thermal Purchase Order - ${po.orderNumber}</title>
         <style>
           body {
-            font-family: 'Courier New', monospace;
+            font-family: 'Arial', 'Segoe UI', 'Helvetica', sans-serif;
             margin: 0;
             padding: 5px;
             width: 79mm;
-            font-size: 12px;
-            line-height: 1.2;
+            font-size: 14px;
+            line-height: 1.6;
+            font-weight: normal;
+            color: #000;
           }
           .thermal-po {
             width: 100%;
@@ -463,7 +477,7 @@ export default function PurchaseOrderModule({ onBack }: { onBack: () => void }) 
             ${po.isCashPurchase
         ? "<div>CASH PURCHASE</div>"
         : `<div>${po.supplierName || ""}</div>
-                   <div>${po.supplierPhone || ""}</div>`
+                 <div>${po.supplierPhone || ""}</div>`
       }
           </div>
           <div class="line"></div>
@@ -479,11 +493,11 @@ export default function PurchaseOrderModule({ onBack }: { onBack: () => void }) 
           ${po.items
         .map(
           (item) => `
-            <div class="item-row">
-              <div class="item-name">${item.name}</div>
-              <div class="item-qty">${item.quantity} ${item.unit}</div>
-            </div>
-          `,
+              <div class="item-row">
+                <div class="item-name">${item.name}</div>
+                <div class="item-qty">${item.quantity} ${item.unit}</div>
+              </div>
+            `,
         )
         .join("")}
 
@@ -512,9 +526,20 @@ export default function PurchaseOrderModule({ onBack }: { onBack: () => void }) 
     </html>
   `
 
-    printWindow.document.write(printContent)
-    printWindow.document.close()
-    printWindow.print()
+    try {
+      const response = await axios.post(`${PRINT_UTILITY_API_URL}/print`, {
+        printer: THERMAL_PRINTER,
+        html: printContent,
+      })
+
+      if (response.status === 200) {
+        console.log("Thermal Purchase Order sent to printer successfully")
+      } else {
+        console.error("Failed to print Thermal Purchase Order:", response.data)
+      }
+    } catch (error) {
+      console.error("Error printing Thermal Purchase Order:", error)
+    }
   }
 
   const editPurchaseOrder = (po: PurchaseOrder) => {

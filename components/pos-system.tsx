@@ -34,7 +34,7 @@ import jsPDF from "jspdf"
 import "jspdf-autotable"
 import { format } from "date-fns"
 import { Badge } from "@/components/ui/badge"
-
+import axios from "axios"
 interface SuperCategory {
   id: string
   name: string
@@ -213,6 +213,11 @@ export default function POSSystem() {
     phone: "",
     address: "",
   })
+
+  // Variables
+  const PRINT_UTILITY_API_URL = process.env.NEXT_PUBLIC_PRINT_UTILITY_API_URL || "http://localhost:5000"
+  const THERMAL_PRINTER = process.env.NEXT_PUBLIC_THERMAL_PRINTER || "Microsoft Print to PDF"
+  const LAZER_PRINTER = process.env.NEXT_PUBLIC_LAZER_PRINTER || "Microsoft Print to PDF"
 
   // Check if mobile/tablet on mount and resize
   useEffect(() => {
@@ -496,152 +501,153 @@ export default function POSSystem() {
     }
   }
 
-  const printThermalEstimate = () => {
-    if (invoiceRef.current) {
-      const printWindow = window.open("", "_blank")
-      if (printWindow) {
-        printWindow.document.write(`
-        <!DOCTYPE html>
-        <html>
-          <head>
-            <title>Thermal Estimate - ${currentEstimate?.estimateNumber}</title>
-            <style>
-              body {
-                font-family: 'Courier New', monospace;
-                margin: 0;
-                padding: 5px;
-                width: 79mm;
-                font-size: 12px;
-                line-height: 1.2;
-              }
-              .thermal-estimate {
-                width: 100%;
-                max-width: 79mm;
-              }
-              .center { text-align: center; }
-              .left { text-align: left; }
-              .right { text-align: right; }
-              .bold { font-weight: bold; }
-              .line { border-bottom: 1px dashed #000; margin: 2px 0; }
-              .double-line { border-bottom: 2px solid #000; margin: 3px 0; }
-              .item-row {
-                display: flex;
-                justify-content: space-between;
-                margin: 1px 0;
-                font-size: 11px;
-              }
-              .item-name {
-                flex: 1;
-                white-space: nowrap;
-                overflow: hidden;
-                text-overflow: ellipsis;
-                max-width: 35mm;
-              }
-              .item-qty { width: 15mm; text-align: center; }
-              .item-rate { width: 15mm; text-align: right; }
-              .item-amount { width: 18mm; text-align: right; }
-              .total-row {
-                display: flex;
-                justify-content: space-between;
-                font-weight: bold;
-                margin: 2px 0;
-              }
-              .header { font-size: 14px; font-weight: bold; }
-              .sub-header { font-size: 10px; }
-              .footer { font-size: 10px; margin-top: 5px; }
-              @media print {
-                body { margin: 0; padding: 2px; }
-                .no-print { display: none; }
-              }
-            </style>
-          </head>
-          <body>
-            <div class="thermal-estimate">
-              <!-- Store Header -->
-              <div class="center header">${storeInfo.name}</div>
-              <div class="center sub-header">${storeInfo.address}</div>
-              <div class="center sub-header">Ph: ${storeInfo.phone} | ${storeInfo.contact}</div>
-              <div class="double-line"></div>
+  const printThermalEstimate = async () => {
+    if (!invoiceRef.current || !currentEstimate || !storeInfo) return
 
-              <!-- Estimate Details -->
-              <div class="left">
-                <div><strong>Estimate:</strong> ${currentEstimate?.estimateNumber}</div>
-                <div><strong>Date:</strong> ${currentEstimate?.date}</div>
-                ${currentEstimate?.reference ? `<div><strong>Ref:</strong> ${currentEstimate.reference}</div>` : ""}
-              </div>
+    const htmlContent = `
+      <!DOCTYPE html>
+      <html>
+        <head>
+          <title>Thermal Estimate - ${currentEstimate.estimateNumber}</title>
+          <style>
+            body {
+              font-family: 'Arial', 'Segoe UI', 'Helvetica', sans-serif;
+              margin: 0;
+              padding: 5px;
+              width: 79mm;
+              font-size: 14px;
+              line-height: 1.6;
+              font-weight: normal;
+              color: #000;
+            }
+            .thermal-estimate {
+              width: 100%;
+              max-width: 79mm;
+            }
+            .center { text-align: center; }
+            .left { text-align: left; }
+            .right { text-align: right; }
+            .bold { font-weight: bold; }
+            .line { border-bottom: 1px dashed #000; margin: 2px 0; }
+            .double-line { border-bottom: 2px solid #000; margin: 3px 0; }
+            .item-row {
+              display: flex;
+              justify-content: space-between;
+              margin: 1px 0;
+              font-size: 11px;
+            }
+            .item-name {
+              flex: 1;
+              white-space: nowrap;
+              overflow: hidden;
+              text-overflow: ellipsis;
+              max-width: 35mm;
+            }
+            .item-qty { width: 15mm; text-align: center; }
+            .item-rate { width: 15mm; text-align: right; }
+            .item-amount { width: 18mm; text-align: right; }
+            .total-row {
+              display: flex;
+              justify-content: space-between;
+              font-weight: bold;
+              margin: 2px 0;
+            }
+            .header { font-size: 14px; font-weight: bold; }
+            .sub-header { font-size: 10px; }
+            .footer { font-size: 10px; margin-top: 5px; }
+          </style>
+        </head>
+        <body>
+          <div class="thermal-estimate">
+            <div class="center header">${storeInfo.name}</div>
+            <div class="center sub-header">${storeInfo.address}</div>
+            <div class="center sub-header">Ph: ${storeInfo.phone} | ${storeInfo.contact}</div>
+            <div class="double-line"></div>
 
-              <!-- Customer Details -->
-              <div class="line"></div>
-              <div class="left">
-                <strong>Bill To:</strong>
-                ${currentEstimate?.isCashSale
-            ? "<div>CASH CUSTOMER</div>"
-            : `<div>${currentEstimate?.customer?.name || ""}</div>
-                     <div>${currentEstimate?.customer?.phone || ""}</div>`
-          }
-              </div>
-              <div class="line"></div>
+            <div class="left">
+              <div><strong>Estimate:</strong> ${currentEstimate.estimateNumber}</div>
+              <div><strong>Date:</strong> ${currentEstimate.date}</div>
+              ${currentEstimate.reference ? `<div><strong>Ref:</strong> ${currentEstimate.reference}</div>` : ""}
+            </div>
 
-              <!-- Items Header -->
-              <div class="item-row bold">
-                <div class="item-name">Item</div>
-                <div class="item-qty">Qty</div>
-                <div class="item-rate">Rate</div>
-                <div class="item-amount">Amount</div>
-              </div>
-              <div class="line"></div>
+            <div class="line"></div>
+            <div class="left">
+              <strong>Bill To:</strong>
+              ${currentEstimate.isCashSale
+        ? "<div>CASH CUSTOMER</div>"
+        : `<div>${currentEstimate.customer?.name || ""}</div>
+                     <div>${currentEstimate.customer?.phone || ""}</div>`
+      }
+            </div>
 
-              <!-- Items -->
-              ${currentEstimate?.items
-            .map(
-              (item) => `
+            <div class="line"></div>
+
+            <div class="item-row bold">
+              <div class="item-name">Item</div>
+              <div class="item-qty">Qty</div>
+              <div class="item-rate">Rate</div>
+              <div class="item-amount">Amount</div>
+            </div>
+            <div class="line"></div>
+
+            ${currentEstimate.items
+        .map(
+          (item) => `
                 <div class="item-row">
                   <div class="item-name">${item.name}</div>
                   <div class="item-qty">${item.quantity}</div>
                   <div class="item-rate">${item.unitPrice.toFixed(2)}</div>
                   <div class="item-amount">${item.lineTotal.toFixed(2)}</div>
                 </div>
-              `,
-            )
-            .join("")}
-
-              <div class="line"></div>
-
-              <!-- Totals -->
-              <div class="total-row">
-                <div>Subtotal:</div>
-                <div>₹${currentEstimate?.subtotal.toFixed(2)}</div>
-              </div>
-
-              ${currentEstimate?.hamaliCharges > 0
-            ? `
-                <div class="total-row">
-                  <div>Hamali/Freight:</div>
-                  <div>₹${currentEstimate.hamaliCharges.toFixed(2)}</div>
-                </div>
               `
-            : ""
-          }
+        )
+        .join("")}
 
-              <div class="double-line"></div>
-              <div class="total-row" style="font-size: 14px;">
-                <div>TOTAL:</div>
-                <div>₹${currentEstimate?.total.toFixed(2)}</div>
-              </div>
-              <div class="double-line"></div>
+            <div class="line"></div>
 
-              <!-- Footer -->
-              <div class="center footer">
-                <div>Thank you for your business!</div>
-                <div>Terms & Conditions Apply</div>
-              </div>
+            <div class="total-row">
+              <div>Subtotal:</div>
+              <div>₹${currentEstimate.subtotal.toFixed(2)}</div>
             </div>
-          </body>
-        </html>
-      `)
-        printWindow.document.close()
-        printWindow.print()
+
+            ${currentEstimate.hamaliCharges > 0
+        ? `
+                  <div class="total-row">
+                    <div>Hamali/Freight:</div>
+                    <div>₹${currentEstimate.hamaliCharges.toFixed(2)}</div>
+                  </div>`
+        : ""
       }
+
+            <div class="double-line"></div>
+            <div class="total-row" style="font-size: 14px;">
+              <div>TOTAL:</div>
+              <div>₹${currentEstimate.total.toFixed(2)}</div>
+            </div>
+            <div class="double-line"></div>
+
+            <div class="center footer">
+              <div>Thank you for your business!</div>
+              <div>Terms & Conditions Apply</div>
+            </div>
+          </div>
+        </body>
+      </html>
+    `
+
+    try {
+      const response = await axios.post(`${PRINT_UTILITY_API_URL}/print`, {
+        printer: THERMAL_PRINTER,
+        html: htmlContent,
+      })
+
+      if (response.status === 200) {
+        console.log("Printed successfully")
+      } else {
+        console.error("Print failed:", response.data)
+      }
+    } catch (error) {
+      console.error("Error while printing:", error)
     }
   }
 
@@ -884,41 +890,51 @@ export default function POSSystem() {
     setShowEstimate(true)
   }
 
-  const printEstimate = () => {
-    if (invoiceRef.current) {
-      const printWindow = window.open("", "_blank")
-      if (printWindow) {
-        printWindow.document.write(`
-          <!DOCTYPE html>
-          <html>
-            <head>
-              <title>Estimate - ${currentEstimate?.estimateNumber}</title>
-              <style>
-                body { font-family: Arial, sans-serif; margin: 0; padding: 20px; }
-                .estimate { max-width: 800px; margin: 0 auto; }
-                table { width: 100%; border-collapse: collapse; margin: 10px 0; }
-                th, td { border: 1px solid #000; padding: 8px; text-align: left; }
-                th { background-color: #f5f5f5; font-weight: bold; }
-                .text-right { text-align: right; }
-                .text-center { text-align: center; margin-bottom: 20px; }
-                .header { text-align: center; margin-bottom: 20px; }
-                .store-info { margin-bottom: 20px; }
-                .customer-info { margin-bottom: 20px; }
-                .signature { margin-top: 40px; }
-                @media print {
-                  body { margin: 0; }
-                  .no-print { display: none; }
-                }
-              </style>
-            </head>
-            <body>
-              ${invoiceRef.current.innerHTML}
-            </body>
-          </html>
-        `)
-        printWindow.document.close()
-        printWindow.print()
+  const printEstimate = async () => {
+    if (!invoiceRef.current || !currentEstimate) return
+
+    const htmlContent = `
+    <!DOCTYPE html>
+    <html>
+      <head>
+        <title>Estimate - ${currentEstimate.estimateNumber}</title>
+        <style>
+          body { font-family: Arial, sans-serif; margin: 0; padding: 20px; }
+          .estimate { max-width: 800px; margin: 0 auto; }
+          table { width: 100%; border-collapse: collapse; margin: 10px 0; }
+          th, td { border: 1px solid #000; padding: 8px; text-align: left; }
+          th { background-color: #f5f5f5; font-weight: bold; }
+          .text-right { text-align: right; }
+          .text-center { text-align: center; margin-bottom: 20px; }
+          .header { text-align: center; margin-bottom: 20px; }
+          .store-info { margin-bottom: 20px; }
+          .customer-info { margin-bottom: 20px; }
+          .signature { margin-top: 40px; }
+          @media print {
+            body { margin: 0; }
+            .no-print { display: none; }
+          }
+        </style>
+      </head>
+      <body>
+        ${invoiceRef.current.innerHTML}
+      </body>
+    </html>
+  `
+
+    try {
+      const response = await axios.post(`${PRINT_UTILITY_API_URL}/print`, {
+        printer: LAZER_PRINTER,
+        html: htmlContent,
+      })
+
+      if (response.status === 200) {
+        console.log("Print job sent successfully")
+      } else {
+        console.error("Failed to print:", response.data)
       }
+    } catch (error) {
+      console.error("Error sending print request:", error)
     }
   }
 

@@ -34,6 +34,7 @@ import { format } from "date-fns"
 import jsPDF from "jspdf"
 import "jspdf-autotable"
 import { DataManager } from "./data-manager"
+import axios from "axios"
 
 // Extend jsPDF type to include autoTable
 declare module "jspdf" {
@@ -151,6 +152,10 @@ export default function InventoryManagement() {
 
   // Refs
   const reportRef = useRef<HTMLDivElement>(null)
+
+  const PRINT_UTILITY_API_URL = process.env.NEXT_PUBLIC_PRINT_UTILITY_API_URL || "http://localhost:5000"
+  const THERMAL_PRINTER = process.env.NEXT_PUBLIC_THERMAL_PRINTER || "Microsoft Print to PDF"
+  const LAZER_PRINTER = process.env.NEXT_PUBLIC_LAZER_PRINTER || "Microsoft Print to PDF"
 
   // Load data on component mount
   useEffect(() => {
@@ -936,15 +941,23 @@ export default function InventoryManagement() {
 
     return report
   }
-  // ...existing code...
-  const printReport = (report: InventoryReport) => {
-    const printWindow = window.open("", "_blank")
-    if (!printWindow) return
 
+  const printReport = async (report: InventoryReport) => {
     const printContent = generatePrintableReport(report)
-    printWindow.document.write(printContent)
-    printWindow.document.close()
-    printWindow.print()
+    try {
+      const response = await axios.post(`${PRINT_UTILITY_API_URL}/print`, {
+        printer: LAZER_PRINTER,
+        html: printContent,
+      })
+
+      if (response.status === 200) {
+        console.log("Report sent to printer successfully")
+      } else {
+        console.error("Failed to print report:", response.data)
+      }
+    } catch (error) {
+      console.error("Error printing report:", error)
+    }
   }
 
   const generatePrintableReport = (report: InventoryReport): string => {
@@ -1193,24 +1206,42 @@ export default function InventoryManagement() {
     doc.save(fileName)
   }
 
-  const printTransactionReceipt = (transaction: any) => {
-    const printWindow = window.open("", "_blank")
-    if (!printWindow) return
-
+  const printTransactionReceipt = async (transaction: any) => {
     const printContent = generateTransactionReceiptHTML(transaction)
-    printWindow.document.write(printContent)
-    printWindow.document.close()
-    printWindow.print()
+
+    try {
+      const response = await axios.post(`${PRINT_UTILITY_API_URL}/print`, {
+        printer: LAZER_PRINTER,
+        html: printContent,
+      })
+
+      if (response.status === 200) {
+        console.log("Transaction receipt sent to printer successfully")
+      } else {
+        console.error("Failed to print transaction receipt:", response.data)
+      }
+    } catch (error) {
+      console.error("Error printing transaction receipt:", error)
+    }
   }
 
-  const printThermalTransactionReceipt = (transaction: any) => {
-    const printWindow = window.open("", "_blank")
-    if (!printWindow) return
-
+  const printThermalTransactionReceipt = async (transaction: any) => {
     const printContent = generateThermalTransactionReceiptHTML(transaction)
-    printWindow.document.write(printContent)
-    printWindow.document.close()
-    printWindow.print()
+
+    try {
+      const response = await axios.post(`${PRINT_UTILITY_API_URL}/print`, {
+        printer: THERMAL_PRINTER,
+        html: printContent,
+      })
+
+      if (response.status === 200) {
+        console.log("Thermal transaction receipt sent to printer successfully")
+      } else {
+        console.error("Failed to print thermal transaction receipt:", response.data)
+      }
+    } catch (error) {
+      console.error("Error printing thermal transaction receipt:", error)
+    }
   }
 
   const generateTransactionReceiptHTML = (transaction: any): string => {
@@ -1307,13 +1338,15 @@ export default function InventoryManagement() {
           <title>Thermal ${transaction.type.toUpperCase()} Receipt - ${transaction.transactionNumber}</title>
           <style>
             body {
-              font-family: 'Courier New', monospace;
-              margin: 0;
-              padding: 5px;
-              width: 79mm;
-              font-size: 12px;
-              line-height: 1.2;
-            }
+  font-family: 'Arial', 'Segoe UI', 'Helvetica', sans-serif;
+  margin: 0;
+  padding: 5px;
+  width: 79mm;
+  font-size: 14px;        /* Increased from 12px to 14px */
+  line-height: 1.6;        /* Increased for better readability */
+  font-weight: normal;     /* Use normal weight by default */
+  color: #000;
+}
             .thermal-receipt {
               width: 100%;
               max-width: 79mm;
