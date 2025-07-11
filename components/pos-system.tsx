@@ -500,7 +500,6 @@ export default function POSSystem() {
       URL.revokeObjectURL(url)
     }
   }
-
   const printThermalEstimate = async () => {
     if (!invoiceRef.current || !currentEstimate || !storeInfo) return
 
