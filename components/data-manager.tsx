@@ -616,6 +616,14 @@ export class DataManager {
       updatedAt: this.getCurrentTimestamp(),
     }
 
+    // Update product stock
+    for (const item of saleData.items) {
+      const product = products.find((p) => p.id === item.productId)
+      if (product) {
+        await this.updateProductStock(product.id, Math.max(0, product.stock - item.quantity))
+      }
+    }
+
     const updated = [...sales, newSale]
     this.setItem("sales", updated)
     return newSale
@@ -643,25 +651,6 @@ export class DataManager {
 
     this.setItem("sales", filtered)
     return true
-  }
-
-  // Add these methods after the existing sales methods
-
-  // Inventory Management Integration
-  static getInventoryItems(): any[] {
-    return this.getItem<any>("inventory_items", [])
-  }
-
-  static setInventoryItems(items: any[]): void {
-    this.setItem("inventory_items", items)
-  }
-
-  static getStockTransactions(): any[] {
-    return this.getItem<any>("stock_transactions", [])
-  }
-
-  static setStockTransactions(transactions: any[]): void {
-    this.setItem("stock_transactions", transactions)
   }
 
   // Sales Analytics
@@ -891,7 +880,9 @@ export class DataManager {
       errors.push("Name is required")
     }
 
-    // Removed icon validation - icon is now optional
+    if (!data.icon?.trim()) {
+      errors.push("Icon is required")
+    }
 
     return errors
   }
@@ -903,7 +894,9 @@ export class DataManager {
       errors.push("Name is required")
     }
 
-    // Removed icon validation - icon is now optional
+    if (!data.icon?.trim()) {
+      errors.push("Icon is required")
+    }
 
     if (!data.superCategoryId?.trim()) {
       errors.push("Super category is required")
@@ -1050,8 +1043,6 @@ export class DataManager {
     localStorage.removeItem("products")
     localStorage.removeItem("customers")
     localStorage.removeItem("sales")
-    localStorage.removeItem("inventory_items")
-    localStorage.removeItem("stock_transactions")
     localStorage.removeItem("estimateCounter")
 
     // Trigger storage events
@@ -1060,7 +1051,22 @@ export class DataManager {
     window.dispatchEvent(new StorageEvent("storage", { key: "products", storageArea: localStorage }))
     window.dispatchEvent(new StorageEvent("storage", { key: "customers", storageArea: localStorage }))
     window.dispatchEvent(new StorageEvent("storage", { key: "sales", storageArea: localStorage }))
-    window.dispatchEvent(new StorageEvent("storage", { key: "inventory_items", storageArea: localStorage }))
-    window.dispatchEvent(new StorageEvent("storage", { key: "stock_transactions", storageArea: localStorage }))
+  }
+
+  // Add these methods to support inventory management
+  static setInventoryItems(items: any[]): void {
+    this.setItem("inventory_items", items)
+  }
+
+  static getInventoryItems(): any[] {
+    return this.getItem("inventory_items", [])
+  }
+
+  static setStockTransactions(transactions: any[]): void {
+    this.setItem("stock_transactions", transactions)
+  }
+
+  static getStockTransactions(): any[] {
+    return this.getItem("stock_transactions", [])
   }
 }

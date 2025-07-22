@@ -34,7 +34,7 @@ import jsPDF from "jspdf"
 import "jspdf-autotable"
 import { format } from "date-fns"
 import { Badge } from "@/components/ui/badge"
-import axios from "axios"
+
 interface SuperCategory {
   id: string
   name: string
@@ -500,154 +500,356 @@ export default function POSSystem() {
       URL.revokeObjectURL(url)
     }
   }
-  const printThermalEstimate = async () => {
-    if (!invoiceRef.current || !currentEstimate || !storeInfo) return
+
+  const printEstimate = () => {
+    if (!currentEstimate) return
 
     const htmlContent = `
-      <!DOCTYPE html>
-      <html>
-        <head>
-          <title>Thermal Estimate - ${currentEstimate.estimateNumber}</title>
-          <style>
-            body {
-              font-family: 'Arial', 'Segoe UI', 'Helvetica', sans-serif;
-              margin: 0;
-              padding: 5px;
-              width: 79mm;
-              font-size: 14px;
-              line-height: 1.6;
-              font-weight: normal;
-              color: #000;
-            }
-            .thermal-estimate {
-              width: 100%;
-              max-width: 79mm;
-            }
-            .center { text-align: center; }
-            .left { text-align: left; }
-            .right { text-align: right; }
-            .bold { font-weight: bold; }
-            .line { border-bottom: 1px dashed #000; margin: 2px 0; }
-            .double-line { border-bottom: 2px solid #000; margin: 3px 0; }
-            .item-row {
-              display: flex;
-              justify-content: space-between;
-              margin: 1px 0;
-              font-size: 11px;
-            }
-            .item-name {
-              flex: 1;
-              white-space: nowrap;
-              overflow: hidden;
-              text-overflow: ellipsis;
-              max-width: 35mm;
-            }
-            .item-qty { width: 15mm; text-align: center; }
-            .item-rate { width: 15mm; text-align: right; }
-            .item-amount { width: 18mm; text-align: right; }
-            .total-row {
-              display: flex;
-              justify-content: space-between;
-              font-weight: bold;
-              margin: 2px 0;
-            }
-            .header { font-size: 14px; font-weight: bold; }
-            .sub-header { font-size: 10px; }
-            .footer { font-size: 10px; margin-top: 5px; }
-          </style>
-        </head>
-        <body>
-          <div class="thermal-estimate">
-            <div class="center header">${storeInfo.name}</div>
-            <div class="center sub-header">${storeInfo.address}</div>
-            <div class="center sub-header">Ph: ${storeInfo.phone} | ${storeInfo.contact}</div>
-            <div class="double-line"></div>
+    <!DOCTYPE html>
+    <html>
+      <head>
+        <title>Estimate - ${currentEstimate.estimateNumber}</title>
+        <style>
+          * { margin: 0; padding: 0; box-sizing: border-box; }
+          body {
+            font-family: 'Arial', sans-serif;
+            font-size: 11px;
+            line-height: 1.2;
+            color: #000;
+            padding: 8mm;
+          }
+          .estimate { max-width: 100%; }
+          .header {
+            text-align: center;
+            border-bottom: 2px solid #000;
+            padding-bottom: 6px;
+            margin-bottom: 8px;
+          }
+          .company-name { font-size: 18px; font-weight: bold; margin-bottom: 2px; }
+          .company-details { font-size: 9px; margin-bottom: 2px; }
+          .estimate-title { font-size: 14px; font-weight: bold; margin-top: 4px; }
 
-            <div class="left">
-              <div><strong>Estimate:</strong> ${currentEstimate.estimateNumber}</div>
-              <div><strong>Date:</strong> ${currentEstimate.date}</div>
-              ${currentEstimate.reference ? `<div><strong>Ref:</strong> ${currentEstimate.reference}</div>` : ""}
+          .info-section {
+            display: flex;
+            justify-content: space-between;
+            margin-bottom: 8px;
+            gap: 10px;
+          }
+          .info-left, .info-right { flex: 1; }
+          .info-right { text-align: right; }
+          .info-label { font-weight: bold; font-size: 10px; }
+          .info-value { font-size: 10px; margin-bottom: 2px; }
+
+          table {
+            width: 100%;
+            border-collapse: collapse;
+            margin: 6px 0;
+            font-size: 10px;
+          }
+          th, td {
+            border: 1px solid #000;
+            padding: 3px 4px;
+            text-align: left;
+            vertical-align: top;
+          }
+          th {
+            background-color: #f0f0f0;
+            font-weight: bold;
+            font-size: 9px;
+            text-align: center;
+          }
+          .text-right { text-align: right; }
+          .text-center { text-align: center; }
+
+          .totals-section {
+            margin-top: 6px;
+            border-top: 1px solid #000;
+            padding-top: 4px;
+          }
+          .total-row {
+            display: flex;
+            justify-content: space-between;
+            margin-bottom: 2px;
+            font-size: 10px;
+          }
+          .grand-total {
+            font-weight: bold;
+            font-size: 12px;
+            border-top: 1px solid #000;
+            padding-top: 2px;
+            margin-top: 2px;
+          }
+
+          .footer {
+            display: flex;
+            justify-content: space-between;
+            align-items: end;
+            margin-top: 12px;
+            font-size: 9px;
+          }
+          .signature-section {
+            text-align: center;
+            border-top: 1px solid #000;
+            padding-top: 2px;
+            width: 120px;
+            margin-top: 20px;
+          }
+
+          @media print {
+            body { margin: 0; padding: 8mm; }
+            .no-print { display: none; }
+            @page {
+              size: A4;
+              margin: 8mm;
+            }
+          }
+        </style>
+      </head>
+      <body>
+        <div class="estimate">
+          <!-- Header -->
+          <div class="header">
+            <div class="company-name">${storeInfo.name}</div>
+            <div class="company-details">${storeInfo.address}</div>
+            <div class="company-details">Phone: ${storeInfo.phone} | Contact: ${storeInfo.contact}</div>
+            <div class="estimate-title">ESTIMATE</div>
+          </div>
+
+          <!-- Info Section -->
+          <div class="info-section">
+            <div class="info-left">
+              <div class="info-label">Estimate Details:</div>
+              <div class="info-value">No: ${currentEstimate.estimateNumber}</div>
+              <div class="info-value">Date: ${currentEstimate.date}</div>
+              ${currentEstimate.reference ? `<div class="info-value">Ref: ${currentEstimate.reference}</div>` : ""}
             </div>
-
-            <div class="line"></div>
-            <div class="left">
-              <strong>Bill To:</strong>
+            <div class="info-right">
+              <div class="info-label">Bill To:</div>
               ${currentEstimate.isCashSale
-        ? "<div>CASH CUSTOMER</div>"
-        : `<div>${currentEstimate.customer?.name || ""}</div>
-                     <div>${currentEstimate.customer?.phone || ""}</div>`
+        ? '<div class="info-value" style="font-weight: bold;">CASH CUSTOMER</div>'
+        : `<div class="info-value">${currentEstimate.customer?.name || ""}</div>
+                 <div class="info-value">${currentEstimate.customer?.phone || ""}</div>
+                 <div class="info-value">${currentEstimate.customer?.address || ""}</div>`
       }
             </div>
+          </div>
 
-            <div class="line"></div>
-
-            <div class="item-row bold">
-              <div class="item-name">Item</div>
-              <div class="item-qty">Qty</div>
-              <div class="item-rate">Rate</div>
-              <div class="item-amount">Amount</div>
-            </div>
-            <div class="line"></div>
-
-            ${currentEstimate.items
+          <!-- Items Table -->
+          <table>
+            <thead>
+              <tr>
+                <th style="width: 6%;">S.No</th>
+                <th style="width: 50%;">Particulars</th>
+                <th style="width: 8%;">QTY</th>
+                <th style="width: 8%;">Unit</th>
+                <th style="width: 14%;">Rate (₹)</th>
+                <th style="width: 14%;">Amount (₹)</th>
+              </tr>
+            </thead>
+            <tbody>
+              ${currentEstimate.items
         .map(
-          (item) => `
-                <div class="item-row">
-                  <div class="item-name">${item.name}</div>
-                  <div class="item-qty">${item.quantity}</div>
-                  <div class="item-rate">${item.unitPrice.toFixed(2)}</div>
-                  <div class="item-amount">${item.lineTotal.toFixed(2)}</div>
-                </div>
-              `
+          (item, index) => `
+                <tr>
+                  <td class="text-center">${index + 1}</td>
+                  <td>${item.name}</td>
+                  <td class="text-center">${item.quantity}</td>
+                  <td class="text-center">${item.unit}</td>
+                  <td class="text-right">${item.unitPrice.toFixed(2)}</td>
+                  <td class="text-right">${item.lineTotal.toFixed(2)}</td>
+                </tr>
+              `,
         )
         .join("")}
+            </tbody>
+          </table>
 
-            <div class="line"></div>
-
+          <!-- Totals Section -->
+          <div class="totals-section">
             <div class="total-row">
-              <div>Subtotal:</div>
-              <div>₹${currentEstimate.subtotal.toFixed(2)}</div>
+              <span>Subtotal:</span>
+              <span>₹${currentEstimate.subtotal.toFixed(2)}</span>
             </div>
-
             ${currentEstimate.hamaliCharges > 0
         ? `
-                  <div class="total-row">
-                    <div>Hamali/Freight:</div>
-                    <div>₹${currentEstimate.hamaliCharges.toFixed(2)}</div>
-                  </div>`
+              <div class="total-row">
+                <span>Hamali/Freight:</span>
+                <span>₹${currentEstimate.hamaliCharges.toFixed(2)}</span>
+              </div>
+            `
         : ""
       }
-
-            <div class="double-line"></div>
-            <div class="total-row" style="font-size: 14px;">
-              <div>TOTAL:</div>
-              <div>₹${currentEstimate.total.toFixed(2)}</div>
+            <div class="total-row grand-total">
+              <span>TOTAL (INR):</span>
+              <span>₹${currentEstimate.total.toFixed(2)}</span>
             </div>
-            <div class="double-line"></div>
+          </div>
 
-            <div class="center footer">
+          <!-- Footer -->
+          <div class="footer">
+            <div>
               <div>Thank you for your business!</div>
               <div>Terms & Conditions Apply</div>
             </div>
+            <div class="signature-section">
+              <div>Authorized Signature</div>
+              <div style="font-size: 8px; margin-top: 2px;">${storeInfo.name}</div>
+            </div>
           </div>
-        </body>
-      </html>
-    `
+        </div>
+      </body>
+    </html>
+  `
 
-    try {
-      const response = await axios.post(`${PRINT_UTILITY_API_URL}/print`, {
-        printer: THERMAL_PRINTER,
-        html: htmlContent,
+    const printWindow = window.open("", "_blank", "width=800,height=600")
+    if (!printWindow) {
+      alert("Please allow popups for this website to enable printing.")
+      return
+    }
+
+    printWindow.document.write(htmlContent)
+    printWindow.document.close()
+
+    // Wait for content to load before printing
+    printWindow.onload = () => {
+      setTimeout(() => {
+        printWindow.focus()
+        printWindow.print()
+
+        // Close window after printing (with delay to ensure print dialog appears)
+        setTimeout(() => {
+          printWindow.close()
+        }, 1000)
+      }, 500)
+    }
+
+    // Fallback if onload doesn't fire
+    setTimeout(() => {
+      if (printWindow && !printWindow.closed) {
+        printWindow.focus()
+        printWindow.print()
+        setTimeout(() => {
+          printWindow.close()
+        }, 1000)
+      }
+    }, 1000)
+  }
+
+  const printThermalEstimate = () => {
+    if (!currentEstimate) return
+
+    const generateTextOutput = (estimate, store) => {
+      const lines = []
+      const center = (text) => text.padStart(Math.floor((48 + text.length) / 2), " ")
+      const line = (char = "-") => char.repeat(48)
+
+      lines.push(center(store.name))
+      lines.push(center(store.address))
+      lines.push(center(`Ph: ${store.phone} | ${store.contact}`))
+      lines.push(line("="))
+      lines.push(`Estimate No: ${estimate.estimateNumber}`)
+      lines.push(`Date       : ${estimate.date}`)
+      if (estimate.reference) {
+        lines.push(`Ref        : ${estimate.reference}`)
+      }
+      lines.push(line())
+
+      lines.push("Bill To:")
+      if (estimate.isCashSale) {
+        lines.push("CASH CUSTOMER")
+      } else {
+        if (estimate.customer?.name) lines.push(estimate.customer.name)
+        if (estimate.customer?.phone) lines.push(estimate.customer.phone)
+      }
+      lines.push(line())
+
+      lines.push("Item                            Qty   Amt")
+      lines.push(line())
+
+      estimate.items.forEach((item) => {
+        const name = item.name.substring(0, 30).padEnd(30)
+        const qty = String(item.quantity).padStart(4)
+        const amt = item.lineTotal.toFixed(2).padStart(9)
+        lines.push(`${name}${qty}${amt}`)
       })
 
-      if (response.status === 200) {
-        console.log("Printed successfully")
-      } else {
-        console.error("Print failed:", response.data)
+      lines.push(line())
+      lines.push(`Subtotal:`.padEnd(39) + `₹${estimate.subtotal.toFixed(2).padStart(8)}`)
+
+      if (estimate.hamaliCharges > 0) {
+        lines.push(`Hamali/Freight:`.padEnd(39) + `₹${estimate.hamaliCharges.toFixed(2).padStart(8)}`)
       }
-    } catch (error) {
-      console.error("Error while printing:", error)
+
+      lines.push(line("="))
+      lines.push(`TOTAL:`.padEnd(39) + `₹${estimate.total.toFixed(2).padStart(8)}`)
+      lines.push(line("="))
+      lines.push(center("Thank you for your business!"))
+      lines.push(center("Terms & Conditions Apply"))
+
+      return lines.join("\n")
     }
+
+    const textOutput = generateTextOutput(currentEstimate, storeInfo)
+
+    const htmlContent = `
+    <!DOCTYPE html>
+    <html>
+      <head>
+        <title>Thermal Estimate - ${currentEstimate.estimateNumber}</title>
+        <style>
+          * { margin: 0; padding: 0; }
+          body {
+            font-family: 'Courier New', monospace;
+            font-size: 12px;
+            line-height: 1.2;
+            white-space: pre-wrap;
+            padding: 5mm;
+          }
+          @media print {
+            body { margin: 0; padding: 2mm; }
+            @page {
+              size: 80mm auto;
+              margin: 2mm;
+            }
+          }
+        </style>
+      </head>
+      <body>${textOutput}</body>
+    </html>
+  `
+
+    const printWindow = window.open("", "_blank", "width=400,height=600")
+    if (!printWindow) {
+      alert("Please allow popups for this website to enable printing.")
+      return
+    }
+
+    printWindow.document.write(htmlContent)
+    printWindow.document.close()
+
+    // Wait for content to load before printing
+    printWindow.onload = () => {
+      setTimeout(() => {
+        printWindow.focus()
+        printWindow.print()
+
+        // Close window after printing (with delay to ensure print dialog appears)
+        setTimeout(() => {
+          printWindow.close()
+        }, 1000)
+      }, 500)
+    }
+
+    // Fallback if onload doesn't fire
+    setTimeout(() => {
+      if (printWindow && !printWindow.closed) {
+        printWindow.focus()
+        printWindow.print()
+        setTimeout(() => {
+          printWindow.close()
+        }, 1000)
+      }
+    }, 1000)
   }
 
   // Initialize data manager and load data
@@ -887,54 +1089,6 @@ export default function POSSystem() {
     }
     setCurrentEstimate(estimate)
     setShowEstimate(true)
-  }
-
-  const printEstimate = async () => {
-    if (!invoiceRef.current || !currentEstimate) return
-
-    const htmlContent = `
-    <!DOCTYPE html>
-    <html>
-      <head>
-        <title>Estimate - ${currentEstimate.estimateNumber}</title>
-        <style>
-          body { font-family: Arial, sans-serif; margin: 0; padding: 20px; }
-          .estimate { max-width: 800px; margin: 0 auto; }
-          table { width: 100%; border-collapse: collapse; margin: 10px 0; }
-          th, td { border: 1px solid #000; padding: 8px; text-align: left; }
-          th { background-color: #f5f5f5; font-weight: bold; }
-          .text-right { text-align: right; }
-          .text-center { text-align: center; margin-bottom: 20px; }
-          .header { text-align: center; margin-bottom: 20px; }
-          .store-info { margin-bottom: 20px; }
-          .customer-info { margin-bottom: 20px; }
-          .signature { margin-top: 40px; }
-          @media print {
-            body { margin: 0; }
-            .no-print { display: none; }
-          }
-        </style>
-      </head>
-      <body>
-        ${invoiceRef.current.innerHTML}
-      </body>
-    </html>
-  `
-
-    try {
-      const response = await axios.post(`${PRINT_UTILITY_API_URL}/print`, {
-        printer: LAZER_PRINTER,
-        html: htmlContent,
-      })
-
-      if (response.status === 200) {
-        console.log("Print job sent successfully")
-      } else {
-        console.error("Failed to print:", response.data)
-      }
-    } catch (error) {
-      console.error("Error sending print request:", error)
-    }
   }
 
   const confirmOrder = async () => {

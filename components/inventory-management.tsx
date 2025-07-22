@@ -1,5 +1,4 @@
 "use client"
-
 import { useState, useEffect, useRef } from "react"
 import {
   Package,
@@ -31,10 +30,8 @@ import { Alert, AlertTitle, AlertDescription } from "@/components/ui/alert"
 import { Badge } from "@/components/ui/badge"
 import { Textarea } from "@/components/ui/textarea"
 import { format } from "date-fns"
-import jsPDF from "jspdf"
 import "jspdf-autotable"
 import { DataManager } from "./data-manager"
-import axios from "axios"
 
 // Extend jsPDF type to include autoTable
 declare module "jspdf" {
@@ -123,6 +120,7 @@ export default function InventoryManagement() {
   const [transactionItems, setTransactionItems] = useState<TransactionItem[]>([])
   const [transactionReference, setTransactionReference] = useState("")
   const [transactionDate, setTransactionDate] = useState(format(new Date(), "yyyy-MM-dd"))
+
   // Add edit mode state
   const [editingTransactionId, setEditingTransactionId] = useState<string | null>(null)
 
@@ -139,14 +137,12 @@ export default function InventoryManagement() {
     reorderLevel: 0,
     notes: "",
   })
-
   const [reportForm, setReportForm] = useState({
     type: "closing_stock" as "closing_stock" | "stock_movement" | "low_stock" | "valuation",
     startDate: format(new Date(), "yyyy-MM-dd"),
     endDate: format(new Date(), "yyyy-MM-dd"),
     categoryFilter: "all",
   })
-
   const [lastProcessedTransaction, setLastProcessedTransaction] = useState<any>(null)
   const [showTransactionReceipt, setShowTransactionReceipt] = useState(false)
 
@@ -175,7 +171,6 @@ export default function InventoryManagement() {
         loadData()
       }
     }
-
     window.addEventListener("storage", handleStorageChange)
     return () => window.removeEventListener("storage", handleStorageChange)
   }, [])
@@ -184,10 +179,8 @@ export default function InventoryManagement() {
   const getCategoryNameForProduct = (productId: string): string => {
     const product = products.find((p) => p.id === productId)
     if (!product) return "Unknown"
-
     const subCategory = subCategories.find((sc) => sc.id === product.subCategoryId)
     if (!subCategory) return "Unknown"
-
     return subCategory.name
   }
 
@@ -244,11 +237,10 @@ export default function InventoryManagement() {
 
   // Add this new function to sync inventory with POS data
   const syncInventoryWithPOSData = (productsData: any[], currentInventoryItems: InventoryItem[]) => {
-    const sales = DataManager.getSales()
+    const sales = DataManager.getSales() // This line is not used, but kept from original code.
 
     // Create a map of existing inventory items
     const inventoryMap = new Map(currentInventoryItems.map((item) => [item.productId, item]))
-
     let hasChanges = false
 
     // Process each product to ensure it has inventory tracking
@@ -279,7 +271,6 @@ export default function InventoryManagement() {
         const inventoryItem = inventoryMap.get(product.id)
         if (inventoryItem) {
           let itemChanged = false
-
           // Fix category if it's unknown
           if (inventoryItem.category === "Unknown" || !inventoryItem.category) {
             const subCategory = subCategories.find((c) => c.id === product.subCategoryId)
@@ -288,13 +279,11 @@ export default function InventoryManagement() {
               itemChanged = true
             }
           }
-
           // Update stock if different
           if (inventoryItem.closingStock !== product.stock) {
             inventoryItem.closingStock = product.stock
             itemChanged = true
           }
-
           if (itemChanged) {
             inventoryItem.lastUpdated = new Date().toISOString()
             hasChanges = true
@@ -307,7 +296,6 @@ export default function InventoryManagement() {
     if (hasChanges) {
       DataManager.setInventoryItems(currentInventoryItems)
     }
-
     setInventoryItems(currentInventoryItems)
   }
 
@@ -426,6 +414,7 @@ export default function InventoryManagement() {
           alert("Original transaction not found.")
           return
         }
+
         // Only support editing single-item transactions for now (as per UI)
         const item = transactionItems[0]
         const updatedTransaction: StockTransaction = {
@@ -439,24 +428,28 @@ export default function InventoryManagement() {
           notes: `${transactionType.charAt(0).toUpperCase() + transactionType.slice(1)} transaction`,
           createdAt: oldTransaction.createdAt, // keep original createdAt
         }
+
         updateTransaction(editingTransactionId, updatedTransaction)
 
-        // Update product stock in DataManager
+        // Update product stock in DataManager - calculate the net change
         const product = products.find((p) => p.id === item.id)
         if (product) {
-          // Reverse old transaction effect
-          let prevStock = product.stock
-          if (oldTransaction.type === "purchase") prevStock -= Math.abs(oldTransaction.quantity)
-          else if (oldTransaction.type === "sale") prevStock += Math.abs(oldTransaction.quantity)
-          else if (oldTransaction.type === "adjustment") prevStock -= oldTransaction.quantity
+          // Calculate net change from old to new transaction
+          let oldEffect = 0
+          let newEffect = 0
 
-          // Apply new transaction effect
-          let newStock = prevStock
-          if (transactionType === "purchase") newStock += item.quantity
-          else if (transactionType === "sale") newStock = Math.max(0, newStock - item.quantity)
-          else if (transactionType === "adjustment") newStock += item.quantity
+          if (oldTransaction.type === "purchase") oldEffect = Math.abs(oldTransaction.quantity)
+          else if (oldTransaction.type === "sale") oldEffect = -Math.abs(oldTransaction.quantity)
+          else if (oldTransaction.type === "adjustment") oldEffect = oldTransaction.quantity
 
-          await DataManager.updateProductStock(product.id, Math.max(0, newStock))
+          if (transactionType === "purchase") newEffect = item.quantity
+          else if (transactionType === "sale") newEffect = -item.quantity
+          else if (transactionType === "adjustment") newEffect = item.quantity
+
+          const netChange = newEffect - oldEffect
+          const newStock = Math.max(0, product.stock + netChange)
+
+          await DataManager.updateProductStock(product.id, newStock)
         }
 
         // Refresh products data
@@ -536,7 +529,6 @@ export default function InventoryManagement() {
           } else if (transactionType === "adjustment") {
             newStock += item.quantity // Can be negative for adjustments
           }
-
           await DataManager.updateProductStock(product.id, Math.max(0, newStock))
         }
       }
@@ -565,10 +557,8 @@ export default function InventoryManagement() {
 
   const handleAddInventoryItem = () => {
     if (!itemForm.productId) return
-
     const product = products.find((p) => p.id === itemForm.productId)
     if (!product) return
-
     const subCategory = subCategories.find((c) => c.id === product.subCategoryId)
     const categoryName = subCategory?.name || "Unknown"
 
@@ -601,7 +591,6 @@ export default function InventoryManagement() {
         notes: "Initial opening stock entry",
         createdAt: new Date().toISOString(),
       }
-
       const updatedTransactions = [...stockTransactions, openingTransaction]
       saveStockTransactions(updatedTransactions)
     }
@@ -623,7 +612,6 @@ export default function InventoryManagement() {
     const updatedItems = inventoryItems.map((item) => {
       if (item.productId === transaction.productId) {
         const updatedItem = { ...item }
-
         switch (transaction.type) {
           case "purchase":
             updatedItem.purchases += Math.abs(transaction.quantity)
@@ -638,13 +626,11 @@ export default function InventoryManagement() {
             updatedItem.closingStock += transaction.quantity
             break
         }
-
         updatedItem.lastUpdated = new Date().toISOString()
         return updatedItem
       }
       return item
     })
-
     saveInventoryItems(updatedItems)
   }
 
@@ -653,19 +639,54 @@ export default function InventoryManagement() {
     const oldTransaction = stockTransactions.find((t) => t.id === transactionId)
     if (!oldTransaction) return
 
-    // Reverse the old transaction effect
-    updateInventoryFromTransaction({
-      ...oldTransaction,
-      quantity: -oldTransaction.quantity,
+    // First, reverse the old transaction effect on inventory
+    const updatedItems = inventoryItems.map((item) => {
+      if (item.productId === oldTransaction.productId) {
+        const updatedItem = { ...item }
+
+        // Reverse the old transaction
+        switch (oldTransaction.type) {
+          case "purchase":
+            updatedItem.purchases -= Math.abs(oldTransaction.quantity)
+            updatedItem.closingStock -= Math.abs(oldTransaction.quantity)
+            break
+          case "sale":
+            updatedItem.sales -= Math.abs(oldTransaction.quantity)
+            updatedItem.closingStock += Math.abs(oldTransaction.quantity)
+            break
+          case "adjustment":
+            updatedItem.adjustments -= oldTransaction.quantity
+            updatedItem.closingStock -= oldTransaction.quantity
+            break
+        }
+
+        // Apply the new transaction
+        switch (updatedTransaction.type) {
+          case "purchase":
+            updatedItem.purchases += Math.abs(updatedTransaction.quantity)
+            updatedItem.closingStock += Math.abs(updatedTransaction.quantity)
+            break
+          case "sale":
+            updatedItem.sales += Math.abs(updatedTransaction.quantity)
+            updatedItem.closingStock -= Math.abs(updatedTransaction.quantity)
+            break
+          case "adjustment":
+            updatedItem.adjustments += updatedTransaction.quantity
+            updatedItem.closingStock += updatedTransaction.quantity
+            break
+        }
+
+        updatedItem.lastUpdated = new Date().toISOString()
+        return updatedItem
+      }
+      return item
     })
 
-    // Apply the new transaction effect
-    updateInventoryFromTransaction(updatedTransaction)
+    // Save updated inventory
+    saveInventoryItems(updatedItems)
 
     // Replace the transaction in the list
-    const updatedTransactions = stockTransactions.map((t) =>
-      t.id === transactionId ? updatedTransaction : t,
-    )
+    const updatedTransactions = stockTransactions.map((t) => (t.id === transactionId ? updatedTransaction : t))
     saveStockTransactions(updatedTransactions)
   }
 
@@ -698,34 +719,62 @@ export default function InventoryManagement() {
   }
 
   // Render functions for transaction interface
-  const renderSuperCategories = () => (
-    <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-3">
-      {superCategories.map((category) => (
-        <Button
-          key={category.id}
-          onClick={() => handleSuperCategorySelect(category.id)}
-          className="h-20 sm:h-24 w-full bg-white border-2 border-gray-200 hover:border-yellow-400 hover:bg-yellow-50 text-gray-900 rounded-xl flex flex-col items-center justify-center gap-2 transition-all duration-200 shadow-sm hover:shadow-md p-2"
-          variant="outline"
-        >
-          <div className="relative">
-            {category.image ? (
-              <img
-                src={category.image || "/placeholder.svg"}
-                alt={category.name}
-                className="w-8 h-8 sm:w-10 sm:h-10 object-cover rounded-lg border border-gray-200"
-              />
-            ) : (
-              <span className="text-lg sm:text-xl">{category.icon}</span>
-            )}
-          </div>
-          <span className="font-medium text-xs text-center px-1 leading-tight">{category.name}</span>
-        </Button>
-      ))}
-    </div>
-  )
+  const renderSuperCategories = () => {
+    if (superCategories.length === 0) {
+      return (
+        <div className="text-center py-8 text-gray-500">
+          <Package className="w-12 h-12 mx-auto mb-4 opacity-50" />
+          <p>No super categories found.</p>
+          <p className="text-sm">Please ensure data is loaded or add categories.</p>
+        </div>
+      )
+    }
+    return (
+      <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-3">
+        {superCategories.map((category) => (
+          <Button
+            key={category.id}
+            onClick={() => handleSuperCategorySelect(category.id)}
+            className="h-28 sm:h-32 w-full bg-white border-2 border-gray-200 hover:border-yellow-400 hover:bg-yellow-50 text-gray-900 rounded-xl flex flex-col items-center justify-center gap-2 transition-all duration-200 shadow-sm hover:shadow-md p-2"
+            variant="outline"
+          >
+            <div className="relative">
+              {category.image ? (
+                <img
+                  src={category.image || "/placeholder.svg"}
+                  alt={category.name}
+                  className="w-12 h-12 sm:w-16 sm:h-16 object-cover rounded-lg border border-gray-200"
+                />
+              ) : (
+                <span className="text-xl sm:text-2xl">{category.icon}</span>
+              )}
+            </div>
+            <span className="font-medium text-sm text-center px-1 leading-tight">{category.name}</span>
+          </Button>
+        ))}
+      </div>
+    )
+  }
 
   const renderSubCategories = () => {
     const filteredSubCategories = subCategories.filter((sub) => sub.superCategoryId === selectedSuperCategory)
+    if (filteredSubCategories.length === 0) {
+      return (
+        <div className="space-y-4">
+          <Button
+            onClick={handleBackToSuper}
+            variant="outline"
+            className="rounded-lg border-gray-300 hover:bg-gray-50 bg-transparent"
+          >
+            ← Back to Categories
+          </Button>
+          <div className="text-center py-8 text-gray-500">
+            <Package className="w-12 h-12 mx-auto mb-4 opacity-50" />
+            <p>No subcategories found for this category.</p>
+          </div>
+        </div>
+      )
+    }
     return (
       <div className="space-y-4">
         <Button
@@ -740,7 +789,7 @@ export default function InventoryManagement() {
             <Button
               key={subCategory.id}
               onClick={() => handleSubCategorySelect(subCategory.id)}
-              className="h-18 sm:h-20 w-full bg-white border-2 border-gray-200 hover:border-yellow-400 hover:bg-yellow-50 text-gray-900 rounded-xl flex flex-col items-center justify-center gap-2 transition-all duration-200 shadow-sm hover:shadow-md p-2"
+              className="h-24 sm:h-28 w-full bg-white border-2 border-gray-200 hover:border-yellow-400 hover:bg-yellow-50 text-gray-900 rounded-xl flex flex-col items-center justify-center gap-2 transition-all duration-200 shadow-sm hover:shadow-md p-2"
               variant="outline"
             >
               <div className="relative">
@@ -748,13 +797,13 @@ export default function InventoryManagement() {
                   <img
                     src={subCategory.image || "/placeholder.svg"}
                     alt={subCategory.name}
-                    className="w-8 h-8 sm:w-10 sm:h-10 object-cover rounded-lg border border-gray-200"
+                    className="w-12 h-12 sm:w-16 sm:h-16 object-cover rounded-lg border border-gray-200"
                   />
                 ) : (
-                  <span className="text-lg sm:text-xl">{subCategory.icon}</span>
+                  <span className="text-xl sm:text-2xl">{subCategory.icon}</span>
                 )}
               </div>
-              <span className="font-medium text-xs text-center px-1 leading-tight">{subCategory.name}</span>
+              <span className="font-medium text-sm text-center px-1 leading-tight">{subCategory.name}</span>
             </Button>
           ))}
         </div>
@@ -764,6 +813,32 @@ export default function InventoryManagement() {
 
   const renderProducts = () => {
     const filteredProducts = products.filter((prod) => prod.subCategoryId === selectedSubCategory)
+    if (filteredProducts.length === 0) {
+      return (
+        <div className="space-y-4">
+          <div className="flex flex-wrap gap-2">
+            <Button
+              onClick={handleBackToSub}
+              variant="outline"
+              className="rounded-lg border-gray-300 hover:bg-gray-50 text-xs bg-transparent"
+            >
+              ← Back to Subcategories
+            </Button>
+            <Button
+              onClick={handleBackToSuper}
+              variant="outline"
+              className="rounded-lg border-gray-300 hover:bg-gray-50 text-xs bg-transparent"
+            >
+              ← Back to Categories
+            </Button>
+          </div>
+          <div className="text-center py-8 text-gray-500">
+            <Package className="w-12 h-12 mx-auto mb-4 opacity-50" />
+            <p>No products found in this subcategory.</p>
+          </div>
+        </div>
+      )
+    }
     return (
       <div className="space-y-4">
         <div className="flex flex-wrap gap-2">
@@ -795,17 +870,17 @@ export default function InventoryManagement() {
                       <img
                         src={product.image || "/placeholder.svg"}
                         alt={product.name}
-                        className="w-12 h-12 object-cover rounded-lg border border-gray-200 flex-shrink-0"
+                        className="w-16 h-16 object-cover rounded-lg border border-gray-200 flex-shrink-0"
                       />
                     )}
                     <div className="flex-1 min-w-0">
-                      <h3 className="font-medium text-sm text-gray-900 mb-1 line-clamp-2">{product.name}</h3>
-                      <div className="text-xs text-gray-500">Unit: {product.unit}</div>
+                      <h3 className="font-medium text-base text-gray-900 mb-1 line-clamp-2">{product.name}</h3>
+                      <div className="text-sm text-gray-500">Unit: {product.unit}</div>
                     </div>
                   </div>
                   <Button
                     onClick={() => addToTransaction(product)}
-                    className="w-full bg-yellow-500 hover:bg-yellow-600 text-white rounded-lg font-medium shadow-sm text-xs py-2"
+                    className="w-full bg-yellow-500 hover:bg-yellow-600 text-white rounded-lg font-medium shadow-sm text-sm py-2.5"
                   >
                     <Plus className="w-3 h-3 mr-1" />
                     Add
@@ -861,7 +936,6 @@ export default function InventoryManagement() {
             status: item.closingStock <= item.reorderLevel ? "Low Stock" : "Normal",
           }))
         break
-
       case "stock_movement":
         title = "Stock Movement Report"
         reportData = stockTransactions
@@ -886,7 +960,6 @@ export default function InventoryManagement() {
             notes: t.notes || "-",
           }))
         break
-
       case "low_stock":
         title = "Low Stock Report"
         // Find items that are low stock as of now, but only include if their last transaction is in the date range
@@ -911,7 +984,6 @@ export default function InventoryManagement() {
             lastUpdated: format(new Date(item.lastUpdated), "MMM dd, yyyy"),
           }))
         break
-
       case "valuation":
         title = "Inventory Valuation Report"
         reportData = inventoryItems
@@ -938,516 +1010,591 @@ export default function InventoryManagement() {
       totalItems: reportData.length,
       totalValue,
     }
-
     return report
   }
 
-  const printReport = async (report: InventoryReport) => {
-    const printContent = generatePrintableReport(report)
-    try {
-      const response = await axios.post(`${PRINT_UTILITY_API_URL}/print`, {
-        printer: LAZER_PRINTER,
-        html: printContent,
-      })
-
-      if (response.status === 200) {
-        console.log("Report sent to printer successfully")
-      } else {
-        console.error("Failed to print report:", response.data)
-      }
-    } catch (error) {
-      console.error("Error printing report:", error)
+  const printReport = (report: InventoryReport) => {
+    const printWindow = window.open("", "_blank")
+    if (!printWindow) {
+      alert("Please allow popups for this site to enable printing")
+      return
     }
+
+    const printContent = generatePrintableReport(report)
+
+    printWindow.document.write(printContent)
+    printWindow.document.close()
+
+    // Wait for content to load before printing
+    printWindow.onload = () => {
+      setTimeout(() => {
+        if (!printWindow.closed) {
+          printWindow.focus()
+          printWindow.print()
+
+          // Close window after printing (with delay)
+          setTimeout(() => {
+            if (!printWindow.closed) {
+              printWindow.close()
+            }
+          }, 1000)
+        }
+      }, 500)
+    }
+
+    // Fallback in case onload doesn't fire
+    setTimeout(() => {
+      if (!printWindow.closed && printWindow.document.readyState === "complete") {
+        printWindow.focus()
+        printWindow.print()
+
+        setTimeout(() => {
+          if (!printWindow.closed) {
+            printWindow.close()
+          }
+        }, 1000)
+      }
+    }, 1000)
   }
 
   const generatePrintableReport = (report: InventoryReport): string => {
     const currentDate = format(new Date(), "MMM dd, yyyy HH:mm")
-
     let tableHeaders = ""
     let tableRows = ""
 
     switch (report.reportType) {
       case "closing_stock":
         tableHeaders = `
-          <tr>
-            <th>Product Name</th>
-            <th>Category</th>
-            <th>Unit</th>
-            <th>Opening</th>
-            <th>Purchases</th>
-            <th>Sales</th>
-            <th>Adjustments</th>
-            <th>Closing</th>
-            <th>Status</th>
-          </tr>
-        `
+        <tr>
+          <th style="width: 25%;">Product Name</th>
+          <th style="width: 15%;">Category</th>
+          <th style="width: 8%;">Unit</th>
+          <th style="width: 10%;">Opening</th>
+          <th style="width: 10%;">Purchases</th>
+          <th style="width: 8%;">Sales</th>
+          <th style="width: 10%;">Adjustments</th>
+          <th style="width: 8%;">Closing</th>
+          <th style="width: 6%;">Status</th>
+        </tr>
+      `
         tableRows = report.data
           .map(
             (item) => `
-          <tr>
-            <td>${item.productName}</td>
-            <td>${item.category}</td>
-            <td>${item.unit}</td>
-            <td>${item.openingStock}</td>
-            <td>${item.purchases}</td>
-            <td>${item.sales}</td>
-            <td>${item.adjustments}</td>
-            <td>${item.closingStock}</td>
-            <td>${item.status}</td>
-          </tr>
-        `,
+        <tr>
+          <td>${item.productName}</td>
+          <td>${item.category}</td>
+          <td>${item.unit}</td>
+          <td class="text-center">${item.openingStock}</td>
+          <td class="text-center">${item.purchases}</td>
+          <td class="text-center">${item.sales}</td>
+          <td class="text-center">${item.adjustments}</td>
+          <td class="text-center">${item.closingStock}</td>
+          <td class="text-center">${item.status}</td>
+        </tr>
+      `,
           )
           .join("")
         break
-
       case "stock_movement":
         tableHeaders = `
-          <tr>
-            <th>Date</th>
-            <th>Product Name</th>
-            <th>Type</th>
-            <th>Quantity</th>
-            <th>Reference</th>
-          </tr>
-        `
+        <tr>
+          <th style="width: 12%;">Date</th>
+          <th style="width: 35%;">Product Name</th>
+          <th style="width: 12%;">Type</th>
+          <th style="width: 12%;">Quantity</th>
+          <th style="width: 29%;">Reference</th>
+        </tr>
+      `
         tableRows = report.data
           .map(
             (item) => `
-          <tr>
-            <td>${format(new Date(item.date), "MMM dd, yyyy")}</td>
-            <td>${item.productName}</td>
-            <td>${item.type.toUpperCase()}</td>
-            <td>${item.quantity}</td>
-            <td>${item.reference || "-"}</td>
-          </tr>
-        `,
+        <tr>
+          <td>${format(new Date(item.date), "MMM dd, yyyy")}</td>
+          <td>${item.productName}</td>
+          <td class="text-center">${item.type.toUpperCase()}</td>
+          <td class="text-center">${item.quantity}</td>
+          <td>${item.reference || "-"}</td>
+        </tr>
+      `,
           )
           .join("")
         break
-
       case "low_stock":
         tableHeaders = `
-          <tr>
-            <th>Product Name</th>
-            <th>Category</th>
-            <th>Current Stock</th>
-            <th>Reorder Level</th>
-            <th>Shortage</th>
-            <th>Last Updated</th>
-          </tr>
-        `
+        <tr>
+          <th style="width: 30%;">Product Name</th>
+          <th style="width: 20%;">Category</th>
+          <th style="width: 12%;">Current Stock</th>
+          <th style="width: 12%;">Reorder Level</th>
+          <th style="width: 10%;">Shortage</th>
+          <th style="width: 16%;">Last Updated</th>
+        </tr>
+      `
         tableRows = report.data
           .map(
             (item) => `
-          <tr>
-            <td>${item.productName}</td>
-            <td>${item.category}</td>
-            <td>${item.currentStock}</td>
-            <td>${item.reorderLevel}</td>
-            <td>${item.shortage}</td>
-            <td>${item.lastUpdated}</td>
-          </tr>
-        `,
+        <tr>
+          <td>${item.productName}</td>
+          <td>${item.category}</td>
+          <td class="text-center">${item.currentStock}</td>
+          <td class="text-center">${item.reorderLevel}</td>
+          <td class="text-center">${item.shortage}</td>
+          <td class="text-center">${item.lastUpdated}</td>
+        </tr>
+      `,
           )
           .join("")
         break
-
       case "valuation":
         tableHeaders = `
-          <tr>
-            <th>Product Name</th>
-            <th>Category</th>
-            <th>Closing Stock</th>
-          </tr>
-        `
+        <tr>
+          <th style="width: 50%;">Product Name</th>
+          <th style="width: 30%;">Category</th>
+          <th style="width: 20%;">Closing Stock</th>
+        </tr>
+      `
         tableRows = report.data
           .map(
             (item) => `
-          <tr>
-            <td>${item.productName}</td>
-            <td>${item.category}</td>
-            <td>${item.closingStock}</td>
-          </tr>
-        `,
+        <tr>
+          <td>${item.productName}</td>
+          <td>${item.category}</td>
+          <td class="text-center">${item.closingStock}</td>
+        </tr>
+      `,
           )
           .join("")
         break
     }
 
     return `
-      <!DOCTYPE html>
-      <html>
-        <head>
-          <title>${report.title}</title>
-          <style>
-            body { font-family: Arial, sans-serif; margin: 20px; }
-            .header { text-align: center; margin-bottom: 30px; border-bottom: 2px solid #000; padding-bottom: 20px; }
-            .company-name { font-size: 24px; font-weight: bold; margin-bottom: 5px; }
-            .report-title { font-size: 18px; margin-bottom: 10px; }
-            .report-info { font-size: 12px; color: #666; }
-            table { width: 100%; border-collapse: collapse; margin-top: 20px; }
-            th, td { border: 1px solid #ddd; padding: 8px; text-align: left; font-size: 12px; }
-            th { background-color: #f5f5f5; font-weight: bold; }
-            .summary { margin-top: 20px; padding: 15px; background-color: #f9f9f9; border: 1px solid #ddd; }
-            .summary-item { display: inline-block; margin-right: 30px; }
-            @media print {
-              body { margin: 0; }
-              .no-print { display: none; }
+    <!DOCTYPE html>
+    <html>
+      <head>
+        <title>${report.title}</title>
+        <style>
+          * { margin: 0; padding: 0; box-sizing: border-box; }
+          body {
+            font-family: 'Arial', sans-serif;
+            font-size: 10px;
+            line-height: 1.2;
+            color: #000;
+            padding: 8mm;
+          }
+          .header {
+            text-align: center;
+            margin-bottom: 12px;
+            border-bottom: 2px solid #000;
+            padding-bottom: 8px;
+          }
+          .company-name { font-size: 18px; font-weight: bold; margin-bottom: 2px; }
+          .report-title { font-size: 14px; font-weight: bold; margin-bottom: 4px; }
+          .report-info { font-size: 9px; color: #666; }
+
+          table {
+            width: 100%;
+            border-collapse: collapse;
+            margin-top: 8px;
+            font-size: 9px;
+          }
+          th, td {
+            border: 1px solid #000;
+            padding: 2px 3px;
+            text-align: left;
+            vertical-align: top;
+          }
+          th {
+            background-color: #f0f0f0;
+            font-weight: bold;
+            text-align: center;
+          }
+          .text-center { text-align: center; }
+
+          .summary {
+            margin-top: 8px;
+            padding: 6px;
+            background-color: #f9f9f9;
+            border: 1px solid #ddd;
+            font-size: 9px;
+          }
+          .summary-item {
+            display: inline-block;
+            margin-right: 20px;
+          }
+
+          @media print {
+            body { margin: 0; padding: 8mm; }
+            .no-print { display: none; }
+            @page {
+              size: A4;
+              margin: 8mm;
             }
-          </style>
-        </head>
-        <body>
-          <div class="header">
-            <div class="company-name">SNS</div>
-            <div class="report-title">${report.title}</div>
-            <div class="report-info">
-              Generated on: ${currentDate} |
-              Period: ${format(new Date(report.dateRange.start), "MMM dd, yyyy")} to ${format(new Date(report.dateRange.end), "MMM dd, yyyy")}
-            </div>
+          }
+        </style>
+      </head>
+      <body>
+        <div class="header">
+          <div class="company-name">SNS</div>
+          <div class="report-title">${report.title}</div>
+          <div class="report-info">
+            Generated on: ${currentDate} |
+            Period: ${format(new Date(report.dateRange.start), "MMM dd, yyyy")} to ${format(new Date(report.dateRange.end), "MMM dd, yyyy")}
           </div>
-
-          <table>
-            <thead>
-              ${tableHeaders}
-            </thead>
-            <tbody>
-              ${tableRows}
-            </tbody>
-          </table>
-
-          <div class="summary">
-            <div class="summary-item"><strong>Total Items:</strong> ${report.totalItems}</div>
-            <div class="summary-item"><strong>Generated At:</strong> ${currentDate}</div>
-          </div>
-        </body>
-      </html>
-    `
+        </div>
+        <table>
+          <thead>
+            ${tableHeaders}
+          </thead>
+          <tbody>
+            ${tableRows}
+          </tbody>
+        </table>
+        <div class="summary">
+          <div class="summary-item"><strong>Total Items:</strong> ${report.totalItems}</div>
+          <div class="summary-item"><strong>Generated At:</strong> ${currentDate}</div>
+        </div>
+      </body>
+    </html>
+  `
   }
 
-  const exportToPDF = (report: InventoryReport) => {
-    const doc = new jsPDF()
-
-    // Header
-    doc.setFontSize(20)
-    doc.text("SNS", 105, 20, { align: "center" })
-
-    doc.setFontSize(16)
-    doc.text(report.title, 105, 30, { align: "center" })
-
-    doc.setFontSize(10)
-    const dateRange = `${format(new Date(report.dateRange.start), "MMM dd, yyyy")} to ${format(new Date(report.dateRange.end), "MMM dd, yyyy")}`
-    doc.text(`Period: ${dateRange}`, 105, 40, { align: "center" })
-    doc.text(`Generated: ${format(new Date(), "MMM dd, yyyy HH:mm")}`, 105, 45, { align: "center" })
-
-    // Table
-    let tableData: any[] = []
-    let columns: any[] = []
-
-    switch (report.reportType) {
-      case "closing_stock":
-        columns = ["Product", "Category", "Unit", "Opening", "Purchases", "Sales", "Adjustments", "Closing", "Status"]
-        tableData = report.data.map((item) => [
-          item.productName,
-          item.category,
-          item.unit,
-          item.openingStock,
-          item.purchases,
-          item.sales,
-          item.adjustments,
-          item.closingStock,
-          item.status,
-        ])
-        break
-
-      case "stock_movement":
-        columns = ["Date", "Product", "Type", "Quantity", "Reference"]
-        tableData = report.data.map((item) => [
-          format(new Date(item.date), "MMM dd"),
-          item.productName,
-          item.type.toUpperCase(),
-          item.quantity,
-          item.reference || "-",
-        ])
-        break
-
-      case "low_stock":
-        columns = ["Product", "Category", "Current Stock", "Reorder Level", "Shortage", "Last Updated"]
-        tableData = report.data.map((item) => [
-          item.productName,
-          item.category,
-          item.currentStock,
-          item.reorderLevel,
-          item.shortage,
-          item.lastUpdated,
-        ])
-        break
-
-      case "valuation":
-        columns = ["Product", "Category", "Closing Stock"]
-        tableData = report.data.map((item) => [item.productName, item.category, item.closingStock])
-        break
+  const printTransactionReceipt = (transaction: any) => {
+    const printWindow = window.open("", "_blank")
+    if (!printWindow) {
+      alert("Please allow popups for this site to enable printing")
+      return
     }
 
-    doc.autoTable({
-      head: [columns],
-      body: tableData,
-      startY: 55,
-      styles: { fontSize: 8 },
-      headStyles: { fillColor: [245, 245, 245], textColor: [0, 0, 0] },
-    })
-
-    // Summary
-    const finalY = (doc as any).lastAutoTable.finalY + 10
-    doc.setFontSize(10)
-    doc.text(`Total Items: ${report.totalItems}`, 20, finalY)
-
-    // Save
-    const fileName = `${report.title.replace(/\s+/g, "_")}_${format(new Date(), "yyyy-MM-dd")}.pdf`
-    doc.save(fileName)
-  }
-
-  const printTransactionReceipt = async (transaction: any) => {
     const printContent = generateTransactionReceiptHTML(transaction)
 
-    try {
-      const response = await axios.post(`${PRINT_UTILITY_API_URL}/print`, {
-        printer: LAZER_PRINTER,
-        html: printContent,
-      })
+    printWindow.document.write(printContent)
+    printWindow.document.close()
 
-      if (response.status === 200) {
-        console.log("Transaction receipt sent to printer successfully")
-      } else {
-        console.error("Failed to print transaction receipt:", response.data)
+    // Wait for content to load before printing
+    printWindow.onload = () => {
+      setTimeout(() => {
+        if (!printWindow.closed) {
+          printWindow.focus()
+          printWindow.print()
+
+          // Close window after printing (with delay)
+          setTimeout(() => {
+            if (!printWindow.closed) {
+              printWindow.close()
+            }
+          }, 1000)
+        }
+      }, 500)
+    }
+
+    // Fallback in case onload doesn't fire
+    setTimeout(() => {
+      if (!printWindow.closed && printWindow.document.readyState === "complete") {
+        printWindow.focus()
+        printWindow.print()
+
+        setTimeout(() => {
+          if (!printWindow.closed) {
+            printWindow.close()
+          }
+        }, 1000)
       }
-    } catch (error) {
-      console.error("Error printing transaction receipt:", error)
+    }, 1000)
+  }
+
+  const generateThermalTransactionReceiptText = (transaction: any): string => {
+    const currentDate = format(new Date(), "MMM dd, yyyy HH:mm")
+    const line = "-".repeat(32)
+    const doubleLine = "=".repeat(32)
+
+    let text = ""
+    text += center("SNS") + "\n"
+    text += center("Jodbhavi peth, Solapur") + "\n"
+    text += center("Ph: 8668749859") + "\n"
+    text += doubleLine + "\n"
+    text += center(`${transaction.type.toUpperCase()} RECEIPT`) + "\n"
+    text += line + "\n"
+
+    text += `Receipt No: ${transaction.transactionNumber}\n`
+    text += `Date: ${transaction.date}\n`
+    text += `Time: ${format(new Date(transaction.processedAt), "HH:mm:ss")}\n`
+    if (transaction.reference) {
+      text += `Reference: ${transaction.reference}\n`
+    }
+    text += line + "\n"
+
+    text += leftRight("Item", "Qty") + "\n"
+    text += line + "\n"
+
+    transaction.items.forEach((item: any) => {
+      text += `${item.name}\n`
+      text += leftRight("", `${item.quantity} ${item.unit}`) + "\n"
+    })
+    text += line + "\n"
+
+    const totalQuantity = transaction.items.reduce((sum: number, item: any) => sum + item.quantity, 0)
+    text += leftRight("Total Items:", transaction.items.length.toString()) + "\n"
+    text += leftRight("Total Quantity:", totalQuantity.toString()) + "\n"
+    text += doubleLine + "\n"
+
+    text += center("Thank you for your business!") + "\n"
+    text += center("This is a computer generated receipt.") + "\n"
+    text += center(currentDate) + "\n"
+
+    return text
+
+    function center(str: string): string {
+      const padding = Math.max(0, Math.floor((32 - str.length) / 2))
+      return " ".repeat(padding) + str
+    }
+
+    function leftRight(left: string, right: string): string {
+      const space = " ".repeat(Math.max(0, 32 - left.length - right.length))
+      return left + space + right
     }
   }
 
-  const printThermalTransactionReceipt = async (transaction: any) => {
-    const printContent = generateThermalTransactionReceiptHTML(transaction)
-
-    try {
-      const response = await axios.post(`${PRINT_UTILITY_API_URL}/print`, {
-        printer: THERMAL_PRINTER,
-        html: printContent,
-      })
-
-      if (response.status === 200) {
-        console.log("Thermal transaction receipt sent to printer successfully")
-      } else {
-        console.error("Failed to print thermal transaction receipt:", response.data)
-      }
-    } catch (error) {
-      console.error("Error printing thermal transaction receipt:", error)
+  const printThermalTransactionReceipt = (transaction: any) => {
+    const printWindow = window.open("", "_blank")
+    if (!printWindow) {
+      alert("Please allow popups for this site to enable printing")
+      return
     }
+
+    const textContent = generateThermalTransactionReceiptText(transaction)
+
+    const htmlContent = `
+    <!DOCTYPE html>
+    <html>
+      <head>
+        <title>Thermal Receipt - ${transaction.transactionNumber}</title>
+        <style>
+          * { margin: 0; padding: 0; }
+          body {
+            font-family: 'Courier New', monospace;
+            font-size: 12px;
+            line-height: 1.2;
+            white-space: pre-wrap;
+            padding: 5mm;
+          }
+          @media print {
+            body { margin: 0; padding: 2mm; }
+            @page {
+              size: 80mm auto;
+              margin: 2mm;
+            }
+          }
+        </style>
+      </head>
+      <body>${textContent}</body>
+    </html>
+  `
+
+    printWindow.document.write(htmlContent)
+    printWindow.document.close()
+
+    // Wait for content to load before printing
+    printWindow.onload = () => {
+      setTimeout(() => {
+        if (!printWindow.closed) {
+          printWindow.focus()
+          printWindow.print()
+
+          // Close window after printing (with delay)
+          setTimeout(() => {
+            if (!printWindow.closed) {
+              printWindow.close()
+            }
+          }, 1000)
+        }
+      }, 500)
+    }
+
+    // Fallback in case onload doesn't fire
+    setTimeout(() => {
+      if (!printWindow.closed && printWindow.document.readyState === "complete") {
+        printWindow.focus()
+        printWindow.print()
+
+        setTimeout(() => {
+          if (!printWindow.closed) {
+            printWindow.close()
+          }
+        }, 1000)
+      }
+    }, 1000)
   }
 
   const generateTransactionReceiptHTML = (transaction: any): string => {
     const currentDate = format(new Date(), "MMM dd, yyyy HH:mm")
-
     return `
-      <!DOCTYPE html>
-      <html>
-        <head>
-          <title>${transaction.type.toUpperCase()} Receipt - ${transaction.transactionNumber}</title>
-          <style>
-            body { font-family: Arial, sans-serif; margin: 0; padding: 20px; }
-            .receipt { max-width: 800px; margin: 0 auto; }
-            table { width: 100%; border-collapse: collapse; margin: 10px 0; }
-            th, td { border: 1px solid #000; padding: 8px; text-align: left; }
-            th { background-color: #f5f5f5; font-weight: bold; }
-            .text-right { text-align: right; }
-            .text-center { text-align: center; }
-            .header { text-align: center; margin-bottom: 20px; border-bottom: 2px solid #000; padding-bottom: 20px; }
-            .company-name { font-size: 24px; font-weight: bold; margin-bottom: 5px; }
-            .receipt-title { font-size: 18px; margin-bottom: 10px; }
-            .receipt-info { margin-bottom: 20px; }
-            .summary { margin-top: 20px; padding: 15px; background-color: #f9f9f9; border: 1px solid #ddd; }
-            @media print {
-              body { margin: 0; }
-              .no-print { display: none; }
+    <!DOCTYPE html>
+    <html>
+      <head>
+        <title>${transaction.type.toUpperCase()} Receipt - ${transaction.transactionNumber}</title>
+        <style>
+          * { margin: 0; padding: 0; box-sizing: border-box; }
+          body {
+            font-family: 'Arial', sans-serif;
+            font-size: 11px;
+            line-height: 1.2;
+            color: #000;
+            padding: 8mm;
+          }
+          .receipt { max-width: 100%; }
+          .header {
+            text-align: center;
+            border-bottom: 2px solid #000;
+            padding-bottom: 6px;
+            margin-bottom: 8px;
+          }
+          .company-name { font-size: 18px; font-weight: bold; margin-bottom: 2px; }
+          .company-details { font-size: 9px; margin-bottom: 2px; }
+          .receipt-title { font-size: 14px; font-weight: bold; margin-top: 4px; }
+
+          .receipt-info {
+            margin-bottom: 8px;
+            font-size: 10px;
+          }
+          .info-row {
+            display: flex;
+            justify-content: space-between;
+            margin-bottom: 2px;
+          }
+          .info-label { font-weight: bold; }
+
+          table {
+            width: 100%;
+            border-collapse: collapse;
+            margin: 6px 0;
+            font-size: 10px;
+          }
+          th, td {
+            border: 1px solid #000;
+            padding: 3px 4px;
+            text-align: left;
+            vertical-align: top;
+          }
+          th {
+            background-color: #f0f0f0;
+            font-weight: bold;
+            font-size: 9px;
+            text-align: center;
+          }
+          .text-center { text-align: center; }
+
+          .summary {
+            margin-top: 8px;
+            padding: 6px;
+            background-color: #f9f9f9;
+            border: 1px solid #000;
+            font-size: 10px;
+          }
+          .summary-row {
+            display: flex;
+            justify-content: space-between;
+            margin-bottom: 2px;
+          }
+
+          .footer {
+            margin-top: 12px;
+            text-align: center;
+            font-size: 9px;
+            border-top: 1px solid #000;
+            padding-top: 6px;
+          }
+
+          @media print {
+            body { margin: 0; padding: 8mm; }
+            .no-print { display: none; }
+            @page {
+              size: A4;
+              margin: 8mm;
             }
-          </style>
-        </head>
-        <body>
-          <div class="receipt">
-            <div class="header">
-              <div class="company-name">SNS</div>
-              <div class="receipt-title">${transaction.type.toUpperCase()} RECEIPT</div>
-              <div>Jodbhavi peth, Solapur | Ph: 8668749859</div>
-            </div>
+          }
+        </style>
+      </head>
+      <body>
+        <div class="receipt">
+          <div class="header">
+            <div class="company-name">SNS</div>
+            <div class="company-details">Jodbhavi peth, Solapur | Ph: 8668749859</div>
+            <div class="receipt-title">${transaction.type.toUpperCase()} RECEIPT</div>
+          </div>
 
-            <div class="receipt-info">
-              <div><strong>Receipt No:</strong> ${transaction.transactionNumber}</div>
-              <div><strong>Date:</strong> ${transaction.date}</div>
-              <div><strong>Time:</strong> ${format(new Date(transaction.processedAt), "HH:mm:ss")}</div>
-              ${transaction.reference ? `<div><strong>Reference:</strong> ${transaction.reference}</div>` : ""}
+          <div class="receipt-info">
+            <div class="info-row">
+              <span class="info-label">Receipt No:</span>
+              <span>${transaction.transactionNumber}</span>
             </div>
+            <div class="info-row">
+              <span class="info-label">Date:</span>
+              <span>${transaction.date}</span>
+            </div>
+            <div class="info-row">
+              <span class="info-label">Time:</span>
+              <span>${format(new Date(transaction.processedAt), "HH:mm:ss")}</span>
+            </div>
+            ${transaction.reference
+        ? `
+              <div class="info-row">
+                <span class="info-label">Reference:</span>
+                <span>${transaction.reference}</span>
+              </div>
+            `
+        : ""
+      }
+          </div>
 
-            <table>
-              <thead>
-                <tr>
-                  <th>S.No.</th>
-                  <th>Particulars</th>
-                  <th>QTY</th>
-                  <th>Unit</th>
-                </tr>
-              </thead>
-              <tbody>
-                ${transaction.items
+          <table>
+            <thead>
+              <tr>
+                <th style="width: 8%;">S.No</th>
+                <th style="width: 60%;">Particulars</th>
+                <th style="width: 16%;">QTY</th>
+                <th style="width: 16%;">Unit</th>
+              </tr>
+            </thead>
+            <tbody>
+              ${transaction.items
         .map(
           (item: any, index: number) => `
-                  <tr>
-                    <td>${index + 1}</td>
-                    <td>${item.name}</td>
-                    <td class="text-center">${item.quantity}</td>
-                    <td class="text-center">${item.unit}</td>
-                  </tr>
-                `,
+                <tr>
+                  <td class="text-center">${index + 1}</td>
+                  <td>${item.name}</td>
+                  <td class="text-center">${item.quantity}</td>
+                  <td class="text-center">${item.unit}</td>
+                </tr>
+              `,
         )
         .join("")}
-              </tbody>
-            </table>
+            </tbody>
+          </table>
 
-            <div class="summary">
-              <div><strong>Transaction Type:</strong> ${transaction.type.toUpperCase()}</div>
-              <div><strong>Total Items:</strong> ${transaction.items.length}</div>
-              <div><strong>Total Quantity:</strong> ${transaction.items.reduce((sum: number, item: any) => sum + item.quantity, 0)}</div>
-              <div><strong>Processed At:</strong> ${currentDate}</div>
+          <div class="summary">
+            <div class="summary-row">
+              <span><strong>Transaction Type:</strong></span>
+              <span>${transaction.type.toUpperCase()}</span>
             </div>
-
-            <div style="margin-top: 30px; text-align: center; font-size: 12px;">
-              <div>Thank you for your business!</div>
-              <div>This is a computer generated receipt.</div>
+            <div class="summary-row">
+              <span><strong>Total Items:</strong></span>
+              <span>${transaction.items.length}</span>
             </div>
-          </div>
-        </body>
-      </html>
-    `
-  }
-
-  const generateThermalTransactionReceiptHTML = (transaction: any): string => {
-    const currentDate = format(new Date(), "MMM dd, yyyy HH:mm")
-
-    return `
-      <!DOCTYPE html>
-      <html>
-        <head>
-          <title>Thermal ${transaction.type.toUpperCase()} Receipt - ${transaction.transactionNumber}</title>
-          <style>
-            body {
-  font-family: 'Arial', 'Segoe UI', 'Helvetica', sans-serif;
-  margin: 0;
-  padding: 5px;
-  width: 79mm;
-  font-size: 14px;        /* Increased from 12px to 14px */
-  line-height: 1.6;        /* Increased for better readability */
-  font-weight: normal;     /* Use normal weight by default */
-  color: #000;
-}
-            .thermal-receipt {
-              width: 100%;
-              max-width: 79mm;
-            }
-            .center { text-align: center; }
-            .left { text-align: left; }
-            .right { text-align: right; }
-            .bold { font-weight: bold; }
-            .line { border-bottom: 1px dashed #000; margin: 2px 0; }
-            .double-line { border-bottom: 2px solid #000; margin: 3px 0; }
-            .item-row {
-              display: flex;
-              justify-content: space-between;
-              margin: 1px 0;
-              font-size: 11px;
-            }
-            .item-name {
-              flex: 1;
-              white-space: nowrap;
-              overflow: hidden;
-              text-overflow: ellipsis;
-              max-width: 40mm;
-            }
-            .item-qty { width: 20mm; text-align: center; }
-            .total-row {
-              display: flex;
-              justify-content: space-between;
-              font-weight: bold;
-              margin: 2px 0;
-            }
-            .header { font-size: 14px; font-weight: bold; }
-            .sub-header { font-size: 10px; }
-            .footer { font-size: 10px; margin-top: 5px; }
-            @media print {
-              body { margin: 0; padding: 2px; }
-              .no-print { display: none; }
-            }
-          </style>
-        </head>
-        <body>
-          <div class="thermal-receipt">
-            <!-- Store Header -->
-            <div class="center header">SNS</div>
-            <div class="center sub-header">Jodbhavi peth, Solapur</div>
-            <div class="center sub-header">Ph: 8668749859</div>
-            <div class="double-line"></div>
-
-            <!-- Receipt Details -->
-            <div class="center bold">${transaction.type.toUpperCase()} RECEIPT</div>
-            <div class="line"></div>
-            <div class="left">
-              <div><strong>Receipt:</strong> ${transaction.transactionNumber}</div>
-              <div><strong>Date:</strong> ${transaction.date}</div>
-              <div><strong>Time:</strong> ${format(new Date(transaction.processedAt), "HH:mm:ss")}</div>
-              ${transaction.reference ? `<div><strong>Ref:</strong> ${transaction.reference}</div>` : ""}
-            </div>
-            <div class="line"></div>
-
-            <!-- Items Header -->
-            <div class="item-row bold">
-              <div class="item-name">Item</div>
-              <div class="item-qty">Qty</div>
-            </div>
-            <div class="line"></div>
-
-            <!-- Items -->
-            ${transaction.items
-        .map(
-          (item: any) => `
-              <div class="item-row">
-                <div class="item-name">${item.name}</div>
-                <div class="item-qty">${item.quantity} ${item.unit}</div>
-              </div>
-            `,
-        )
-        .join("")}
-
-            <div class="line"></div>
-
-            <!-- Total -->
-            <div class="total-row" style="font-size: 14px;">
-              <div>TOTAL QTY:</div>
-              <div>${transaction.items.reduce((sum: number, item: any) => sum + item.quantity, 0)}</div>
-            </div>
-            <div class="double-line"></div>
-
-            <!-- Summary -->
-            <div class="center sub-header">
-              <div>Items: ${transaction.items.length}</div>
-              <div>Type: ${transaction.type.toUpperCase()}</div>
-            </div>
-
-            <!-- Footer -->
-            <div class="center footer">
-              <div>Thank you!</div>
-              <div>${currentDate}</div>
+            <div class="summary-row">
+              <span><strong>Total Quantity:</strong></span>
+              <span>${transaction.items.reduce((sum: number, item: any) => sum + item.quantity, 0)}</span>
             </div>
           </div>
-        </body>
-      </html>
-    `
+
+          <div class="footer">
+            <div>Thank you for your business!</div>
+            <div>This is a computer generated receipt.</div>
+            <div style="margin-top: 4px;">${currentDate}</div>
+          </div>
+        </div>
+      </body>
+    </html>
+  `
   }
 
   const getStockStatus = (item: InventoryItem) => {
@@ -1489,22 +1636,23 @@ export default function InventoryManagement() {
           backgroundSize: "20px 20px",
         }}
       />
-
-      <div className="relative z-10 p-6">
+      <div className="relative z-10 p-4 sm:p-6">
         {/* Header */}
-        <div className="flex items-center justify-between mb-6">
+        <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between mb-6">
           <div>
-            <h1 className="text-3xl font-bold text-black">Inventory Management</h1>
-            <p className="text-gray-600 mt-1">Manage stock levels, track movements, and generate reports</p>
+            <h1 className="text-2xl sm:text-3xl font-bold text-black">Inventory Management</h1>
+            <p className="text-gray-600 mt-1 text-sm sm:text-base">
+              Manage stock levels, track movements, and generate reports
+            </p>
           </div>
-          <div className="flex gap-2">
+          <div className="flex flex-col sm:flex-row gap-2 mt-4 sm:mt-0">
             <Button
               onClick={() => {
                 setTransactionType("purchase")
                 setShowTransactionDialog(true)
               }}
               variant="outline"
-              className="rounded-[9px] border-gray-300"
+              className="rounded-[9px]"
             >
               <Package className="w-4 h-4 mr-2" />
               Purchase
@@ -1515,7 +1663,7 @@ export default function InventoryManagement() {
                 setShowTransactionDialog(true)
               }}
               variant="outline"
-              className="rounded-[9px] border-gray-300"
+              className="rounded-[9px]"
             >
               <ShoppingCart className="w-4 h-4 mr-2" />
               Sale
@@ -1526,7 +1674,7 @@ export default function InventoryManagement() {
                 setShowTransactionDialog(true)
               }}
               variant="outline"
-              className="rounded-[9px] border-gray-300"
+              className="rounded-[9px]"
             >
               <TrendingUp className="w-4 h-4 mr-2" />
               Adjust
@@ -1535,7 +1683,7 @@ export default function InventoryManagement() {
         </div>
 
         {/* Summary Cards */}
-        <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-6">
+        <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-4 mb-6">
           <Card className="rounded-[11px]">
             <CardContent className="p-4">
               <div className="flex items-center justify-between">
@@ -1547,7 +1695,6 @@ export default function InventoryManagement() {
               </div>
             </CardContent>
           </Card>
-
           <Card className="rounded-[11px]">
             <CardContent className="p-4">
               <div className="flex items-center justify-between">
@@ -1559,7 +1706,6 @@ export default function InventoryManagement() {
               </div>
             </CardContent>
           </Card>
-
           <Card className="rounded-[11px]">
             <CardContent className="p-4">
               <div className="flex items-center justify-between">
@@ -1571,7 +1717,6 @@ export default function InventoryManagement() {
               </div>
             </CardContent>
           </Card>
-
           <Card className="rounded-[11px]">
             <CardContent className="p-4">
               <div className="flex items-center justify-between">
@@ -1587,7 +1732,7 @@ export default function InventoryManagement() {
 
         {/* Main Content */}
         <Tabs value={activeTab} onValueChange={(value: any) => setActiveTab(value)} className="space-y-4">
-          <TabsList className="grid grid-cols-4 mb-4">
+          <TabsList className="grid grid-cols-2 md:grid-cols-4 mb-4">
             <TabsTrigger value="overview">Overview</TabsTrigger>
             <TabsTrigger value="transactions">Transactions</TabsTrigger>
             <TabsTrigger value="reports">Reports</TabsTrigger>
@@ -1618,7 +1763,6 @@ export default function InventoryManagement() {
                       />
                     </div>
                   </div>
-
                   <div>
                     <Label>Category</Label>
                     <Select value={categoryFilter} onValueChange={setCategoryFilter}>
@@ -1635,7 +1779,6 @@ export default function InventoryManagement() {
                       </SelectContent>
                     </Select>
                   </div>
-
                   <div>
                     <Label>Stock Level</Label>
                     <Select value={stockFilter} onValueChange={(value: any) => setStockFilter(value)}>
@@ -1665,17 +1808,17 @@ export default function InventoryManagement() {
                     return (
                       <div
                         key={item.id}
-                        className="flex items-center justify-between p-3 border rounded-[9px] hover:bg-gray-50"
+                        className="flex flex-col sm:flex-row items-start sm:items-center justify-between p-3 border rounded-[9px] hover:bg-gray-50"
                       >
-                        <div className="flex-1">
-                          <div className="flex items-center gap-3 mb-2">
+                        <div className="flex-1 w-full sm:w-auto">
+                          <div className="flex flex-col sm:flex-row items-start sm:items-center gap-2 sm:gap-3 mb-2">
                             <div>
                               <h3 className="font-medium">{item.productName}</h3>
                               <p className="text-sm text-gray-600">{item.category}</p>
                             </div>
                             <Badge className={`text-xs ${stockStatus.color}`}>{stockStatus.status}</Badge>
                           </div>
-                          <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-sm">
+                          <div className="grid grid-cols-2 md:grid-cols-4 gap-2 sm:gap-4 text-sm">
                             <div>
                               <span className="text-gray-500">Opening:</span> {item.openingStock} {item.unit}
                             </div>
@@ -1696,7 +1839,7 @@ export default function InventoryManagement() {
                             Last updated: {format(new Date(item.lastUpdated), "MMM dd, yyyy HH:mm")}
                           </div>
                         </div>
-                        <div className="flex items-center gap-2">
+                        <div className="flex items-center gap-2 mt-3 sm:mt-0">
                           <Button
                             size="sm"
                             variant="outline"
@@ -1720,7 +1863,6 @@ export default function InventoryManagement() {
                       </div>
                     )
                   })}
-
                   {filteredItems.length === 0 && (
                     <div className="text-center py-8 text-gray-500">
                       <Package className="w-12 h-12 mx-auto mb-4 opacity-50" />
@@ -1747,9 +1889,9 @@ export default function InventoryManagement() {
                     .map((transaction) => (
                       <div
                         key={transaction.id}
-                        className="flex items-center justify-between p-3 border rounded-[9px] hover:bg-gray-50"
+                        className="flex flex-col sm:flex-row items-start sm:items-center justify-between p-3 border rounded-[9px] hover:bg-gray-50"
                       >
-                        <div className="flex-1">
+                        <div className="flex-1 w-full sm:w-auto">
                           <div className="flex items-center gap-3 mb-1">
                             <Badge
                               variant={
@@ -1780,7 +1922,7 @@ export default function InventoryManagement() {
                             {format(new Date(transaction.createdAt), "MMM dd, yyyy HH:mm")}
                           </div>
                         </div>
-                        <div className="flex items-center gap-2">
+                        <div className="flex items-center gap-2 mt-3 sm:mt-0">
                           <Button
                             size="sm"
                             variant="outline"
@@ -1846,7 +1988,6 @@ export default function InventoryManagement() {
                         </div>
                       </div>
                     ))}
-
                   {stockTransactions.length === 0 && (
                     <div className="text-center py-8 text-gray-500">
                       <ShoppingCart className="w-12 h-12 mx-auto mb-4 opacity-50" />
@@ -1889,7 +2030,6 @@ export default function InventoryManagement() {
                         </SelectContent>
                       </Select>
                     </div>
-
                     <div className="grid grid-cols-2 gap-2">
                       <div>
                         <Label>Start Date</Label>
@@ -1910,7 +2050,6 @@ export default function InventoryManagement() {
                         />
                       </div>
                     </div>
-
                     <div>
                       <Label>Category Filter</Label>
                       <Select
@@ -1931,7 +2070,6 @@ export default function InventoryManagement() {
                       </Select>
                     </div>
                   </div>
-
                   <div className="space-y-4">
                     <div className="p-4 bg-gray-50 rounded-[9px]">
                       <h3 className="font-medium mb-2">Report Preview</h3>
@@ -1947,21 +2085,18 @@ export default function InventoryManagement() {
                         </p>
                       </div>
                     </div>
-
                     <div className="space-y-2">
                       <Button
                         onClick={() => {
                           const report = generateReport()
                           setShowReportDialog(true)
-                            // Store the generated report for viewing
-                            ; (window as any).currentReport = report
+                            ; (window as any).currentReport = report // Store the generated report for viewing
                         }}
                         className="w-full bg-yellow-400 hover:bg-yellow-500 text-black rounded-[9px]"
                       >
                         <BarChart3 className="w-4 h-4 mr-2" />
                         Generate Report
                       </Button>
-
                       <div className="grid grid-cols-2 gap-2">
                         <Button
                           onClick={() => {
@@ -1997,7 +2132,6 @@ export default function InventoryManagement() {
                     Inventory data is stored locally in your browser. Make sure to backup your data regularly.
                   </AlertDescription>
                 </Alert>
-
                 <div className="space-y-4">
                   <Button
                     onClick={() => {
@@ -2020,7 +2154,6 @@ export default function InventoryManagement() {
                     <Download className="w-4 h-4 mr-2" />
                     Export Inventory Data
                   </Button>
-
                   <div>
                     <Label>Import Inventory Data</Label>
                     <Input
@@ -2050,7 +2183,6 @@ export default function InventoryManagement() {
                       className="rounded-[9px]"
                     />
                   </div>
-
                   <Button
                     onClick={() => {
                       if (confirm("Are you sure you want to clear all inventory data? This action cannot be undone.")) {
@@ -2067,7 +2199,6 @@ export default function InventoryManagement() {
                     <Trash2 className="w-4 h-4 mr-2" />
                     Clear All Data
                   </Button>
-
                   <Button
                     onClick={() => {
                       // Fix all unknown categories
@@ -2091,7 +2222,6 @@ export default function InventoryManagement() {
                     <Package className="w-4 h-4 mr-2" />
                     Fix Category Mapping
                   </Button>
-
                   <Button
                     onClick={() => {
                       // Remove duplicate transactions
@@ -2109,18 +2239,14 @@ export default function InventoryManagement() {
                           )
                         )
                       })
-
                       if (uniqueTransactions.length !== stockTransactions.length) {
                         saveStockTransactions(uniqueTransactions)
-
                         // Recalculate inventory based on unique transactions
                         const recalculatedItems = inventoryItems.map((item) => {
                           const itemTransactions = uniqueTransactions.filter((t) => t.productId === item.productId)
-
                           let purchases = 0
                           let sales = 0
                           let adjustments = 0
-
                           itemTransactions.forEach((t) => {
                             switch (t.type) {
                               case "purchase":
@@ -2134,7 +2260,6 @@ export default function InventoryManagement() {
                                 break
                             }
                           })
-
                           return {
                             ...item,
                             purchases,
@@ -2144,7 +2269,6 @@ export default function InventoryManagement() {
                             lastUpdated: new Date().toISOString(),
                           }
                         })
-
                         saveInventoryItems(recalculatedItems)
                         alert(
                           `Removed ${stockTransactions.length - uniqueTransactions.length} duplicate transactions and recalculated inventory!`,
@@ -2168,30 +2292,34 @@ export default function InventoryManagement() {
 
       {/* Transaction Dialog - Responsive */}
       <Dialog open={showTransactionDialog} onOpenChange={setShowTransactionDialog}>
-        <DialogContent className="max-w-7xl max-h-[95vh] overflow-hidden p-0">
+        <DialogContent className="max-w-full sm:max-w-xl md:max-w-3xl lg:max-w-7xl max-h-[95vh] overflow-auto p-0">
           <DialogHeader className="p-4 border-b">
             <DialogTitle>{transactionType.charAt(0).toUpperCase() + transactionType.slice(1)} Transaction</DialogTitle>
           </DialogHeader>
-
-          <div className="flex flex-col lg:flex-row h-[80vh]">
-            {/* Product Selection - Left Side */}
+          <div className="flex flex-col h-auto">
+            {" "}
+            {/* Changed to flex-col and h-auto */}
+            {/* Product Selection - Top Section */}
             <div className="flex-1 overflow-y-auto p-4">
+              {" "}
+              {/* Removed h-[80vh] */}
               {currentView === "super" && renderSuperCategories()}
               {currentView === "sub" && renderSubCategories()}
               {currentView === "products" && renderProducts()}
             </div>
-
-            {/* Transaction Items - Right Side */}
-            <div className="w-full lg:w-80 xl:w-96 border-t lg:border-t-0 lg:border-l border-gray-200 flex flex-col bg-gray-50">
+            {/* Transaction Items - Bottom Section */}
+            <div className="w-full border-t border-gray-200 flex flex-col bg-gray-50">
+              {" "}
+              {/* Changed to w-full and border-t only */}
               <div className="p-3 border-b border-gray-200">
                 <h3 className="font-medium text-base">
                   {transactionType.charAt(0).toUpperCase() + transactionType.slice(1)} Items
                 </h3>
               </div>
-
               <div className="flex-1 overflow-y-auto p-3">
+                {" "}
+                {/* Removed h-[80vh] */}
                 {transactionItems.length === 0 ? (
-
                   <div className="text-center py-8 text-gray-500">
                     <Package className="w-8 h-8 mx-auto mb-2 opacity-50" />
                     <p className="text-sm">No items selected</p>
@@ -2203,7 +2331,6 @@ export default function InventoryManagement() {
                         <CardContent className="p-3">
                           <div className="space-y-2">
                             <div className="font-medium text-sm truncate">{item.name}</div>
-
                             <div className="flex items-center gap-2">
                               <Button
                                 size="sm"
@@ -2232,7 +2359,6 @@ export default function InventoryManagement() {
                               </Button>
                               <span className="text-xs text-gray-500 ml-1">{item.unit}</span>
                             </div>
-
                             <div className="flex justify-between items-center">
                               <span className="text-xs text-gray-600">
                                 Total: {item.quantity} {item.unit}
@@ -2253,7 +2379,6 @@ export default function InventoryManagement() {
                   </div>
                 )}
               </div>
-
               {/* Transaction Summary */}
               <div className="border-t border-gray-200 p-3 space-y-3">
                 <div>
@@ -2265,7 +2390,6 @@ export default function InventoryManagement() {
                     className="rounded-lg border-gray-300 text-xs h-8"
                   />
                 </div>
-
                 <div>
                   <Label className="text-xs">Transaction Date</Label>
                   <Input
@@ -2275,14 +2399,12 @@ export default function InventoryManagement() {
                     className="rounded-lg border-gray-300 text-xs h-8"
                   />
                 </div>
-
                 <div className="bg-white p-2 rounded-lg border">
                   <div className="text-sm font-bold">Total Items: {transactionItems.length}</div>
                   <div className="text-xs text-gray-600">
                     Total Quantity: {transactionItems.reduce((sum, item) => sum + item.quantity, 0)}
                   </div>
                 </div>
-
                 <div className="space-y-2">
                   <Button
                     onClick={clearTransactionItems}
@@ -2308,7 +2430,7 @@ export default function InventoryManagement() {
 
       {/* Add Item Dialog */}
       <Dialog open={showAddItemDialog} onOpenChange={setShowAddItemDialog}>
-        <DialogContent className="max-w-md">
+        <DialogContent className="max-w-full sm:max-w-md">
           <DialogHeader>
             <DialogTitle>Add Inventory Item</DialogTitle>
             <DialogDescription>Add a new product to your inventory with opening stock</DialogDescription>
@@ -2334,7 +2456,6 @@ export default function InventoryManagement() {
                 </SelectContent>
               </Select>
             </div>
-
             <div className="grid grid-cols-2 gap-2">
               <div>
                 <Label>Opening Stock</Label>
@@ -2357,7 +2478,6 @@ export default function InventoryManagement() {
                 />
               </div>
             </div>
-
             <div>
               <Label>Notes (Optional)</Label>
               <Textarea
@@ -2367,7 +2487,6 @@ export default function InventoryManagement() {
                 placeholder="Any additional notes..."
               />
             </div>
-
             <div className="flex gap-2">
               <Button
                 onClick={handleAddInventoryItem}
@@ -2394,13 +2513,13 @@ export default function InventoryManagement() {
 
       {/* Item Details Dialog */}
       <Dialog open={showItemDetailsDialog} onOpenChange={setShowItemDetailsDialog}>
-        <DialogContent className="max-w-2xl">
+        <DialogContent className="max-w-full sm:max-w-lg md:max-w-2xl">
           <DialogHeader>
             <DialogTitle>Item Details - {selectedItem?.productName}</DialogTitle>
           </DialogHeader>
           {selectedItem && (
             <div className="space-y-4">
-              <div className="grid grid-cols-2 gap-4">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <div>
                   <Label className="text-sm font-medium">Category</Label>
                   <p className="text-sm">{selectedItem.category}</p>
@@ -2446,14 +2565,12 @@ export default function InventoryManagement() {
                   </p>
                 </div>
               </div>
-
               {selectedItem.notes && (
                 <div>
                   <Label className="text-sm font-medium">Notes</Label>
                   <p className="text-sm">{selectedItem.notes}</p>
                 </div>
               )}
-
               <div>
                 <Label className="text-sm font-medium">Recent Transactions</Label>
                 <div className="mt-2 space-y-2 max-h-40 overflow-y-auto">
@@ -2495,11 +2612,11 @@ export default function InventoryManagement() {
 
       {/* Report Dialog */}
       <Dialog open={showReportDialog} onOpenChange={setShowReportDialog}>
-        <DialogContent className="max-w-6xl max-h-[90vh] overflow-y-auto">
+        <DialogContent className="max-w-full sm:max-w-xl md:max-w-3xl lg:max-w-6xl max-h-[90vh] overflow-y-auto">
           <DialogHeader>
-            <DialogTitle className="flex items-center justify-between">
+            <DialogTitle className="flex flex-col sm:flex-row items-start sm:items-center justify-between">
               <span>Generated Report</span>
-              <div className="flex gap-2">
+              <div className="flex gap-2 mt-2 sm:mt-0">
                 <Button
                   onClick={() => {
                     if ((window as any).currentReport) {
@@ -2531,7 +2648,7 @@ export default function InventoryManagement() {
 
       {/* Transaction Receipt Dialog */}
       <Dialog open={showTransactionReceipt} onOpenChange={setShowTransactionReceipt}>
-        <DialogContent className="max-w-4xl">
+        <DialogContent className="max-w-full sm:max-w-lg md:max-w-xl lg:max-w-4xl">
           <DialogHeader>
             <DialogTitle>Transaction Receipt</DialogTitle>
             <DialogDescription>View and print the transaction receipt</DialogDescription>
@@ -2539,7 +2656,7 @@ export default function InventoryManagement() {
           {lastProcessedTransaction && (
             <div className="space-y-4">
               <div dangerouslySetInnerHTML={{ __html: generateTransactionReceiptHTML(lastProcessedTransaction) }} />
-              <div className="flex justify-end gap-2">
+              <div className="flex flex-col sm:flex-row justify-end gap-2">
                 <Button
                   onClick={() => printTransactionReceipt(lastProcessedTransaction)}
                   variant="outline"
