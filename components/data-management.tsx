@@ -1,7 +1,6 @@
 "use client"
 
 import type React from "react"
-
 import { useState, useEffect } from "react"
 import { Download, Upload, Save, FileSpreadsheet, AlertCircle, CheckCircle, Calendar, Clock } from "lucide-react"
 import { Button } from "@/components/ui/button"
@@ -48,8 +47,6 @@ export default function DataManagement() {
     salesRecords: true,
   })
   const [importFile, setImportFile] = useState<File | null>(null)
-
-  // Check for daily backup on component mount
   useEffect(() => {
     loadBackupHistory()
     checkDailyBackup()
@@ -60,8 +57,6 @@ export default function DataManagement() {
     if (storedBackups) {
       const parsedBackups = JSON.parse(storedBackups) as BackupRecord[]
       setBackups(parsedBackups)
-
-      // Set last backup
       if (parsedBackups.length > 0) {
         const lastBackupRecord = parsedBackups.sort((a, b) => b.timestamp - a.timestamp)[0]
         setLastBackup(lastBackupRecord)
@@ -72,8 +67,6 @@ export default function DataManagement() {
   const checkDailyBackup = () => {
     const today = new Date().toLocaleDateString()
     const lastBackupDate = lastBackup ? new Date(lastBackup.timestamp).toLocaleDateString() : null
-
-    // If no backup today, show prompt
     if (lastBackupDate !== today) {
       setShowBackupPrompt(true)
     }
@@ -83,7 +76,7 @@ export default function DataManagement() {
     setExportProgress(0)
 
     try {
-      // Collect data based on selections
+
       const data: Record<string, any[]> = {}
 
       if (exportSelections.superCategories) {
@@ -115,21 +108,13 @@ export default function DataManagement() {
         data.salesRecords = salesRecords ? JSON.parse(salesRecords) : []
         setExportProgress(100)
       }
-
-      // Create workbook with multiple sheets
       const wb = XLSX.utils.book_new()
-
-      // Add each data type as a separate sheet
       Object.entries(data).forEach(([key, value]) => {
         const ws = XLSX.utils.json_to_sheet(value)
         XLSX.utils.book_append_sheet(wb, ws, key)
       })
-
-      // Generate Excel file
       const currentDate = format(new Date(), "yyyy-MM-dd")
       XLSX.writeFile(wb, `POS_Data_Export_${currentDate}.xlsx`)
-
-      // Reset progress after a delay
       setTimeout(() => {
         setExportProgress(0)
       }, 1000)
@@ -161,8 +146,6 @@ export default function DataManagement() {
           const workbook = XLSX.read(data, { type: "array" })
 
           setImportProgress(40)
-
-          // Process each sheet
           const importedData: Record<string, any[]> = {}
 
           workbook.SheetNames.forEach((sheetName) => {
@@ -172,19 +155,15 @@ export default function DataManagement() {
           })
 
           setImportProgress(60)
-
-          // Validate data structure
           validateAndSaveImportedData(importedData)
 
           setImportProgress(100)
           setShowImportSuccess(true)
-
-          // Reset after success
           setTimeout(() => {
             setImportProgress(0)
             setImportFile(null)
             setShowImportSuccess(false)
-            // Reset file input
+
             const fileInput = document.getElementById("import-file") as HTMLInputElement
             if (fileInput) fileInput.value = ""
           }, 3000)
@@ -212,15 +191,13 @@ export default function DataManagement() {
   }
 
   const validateAndSaveImportedData = (data: Record<string, any[]>) => {
-    // Check if at least one valid data type exists
+
     const validKeys = ["superCategories", "subCategories", "products", "customers", "salesRecords"]
     const hasValidData = validKeys.some((key) => Array.isArray(data[key]) && data[key].length > 0)
 
     if (!hasValidData) {
       throw new Error("No valid data found in the import file")
     }
-
-    // Save each data type to localStorage
     Object.entries(data).forEach(([key, value]) => {
       if (validKeys.includes(key) && Array.isArray(value)) {
         localStorage.setItem(key, JSON.stringify(value))
@@ -232,7 +209,7 @@ export default function DataManagement() {
     setBackupProgress(10)
 
     try {
-      // Collect all data
+
       const superCategories = localStorage.getItem("superCategories")
       const subCategories = localStorage.getItem("subCategories")
       const products = localStorage.getItem("products")
@@ -251,11 +228,7 @@ export default function DataManagement() {
         customers: customers ? JSON.parse(customers) : [],
         salesRecords: salesRecords ? JSON.parse(salesRecords) : [],
       }
-
-      // Add to backup history
       const updatedBackups = [...backups, backup]
-
-      // Keep only the last 10 backups
       if (updatedBackups.length > 10) {
         updatedBackups.sort((a, b) => b.timestamp - a.timestamp)
         updatedBackups.splice(10)
@@ -267,8 +240,6 @@ export default function DataManagement() {
 
       setBackupProgress(100)
       setShowBackupSuccess(true)
-
-      // Reset after success
       setTimeout(() => {
         setBackupProgress(0)
         setShowBackupSuccess(false)
@@ -294,7 +265,7 @@ export default function DataManagement() {
     if (!selectedBackup) return
 
     try {
-      // Restore all data types
+
       localStorage.setItem("superCategories", JSON.stringify(selectedBackup.superCategories))
       localStorage.setItem("subCategories", JSON.stringify(selectedBackup.subCategories))
       localStorage.setItem("products", JSON.stringify(selectedBackup.products))
@@ -303,8 +274,6 @@ export default function DataManagement() {
 
       setShowRestoreDialog(false)
       setShowRestoreSuccess(true)
-
-      // Reset after success
       setTimeout(() => {
         setShowRestoreSuccess(false)
       }, 3000)

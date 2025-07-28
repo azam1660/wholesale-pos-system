@@ -30,8 +30,6 @@ import AdminPanel from "./admin-panel"
 import InventoryManagement from "./inventory-management"
 import PurchaseOrderModule from "./purchase-order-module"
 import { DataManager } from "./data-manager"
-import jsPDF from "jspdf"
-import "jspdf-autotable"
 import { format } from "date-fns"
 import { Badge } from "@/components/ui/badge"
 
@@ -127,8 +125,6 @@ const storeInfo = {
   phone: "9420490692",
   contact: "9405842623",
 }
-
-// Estimate counter - stored in localStorage with proper increment logic
 const getEstimateCounter = () => {
   const stored = localStorage.getItem("estimateCounter")
   return stored ? Number.parseInt(stored) : 1
@@ -137,16 +133,12 @@ const getEstimateCounter = () => {
 const setEstimateCounter = (counter: number) => {
   localStorage.setItem("estimateCounter", counter.toString())
 }
-
-// Get next estimate number without incrementing counter
 const getNextEstimateNumber = (date: string) => {
   const counter = getEstimateCounter()
   const dateObj = new Date(date)
   const dateStr = dateObj.toISOString().split("T")[0].replace(/-/g, "")
   return `EST/${dateStr}/${counter.toString().padStart(4, "0")}`
 }
-
-// Generate estimate number and increment counter
 const generateEstimateNumber = (date: string) => {
   const counter = getEstimateCounter()
   const dateObj = new Date(date)
@@ -177,7 +169,7 @@ export default function POSSystem() {
   const [isCashSale, setIsCashSale] = useState(true)
   const [showAddCustomer, setShowAddCustomer] = useState(false)
   const [paymentMethod, setPaymentMethod] = useState<"cash" | "card" | "upi" | "credit">("cash")
-  const invoiceRef = useRef<HTMLDivElement>(null)
+  const estimateRef = useRef<HTMLDivElement>(null);
 
   const [showEditEstimate, setShowEditEstimate] = useState(false)
   const [editableEstimate, setEditableEstimate] = useState<Estimate | null>(null)
@@ -193,46 +185,29 @@ export default function POSSystem() {
   const [customerTransactions, setCustomerTransactions] = useState<Sale[]>([])
   const [allTransactions, setAllTransactions] = useState<Sale[]>([])
   const [showCashTransactions, setShowCashTransactions] = useState(false)
-
-  // Mobile states
   const [showMobileCart, setShowMobileCart] = useState(false)
   const [isMobile, setIsMobile] = useState(false)
-  const [isTablet, setIsTablet] = useState(false)
-
-  // Data states
   const [superCategories, setSuperCategories] = useState<SuperCategory[]>([])
   const [subCategories, setSubCategories] = useState<SubCategory[]>([])
   const [products, setProducts] = useState<Product[]>([])
   const [customers, setCustomers] = useState<Customer[]>([])
   const [dataLoaded, setDataLoaded] = useState(false)
-
-  // Customer form state
   const [customerForm, setCustomerForm] = useState({
     name: "",
     email: "",
     phone: "",
     address: "",
   })
-
-  // Variables
-  const PRINT_UTILITY_API_URL = process.env.NEXT_PUBLIC_PRINT_UTILITY_API_URL || "http://localhost:5000"
-  const THERMAL_PRINTER = process.env.NEXT_PUBLIC_THERMAL_PRINTER || "Microsoft Print to PDF"
-  const LAZER_PRINTER = process.env.NEXT_PUBLIC_LAZER_PRINTER || "Microsoft Print to PDF"
-
-  // Check if mobile/tablet on mount and resize
   useEffect(() => {
     const checkScreenSize = () => {
       const width = window.innerWidth
       setIsMobile(width < 768)
-      setIsTablet(width >= 768 && width < 1024)
     }
 
     checkScreenSize()
     window.addEventListener("resize", checkScreenSize)
     return () => window.removeEventListener("resize", checkScreenSize)
   }, [])
-
-  // Auto-calculate hamali charges when checkbox is checked
   const calculateHamaliCharges = useCallback(() => {
     if (!includeHamali) return 0
     return orderItems.reduce((sum, item) => {
@@ -262,13 +237,11 @@ export default function POSSystem() {
         subtotal: updatedSubtotal,
         total: updatedTotal,
       }
-
-      // Find and update the corresponding sale in the database
       const sales = DataManager.getSales()
       const saleIndex = sales.findIndex((sale) => sale.estimateNumber === editableEstimate.estimateNumber)
 
       if (saleIndex !== -1) {
-        // Update the sale record with new data
+
         const updatedSale = {
           ...sales[saleIndex],
           items: estimateItems.map((item) => ({
@@ -292,16 +265,12 @@ export default function POSSystem() {
           total: updatedTotal,
           updatedAt: new Date().toISOString(),
         }
-
-        // Update the sale in the database
         await DataManager.updateSale(sales[saleIndex].id, {
           items: updatedSale.items,
           subtotal: updatedSale.subtotal,
           hamaliCharges: updatedSale.hamaliCharges,
           total: updatedSale.total,
         })
-
-        // Update product stock based on quantity changes
         const originalItems = sales[saleIndex].items
         for (const newItem of estimateItems) {
           const originalItem = originalItems.find((item) => item.productId === newItem.id)
@@ -315,7 +284,7 @@ export default function POSSystem() {
               }
             }
           } else {
-            // New item added - reduce stock
+
             const product = products.find((p) => p.id === newItem.id)
             if (product) {
               const newStock = Math.max(0, product.stock - newItem.quantity)
@@ -323,8 +292,6 @@ export default function POSSystem() {
             }
           }
         }
-
-        // Handle removed items - restore stock
         for (const originalItem of originalItems) {
           const stillExists = estimateItems.find((item) => item.id === originalItem.productId)
           if (!stillExists) {
@@ -335,8 +302,6 @@ export default function POSSystem() {
             }
           }
         }
-
-        // Refresh product data
         setProducts(DataManager.getProducts())
       }
 
@@ -361,8 +326,6 @@ export default function POSSystem() {
         if (item.id === itemId) {
           const updatedItem = { ...item, [field]: value }
           updatedItem.lineTotal = updatedItem.quantity * updatedItem.unitPrice
-
-          // Save last used rate if price is updated
           if (field === "unitPrice") {
             saveLastUsedRate(itemId, value)
             updatedItem.lastUsedRate = value
@@ -408,451 +371,246 @@ export default function POSSystem() {
     product.name.toLowerCase().includes(productSearchForEstimate.toLowerCase()),
   )
 
-  const exportEstimateToPDF = (estimate: Estimate) => {
-    const doc = new jsPDF()
+  const handlePrint = () => {
+    if (!estimateRef.current) return;
 
-    // Header
-    doc.setFontSize(20)
-    doc.text(storeInfo.name, 105, 20, { align: "center" })
+    const printContent = estimateRef.current.innerHTML;
+    const printWindow = window.open("", "_blank");
 
-    doc.setFontSize(10)
-    doc.text(storeInfo.address, 105, 30, { align: "center" })
-    doc.text(`Contact: ${storeInfo.phone} | ${storeInfo.contact}`, 105, 35, { align: "center" })
-
-    // Estimate details
-    doc.setFontSize(16)
-    doc.text("ESTIMATE", 20, 50)
-
-    doc.setFontSize(10)
-    doc.text(`Estimate No: ${estimate.estimateNumber}`, 20, 60)
-    doc.text(`Date: ${estimate.date}`, 20, 65)
-
-    // Customer details
-    if (!estimate.isCashSale && estimate.customer) {
-      doc.text("Bill To:", 120, 60)
-      doc.text(estimate.customer.name, 120, 65)
-      doc.text(estimate.customer.phone, 120, 70)
-      if (estimate.customer.address) {
-        doc.text(estimate.customer.address, 120, 75)
-      }
-    } else {
-      doc.text("CASH CUSTOMER", 120, 65)
-    }
-
-    // Items table
-    const tableData = estimate.items.map((item, index) => [
-      index + 1,
-      item.name,
-      item.quantity,
-      item.unit,
-      `₹${item.unitPrice.toFixed(2)}`,
-      `₹${item.lineTotal.toFixed(2)}`,
-    ])
-
-    doc.autoTable({
-      head: [["S.No.", "Particulars", "QTY", "Unit", "Rate (₹)", "Amount (₹)"]],
-      body: tableData,
-      startY: 85,
-      styles: { fontSize: 9 },
-      headStyles: { fillColor: [245, 245, 245], textColor: [0, 0, 0] },
-    })
-
-    // Total
-    const finalY = (doc as any).lastAutoTable.finalY + 10
-    doc.setFontSize(12)
-    doc.text(`Total: ₹${estimate.total.toFixed(2)}`, 150, finalY, { align: "right" })
-
-    // Footer
-    doc.setFontSize(8)
-    doc.text("Thank you for your business!", 20, finalY + 20)
-    doc.text("Terms & Conditions Apply", 20, finalY + 25)
-
-    return doc
-  }
-
-  const downloadEstimatePDF = (estimate: Estimate) => {
-    const doc = exportEstimateToPDF(estimate)
-    doc.save(`Estimate_${estimate.estimateNumber}.pdf`)
-  }
-
-  const shareEstimatePDF = async (estimate: Estimate) => {
-    const doc = exportEstimateToPDF(estimate)
-    const pdfBlob = doc.output("blob")
-
-    if (navigator.share && navigator.canShare) {
-      try {
-        const file = new File([pdfBlob], `Estimate_${estimate.estimateNumber}.pdf`, { type: "application/pdf" })
-        await navigator.share({
-          title: `Estimate ${estimate.estimateNumber}`,
-          text: `Estimate from ${storeInfo.name}`,
-          files: [file],
-        })
-      } catch (error) {
-        console.error("Error sharing:", error)
-        downloadEstimatePDF(estimate)
-      }
-    } else {
-      const url = URL.createObjectURL(pdfBlob)
-      const a = document.createElement("a")
-      a.href = url
-      a.download = `Estimate_${estimate.estimateNumber}.pdf`
-      a.click()
-      URL.revokeObjectURL(url)
-    }
-  }
-
-  const printEstimate = () => {
-    if (!currentEstimate) return
-
-    const htmlContent = `
-    <!DOCTYPE html>
-    <html>
-      <head>
-        <title>Estimate - ${currentEstimate.estimateNumber}</title>
-        <style>
-          * { margin: 0; padding: 0; box-sizing: border-box; }
-          body {
-            font-family: 'Arial', sans-serif;
-            font-size: 11px;
-            line-height: 1.2;
-            color: #000;
-            padding: 8mm;
-          }
-          .estimate { max-width: 100%; }
-          .header {
-            text-align: center;
-            border-bottom: 2px solid #000;
-            padding-bottom: 6px;
-            margin-bottom: 8px;
-          }
-          .company-name { font-size: 18px; font-weight: bold; margin-bottom: 2px; }
-          .company-details { font-size: 9px; margin-bottom: 2px; }
-          .estimate-title { font-size: 14px; font-weight: bold; margin-top: 4px; }
-
-          .info-section {
-            display: flex;
-            justify-content: space-between;
-            margin-bottom: 8px;
-            gap: 10px;
-          }
-          .info-left, .info-right { flex: 1; }
-          .info-right { text-align: right; }
-          .info-label { font-weight: bold; font-size: 10px; }
-          .info-value { font-size: 10px; margin-bottom: 2px; }
-
-          table {
-            width: 100%;
-            border-collapse: collapse;
-            margin: 6px 0;
-            font-size: 10px;
-          }
-          th, td {
-            border: 1px solid #000;
-            padding: 3px 4px;
-            text-align: left;
-            vertical-align: top;
-          }
-          th {
-            background-color: #f0f0f0;
-            font-weight: bold;
-            font-size: 9px;
-            text-align: center;
-          }
-          .text-right { text-align: right; }
-          .text-center { text-align: center; }
-
-          .totals-section {
-            margin-top: 6px;
-            border-top: 1px solid #000;
-            padding-top: 4px;
-          }
-          .total-row {
-            display: flex;
-            justify-content: space-between;
-            margin-bottom: 2px;
-            font-size: 10px;
-          }
-          .grand-total {
-            font-weight: bold;
-            font-size: 12px;
-            border-top: 1px solid #000;
-            padding-top: 2px;
-            margin-top: 2px;
-          }
-
-          .footer {
-            display: flex;
-            justify-content: space-between;
-            align-items: end;
-            margin-top: 12px;
-            font-size: 9px;
-          }
-          .signature-section {
-            text-align: center;
-            border-top: 1px solid #000;
-            padding-top: 2px;
-            width: 120px;
-            margin-top: 20px;
-          }
-
-          @media print {
-            body { margin: 0; padding: 8mm; }
-            .no-print { display: none; }
-            @page {
-              size: A4;
-              margin: 8mm;
+    if (printWindow) {
+      printWindow.document.write(`
+      <html>
+        <head>
+          <title>Print Estimate</title>
+          <style>
+            * {
+              margin: 0;
+              padding: 0;
+              box-sizing: border-box;
             }
-          }
-        </style>
-      </head>
-      <body>
-        <div class="estimate">
-          <!-- Header -->
-          <div class="header">
-            <div class="company-name">${storeInfo.name}</div>
-            <div class="company-details">${storeInfo.address}</div>
-            <div class="company-details">Phone: ${storeInfo.phone} | Contact: ${storeInfo.contact}</div>
-            <div class="estimate-title">ESTIMATE</div>
+
+            body {
+              font-family: Arial, sans-serif;
+              padding: 16px;
+              color: #000;
+              background: #fff;
+              font-size: 16px;
+              line-height: 1.5;
+            }
+
+            .no-print {
+              display: none !important;
+            }
+
+            table {
+              width: 100%;
+              border-collapse: collapse;
+              margin-bottom: 1rem;
+              font-size: 14px;
+            }
+
+            th, td {
+              border: 1px solid #000;
+              padding: 6px 8px;
+              text-align: left;
+              vertical-align: top;
+            }
+
+            th {
+              background-color: #f0f0f0;
+              font-weight: bold;
+              font-size: 15px;
+            }
+
+            .header {
+              text-align: center;
+              margin-bottom: 20px;
+            }
+
+            .header h1 {
+              font-size: 22px;
+              margin-bottom: 6px;
+            }
+
+            .header p {
+              font-size: 14px;
+            }
+
+            .estimate-details, .footer {
+              margin-bottom: 16px;
+            }
+
+            tr {
+              page-break-inside: avoid;
+            }
+
+            .signature {
+              border-top: 1px solid #000;
+              width: 180px;
+              margin-top: 40px;
+              text-align: center;
+              font-size: 13px;
+              padding-top: 8px;
+            }
+
+            @media print {
+              @page {
+                size: A4;
+                margin: 10mm;
+              }
+            }
+          </style>
+        </head>
+        <body>
+          ${printContent}
+          <div class="signature">
+            <p>Authorized Signature</p>
           </div>
+        </body>
+      </html>
+    `);
 
-          <!-- Info Section -->
-          <div class="info-section">
-            <div class="info-left">
-              <div class="info-label">Estimate Details:</div>
-              <div class="info-value">No: ${currentEstimate.estimateNumber}</div>
-              <div class="info-value">Date: ${currentEstimate.date}</div>
-              ${currentEstimate.reference ? `<div class="info-value">Ref: ${currentEstimate.reference}</div>` : ""}
-            </div>
-            <div class="info-right">
-              <div class="info-label">Bill To:</div>
-              ${currentEstimate.isCashSale
-        ? '<div class="info-value" style="font-weight: bold;">CASH CUSTOMER</div>'
-        : `<div class="info-value">${currentEstimate.customer?.name || ""}</div>
-                 <div class="info-value">${currentEstimate.customer?.phone || ""}</div>
-                 <div class="info-value">${currentEstimate.customer?.address || ""}</div>`
-      }
-            </div>
-          </div>
-
-          <!-- Items Table -->
-          <table>
-            <thead>
-              <tr>
-                <th style="width: 6%;">S.No</th>
-                <th style="width: 50%;">Particulars</th>
-                <th style="width: 8%;">QTY</th>
-                <th style="width: 8%;">Unit</th>
-                <th style="width: 14%;">Rate (₹)</th>
-                <th style="width: 14%;">Amount (₹)</th>
-              </tr>
-            </thead>
-            <tbody>
-              ${currentEstimate.items
-        .map(
-          (item, index) => `
-                <tr>
-                  <td class="text-center">${index + 1}</td>
-                  <td>${item.name}</td>
-                  <td class="text-center">${item.quantity}</td>
-                  <td class="text-center">${item.unit}</td>
-                  <td class="text-right">${item.unitPrice.toFixed(2)}</td>
-                  <td class="text-right">${item.lineTotal.toFixed(2)}</td>
-                </tr>
-              `,
-        )
-        .join("")}
-            </tbody>
-          </table>
-
-          <!-- Totals Section -->
-          <div class="totals-section">
-            <div class="total-row">
-              <span>Subtotal:</span>
-              <span>₹${currentEstimate.subtotal.toFixed(2)}</span>
-            </div>
-            ${currentEstimate.hamaliCharges > 0
-        ? `
-              <div class="total-row">
-                <span>Hamali/Freight:</span>
-                <span>₹${currentEstimate.hamaliCharges.toFixed(2)}</span>
-              </div>
-            `
-        : ""
-      }
-            <div class="total-row grand-total">
-              <span>TOTAL (INR):</span>
-              <span>₹${currentEstimate.total.toFixed(2)}</span>
-            </div>
-          </div>
-
-          <!-- Footer -->
-          <div class="footer">
-            <div>
-              <div>Thank you for your business!</div>
-              <div>Terms & Conditions Apply</div>
-            </div>
-            <div class="signature-section">
-              <div>Authorized Signature</div>
-              <div style="font-size: 8px; margin-top: 2px;">${storeInfo.name}</div>
-            </div>
-          </div>
-        </div>
-      </body>
-    </html>
-  `
-
-    const printWindow = window.open("", "_blank", "width=800,height=600")
-    if (!printWindow) {
-      alert("Please allow popups for this website to enable printing.")
-      return
+      printWindow.document.close();
+      printWindow.focus();
+      printWindow.print();
     }
+  };
 
-    printWindow.document.write(htmlContent)
-    printWindow.document.close()
-
-    // Wait for content to load before printing
-    printWindow.onload = () => {
-      setTimeout(() => {
-        printWindow.focus()
-        printWindow.print()
-
-        // Close window after printing (with delay to ensure print dialog appears)
-        setTimeout(() => {
-          printWindow.close()
-        }, 1000)
-      }, 500)
-    }
-
-    // Fallback if onload doesn't fire
-    setTimeout(() => {
-      if (printWindow && !printWindow.closed) {
-        printWindow.focus()
-        printWindow.print()
-        setTimeout(() => {
-          printWindow.close()
-        }, 1000)
-      }
-    }, 1000)
-  }
 
   const printThermalEstimate = () => {
-    if (!currentEstimate) return
+    if (!estimateRef.current) return;
 
-    const generateTextOutput = (estimate, store) => {
-      const lines = []
-      const center = (text) => text.padStart(Math.floor((48 + text.length) / 2), " ")
-      const line = (char = "-") => char.repeat(48)
+    const printContent = estimateRef.current.innerHTML;
+    const printWindow = window.open("", "_blank");
 
-      lines.push(center(store.name))
-      lines.push(center(store.address))
-      lines.push(center(`Ph: ${store.phone} | ${store.contact}`))
-      lines.push(line("="))
-      lines.push(`Estimate No: ${estimate.estimateNumber}`)
-      lines.push(`Date       : ${estimate.date}`)
-      if (estimate.reference) {
-        lines.push(`Ref        : ${estimate.reference}`)
-      }
-      lines.push(line())
-
-      lines.push("Bill To:")
-      if (estimate.isCashSale) {
-        lines.push("CASH CUSTOMER")
-      } else {
-        if (estimate.customer?.name) lines.push(estimate.customer.name)
-        if (estimate.customer?.phone) lines.push(estimate.customer.phone)
-      }
-      lines.push(line())
-
-      lines.push("Item                            Qty   Amt")
-      lines.push(line())
-
-      estimate.items.forEach((item) => {
-        const name = item.name.substring(0, 30).padEnd(30)
-        const qty = String(item.quantity).padStart(4)
-        const amt = item.lineTotal.toFixed(2).padStart(9)
-        lines.push(`${name}${qty}${amt}`)
-      })
-
-      lines.push(line())
-      lines.push(`Subtotal:`.padEnd(39) + `₹${estimate.subtotal.toFixed(2).padStart(8)}`)
-
-      if (estimate.hamaliCharges > 0) {
-        lines.push(`Hamali/Freight:`.padEnd(39) + `₹${estimate.hamaliCharges.toFixed(2).padStart(8)}`)
-      }
-
-      lines.push(line("="))
-      lines.push(`TOTAL:`.padEnd(39) + `₹${estimate.total.toFixed(2).padStart(8)}`)
-      lines.push(line("="))
-      lines.push(center("Thank you for your business!"))
-      lines.push(center("Terms & Conditions Apply"))
-
-      return lines.join("\n")
-    }
-
-    const textOutput = generateTextOutput(currentEstimate, storeInfo)
-
-    const htmlContent = `
-    <!DOCTYPE html>
-    <html>
-      <head>
-        <title>Thermal Estimate - ${currentEstimate.estimateNumber}</title>
-        <style>
-          * { margin: 0; padding: 0; }
-          body {
-            font-family: 'Courier New', monospace;
-            font-size: 12px;
-            line-height: 1.2;
-            white-space: pre-wrap;
-            padding: 5mm;
-          }
-          @media print {
-            body { margin: 0; padding: 2mm; }
-            @page {
-              size: 80mm auto;
-              margin: 2mm;
+    if (printWindow) {
+      printWindow.document.write(`
+      <html>
+        <head>
+          <title>Print Estimate</title>
+          <style>
+            * {
+              margin: 0;
+              padding: 0;
+              box-sizing: border-box;
             }
-          }
-        </style>
-      </head>
-      <body>${textOutput}</body>
-    </html>
-  `
 
-    const printWindow = window.open("", "_blank", "width=400,height=600")
-    if (!printWindow) {
-      alert("Please allow popups for this website to enable printing.")
-      return
-    }
+            body {
+              font-family: Arial, sans-serif;
+              padding: 6px;
+              color: #000;
+              background: #fff;
+              font-size: 8.5px;
+              line-height: 1.3;
+              width: 72mm;
+              max-width: 72mm;
+            }
 
-    printWindow.document.write(htmlContent)
-    printWindow.document.close()
+            .no-print {
+              display: none !important;
+            }
 
-    // Wait for content to load before printing
-    printWindow.onload = () => {
+            .header {
+              text-align: center;
+              margin-bottom: 6px;
+            }
+
+            .header h1 {
+              font-size: 12px;
+              margin-bottom: 2px;
+              font-weight: bold;
+            }
+
+            .header p {
+              font-size: 8px;
+              line-height: 1.2;
+            }
+
+            .section {
+              margin-bottom: 4px;
+            }
+
+            .row {
+              display: flex;
+              justify-content: space-between;
+              font-size: 8px;
+              margin-bottom: 2px;
+            }
+
+            table {
+              width: 100%;
+              border-collapse: collapse;
+              margin: 4px 0;
+              font-size: 8px;
+            }
+
+            th, td {
+              border: 1px solid #000;
+              padding: 2px;
+              vertical-align: top;
+              text-align: left;
+            }
+
+            th {
+              background-color: #f0f0f0;
+              text-align: center;
+              font-weight: bold;
+            }
+
+            .summary {
+              margin-top: 5px;
+              font-size: 8px;
+            }
+
+            .signature {
+              border-top: 1px solid #000;
+              width: 100px;
+              margin: 10px auto 0;
+              text-align: center;
+              font-size: 8px;
+            }
+
+            .footer {
+              text-align: center;
+              margin-top: 8px;
+              font-size: 8px;
+            }
+
+            tr {
+              page-break-inside: avoid;
+            }
+
+            @media print {
+              @page {
+                size: 80mm auto;
+                margin: 4mm;
+              }
+
+              body {
+                margin: 0;
+                padding: 2mm;
+              }
+            }
+          </style>
+        </head>
+        <body>
+          ${printContent}
+          <div class="signature">
+            Authorized Signature
+          </div>
+        </body>
+      </html>
+    `);
+
+      printWindow.document.close();
+      printWindow.focus();
+      printWindow.print();
+
       setTimeout(() => {
-        printWindow.focus()
-        printWindow.print()
-
-        // Close window after printing (with delay to ensure print dialog appears)
-        setTimeout(() => {
-          printWindow.close()
-        }, 1000)
-      }, 500)
+        if (!printWindow.closed) printWindow.close();
+      }, 1000);
     }
-
-    // Fallback if onload doesn't fire
-    setTimeout(() => {
-      if (printWindow && !printWindow.closed) {
-        printWindow.focus()
-        printWindow.print()
-        setTimeout(() => {
-          printWindow.close()
-        }, 1000)
-      }
-    }, 1000)
-  }
-
-  // Initialize data manager and load data
+  };
   useEffect(() => {
     const loadAllData = async () => {
       try {
@@ -876,15 +634,11 @@ export default function POSSystem() {
 
     loadAllData()
   }, [])
-
-  // Check for prefilled order from Purchase Order conversion
   useEffect(() => {
     const prefilledData = localStorage.getItem("posPrefilledOrder")
     if (prefilledData) {
       try {
         const orderData = JSON.parse(prefilledData)
-
-        // Convert PO items to POS order items
         const posItems = orderData.items.map((item) => {
           const product = products.find((p) => p.id === item.id)
           const lastUsedRate = getLastUsedRate(item.id) || product?.price || 0
@@ -901,13 +655,9 @@ export default function POSSystem() {
         })
 
         setOrderItems(posItems)
-
-        // Set reference if provided
         if (orderData.reference) {
           setEstimateReference(`PO Ref: ${orderData.reference}`)
         }
-
-        // Clear the prefilled data
         localStorage.removeItem("posPrefilledOrder")
       } catch (error) {
         console.error("Error loading prefilled order:", error)
@@ -915,8 +665,6 @@ export default function POSSystem() {
       }
     }
   }, [products, dataLoaded])
-
-  // Real-time data synchronization
   useEffect(() => {
     const handleStorageChange = (e: StorageEvent) => {
       if (e.key === "superCategories") {
@@ -933,11 +681,9 @@ export default function POSSystem() {
     window.addEventListener("storage", handleStorageChange)
     return () => window.removeEventListener("storage", handleStorageChange)
   }, [])
-
-  // Refresh data when returning from admin panel
   const handleAdminReturn = useCallback(() => {
     setShowAdmin(false)
-    // Refresh all data
+
     setSuperCategories(DataManager.getSuperCategories())
     setSubCategories(DataManager.getSubCategories())
     setProducts(DataManager.getProducts())
@@ -1009,7 +755,7 @@ export default function POSSystem() {
     if (existingItem) {
       updateQuantity(product.id, existingItem.quantity + 1)
     } else {
-      // Get last used rate from localStorage or use product price
+
       const lastUsedRate = getLastUsedRate(product.id) || product.price
       const newItem: OrderItem = {
         id: product.id,
@@ -1072,32 +818,13 @@ export default function POSSystem() {
   const total = useMemo(() => {
     return subtotal + (includeHamali ? hamaliCharges : 0)
   }, [subtotal, hamaliCharges, includeHamali])
-
-  const generateEstimate = () => {
-    const estimateNumber = getNextEstimateNumber(estimateDate)
-    const estimate: Estimate = {
-      estimateNumber,
-      date: new Date(estimateDate).toLocaleDateString("en-IN"),
-      customer: isCashSale ? null : selectedCustomerData,
-      items: [...orderItems],
-      subtotal,
-      hamaliCharges,
-      total: total,
-      isCashSale,
-      paymentMethod,
-      reference: estimateReference,
-    }
-    setCurrentEstimate(estimate)
-    setShowEstimate(true)
-  }
-
   const confirmOrder = async () => {
     if (orderItems.length === 0) return
     if (!isCashSale && !selectedCustomer) return
 
     try {
       const estimateNumber = generateEstimateNumber(estimateDate)
-      // Record the sale
+
       await DataManager.recordSale({
         estimateNumber: estimateNumber,
         customerId: isCashSale ? undefined : selectedCustomer,
@@ -1116,8 +843,6 @@ export default function POSSystem() {
         total: total,
         reference: estimateReference,
       })
-
-      // Generate and show estimate with the same number
       const estimate: Estimate = {
         estimateNumber,
         date: new Date(estimateDate).toLocaleDateString("en-IN"),
@@ -1132,8 +857,6 @@ export default function POSSystem() {
       }
       setCurrentEstimate(estimate)
       setShowEstimate(true)
-
-      // Clear cart and reset form completely
       clearCart()
       setSelectedCustomer("")
       setIsCashSale(true)
@@ -1142,8 +865,6 @@ export default function POSSystem() {
       setEstimateDate(new Date().toISOString().split("T")[0])
       setHamaliCharges(0)
       setIncludeHamali(false)
-
-      // Refresh product data to show updated stock
       setProducts(DataManager.getProducts())
     } catch (error) {
       console.error("Error recording sale:", error)
@@ -1318,8 +1039,6 @@ export default function POSSystem() {
       </div>
     )
   }
-
-  // Mobile Cart Component
   const MobileCartSheet = () => (
     <Sheet open={showMobileCart} onOpenChange={setShowMobileCart}>
       <SheetContent side="right" className="w-full sm:w-96 p-0">
@@ -1912,7 +1631,7 @@ export default function POSSystem() {
         onOpenChange={(open) => {
           setShowEstimate(open)
           if (!open) {
-            // Navigate back to main page when estimate dialog is closed
+
             setCurrentView("super")
             setSelectedSuperCategory("")
             setSelectedSubCategory("")
@@ -1923,20 +1642,20 @@ export default function POSSystem() {
           <DialogHeader>
             <DialogTitle className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
               <span className="break-words">Estimate Generated</span>
-              <div className="flex flex-wrap gap-2">
+              <div className=" no-print flex flex-wrap gap-2 no-print">
                 <Button
                   onClick={() => editEstimate(currentEstimate!)}
                   variant="outline"
-                  className="bg-blue-50 hover:bg-blue-100 text-blue-700 rounded-[9px] text-xs sm:text-sm"
+                  className="bg-blue-50 hover:bg-blue-100 text-blue-700 rounded-[9px] text-xs sm:text-sm no-print"
                   size="sm"
                 >
                   <Edit className="w-4 h-4 mr-1 sm:mr-2" />
                   Edit
                 </Button>
                 <Button
-                  onClick={printEstimate}
+                  onClick={handlePrint}
                   variant="outline"
-                  className="rounded-[9px] text-xs sm:text-sm bg-transparent"
+                  className="rounded-[9px] text-xs sm:text-sm bg-transparent no-print"
                   size="sm"
                 >
                   <Printer className="w-4 h-4 mr-1 sm:mr-2" />
@@ -1945,7 +1664,7 @@ export default function POSSystem() {
                 <Button
                   onClick={printThermalEstimate}
                   variant="outline"
-                  className="bg-orange-50 hover:bg-orange-100 text-orange-700 rounded-[9px] text-xs sm:text-sm"
+                  className="bg-orange-50 hover:bg-orange-100 text-orange-700 rounded-[9px] text-xs sm:text-sm no-print"
                   size="sm"
                 >
                   <Printer className="w-4 h-4 mr-1 sm:mr-2" />
@@ -1959,7 +1678,7 @@ export default function POSSystem() {
                     setSelectedSubCategory("")
                   }}
                   variant="outline"
-                  className="rounded-[9px]"
+                  className="rounded-[9px] no-print"
                   size="sm"
                 >
                   <X className="w-4 h-4" />
@@ -1969,7 +1688,7 @@ export default function POSSystem() {
           </DialogHeader>
 
           {currentEstimate && (
-            <div ref={invoiceRef} className="estimate bg-white p-4 sm:p-6 lg:p-8">
+            <div ref={estimateRef} className="estimate bg-white p-4 sm:p-6 lg:p-8">
               {/* Store Header */}
               <div className="header text-center border-b-2 border-black pb-4 mb-6">
                 <h1 className="text-2xl sm:text-3xl font-bold">{storeInfo.name}</h1>
@@ -2085,7 +1804,7 @@ export default function POSSystem() {
         onOpenChange={(open) => {
           setShowEditEstimate(open)
           if (!open) {
-            // Navigate back to main page when edit estimate dialog is closed
+
             setCurrentView("super")
             setSelectedSuperCategory("")
             setSelectedSubCategory("")
@@ -2318,7 +2037,7 @@ export default function POSSystem() {
         onOpenChange={(open) => {
           setShowTransactionHistory(open)
           if (!open) {
-            // Navigate back to main page when transaction history dialog is closed
+
             setCurrentView("super")
             setSelectedSuperCategory("")
             setSelectedSubCategory("")
@@ -2439,7 +2158,7 @@ export default function POSSystem() {
         onOpenChange={(open) => {
           setShowCashTransactions(open)
           if (!open) {
-            // Navigate back to main page when cash transactions dialog is closed
+
             setCurrentView("super")
             setSelectedSuperCategory("")
             setSelectedSubCategory("")

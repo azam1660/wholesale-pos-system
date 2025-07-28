@@ -1,4 +1,5 @@
 "use client"
+
 import { useState, useEffect, useRef } from "react"
 import {
   Package,
@@ -32,8 +33,6 @@ import { Textarea } from "@/components/ui/textarea"
 import { format } from "date-fns"
 import "jspdf-autotable"
 import { DataManager } from "./data-manager"
-
-// Extend jsPDF type to include autoTable
 declare module "jspdf" {
   interface jsPDF {
     autoTable: (options: any) => jsPDF
@@ -58,6 +57,7 @@ interface InventoryItem {
 
 interface StockTransaction {
   id: string
+  transactionNumber: string
   productId: string
   productName: string
   type: "opening" | "purchase" | "sale" | "adjustment"
@@ -66,6 +66,25 @@ interface StockTransaction {
   reference?: string
   notes?: string
   createdAt: string
+  batchId?: string
+}
+
+interface TransactionBatch {
+  id: string
+  batchNumber: string
+  type: "purchase" | "sale" | "adjustment"
+  date: string
+  reference?: string
+  items: Array<{
+    productId: string
+    productName: string
+    quantity: number
+    unit: string
+  }>
+  totalItems: number
+  totalQuantity: number
+  createdAt: string
+  notes?: string
 }
 
 interface TransactionItem {
@@ -92,26 +111,25 @@ interface InventoryReport {
 const STORAGE_KEYS = {
   INVENTORY_ITEMS: "inventory_items",
   STOCK_TRANSACTIONS: "stock_transactions",
+  TRANSACTION_BATCHES: "transaction_batches",
   INVENTORY_REPORTS: "inventory_reports",
 }
 
 export default function InventoryManagement() {
-  // State management
+
   const [inventoryItems, setInventoryItems] = useState<InventoryItem[]>([])
   const [stockTransactions, setStockTransactions] = useState<StockTransaction[]>([])
+  const [transactionBatches, setTransactionBatches] = useState<TransactionBatch[]>([])
   const [filteredItems, setFilteredItems] = useState<InventoryItem[]>([])
   const [products, setProducts] = useState<any[]>([])
-  const [categories, setCategories] = useState<any[]>([])
   const [superCategories, setSuperCategories] = useState<any[]>([])
   const [subCategories, setSubCategories] = useState<any[]>([])
-
-  // UI State
-  const [activeTab, setActiveTab] = useState<"overview" | "transactions" | "reports" | "settings">("overview")
+  const [activeTab, setActiveTab] = useState<"overview" | "transactions" | "batches" | "reports" | "settings">(
+    "overview",
+  )
   const [searchQuery, setSearchQuery] = useState("")
   const [categoryFilter, setCategoryFilter] = useState("all")
-  const [stockFilter, setStockFilter] = useState<"all" | "low" | "out">("all")
-
-  // Transaction UI State
+  const [stockFilter, setStockFilter] = useState<"all" | "low" | "out" | "negative">("all")
   const [showTransactionDialog, setShowTransactionDialog] = useState(false)
   const [transactionType, setTransactionType] = useState<"sale" | "purchase" | "adjustment">("purchase")
   const [currentView, setCurrentView] = useState<"super" | "sub" | "products">("super")
@@ -120,17 +138,13 @@ export default function InventoryManagement() {
   const [transactionItems, setTransactionItems] = useState<TransactionItem[]>([])
   const [transactionReference, setTransactionReference] = useState("")
   const [transactionDate, setTransactionDate] = useState(format(new Date(), "yyyy-MM-dd"))
-
-  // Add edit mode state
-  const [editingTransactionId, setEditingTransactionId] = useState<string | null>(null)
-
-  // Dialog states
+  const [editingBatchId, setEditingBatchId] = useState<string | null>(null)
   const [showAddItemDialog, setShowAddItemDialog] = useState(false)
   const [showReportDialog, setShowReportDialog] = useState(false)
   const [showItemDetailsDialog, setShowItemDetailsDialog] = useState(false)
+  const [showBatchDetailsDialog, setShowBatchDetailsDialog] = useState(false)
   const [selectedItem, setSelectedItem] = useState<InventoryItem | null>(null)
-
-  // Form states
+  const [selectedBatch, setSelectedBatch] = useState<TransactionBatch | null>(null)
   const [itemForm, setItemForm] = useState({
     productId: "",
     openingStock: 0,
@@ -139,54 +153,37 @@ export default function InventoryManagement() {
   })
   const [reportForm, setReportForm] = useState({
     type: "closing_stock" as "closing_stock" | "stock_movement" | "low_stock" | "valuation",
-    startDate: format(new Date(), "yyyy-MM-dd"),
+    startDate: format(new Date(Date.now() - 30 * 24 * 60 * 60 * 1000), "yyyy-MM-dd"),
     endDate: format(new Date(), "yyyy-MM-dd"),
     categoryFilter: "all",
   })
-  const [lastProcessedTransaction, setLastProcessedTransaction] = useState<any>(null)
+  const [lastProcessedBatch, setLastProcessedBatch] = useState<any>(null)
   const [showTransactionReceipt, setShowTransactionReceipt] = useState(false)
-
-  // Refs
   const reportRef = useRef<HTMLDivElement>(null)
-
-  const PRINT_UTILITY_API_URL = process.env.NEXT_PUBLIC_PRINT_UTILITY_API_URL || "http://localhost:5000"
-  const THERMAL_PRINTER = process.env.NEXT_PUBLIC_THERMAL_PRINTER || "Microsoft Print to PDF"
-  const LAZER_PRINTER = process.env.NEXT_PUBLIC_LAZER_PRINTER || "Microsoft Print to PDF"
-
-  // Load data on component mount
   useEffect(() => {
     loadData()
   }, [])
-
-  // Apply filters when data changes
   useEffect(() => {
     applyFilters()
   }, [inventoryItems, searchQuery, categoryFilter, stockFilter])
-
-  // Add this useEffect after the existing useEffect for loading data
   useEffect(() => {
-    // Listen for storage changes to sync data in real-time
+
     const handleStorageChange = (e: StorageEvent) => {
-      if (e.key === "products" || e.key === "sales" || e.key === "inventory_items" || e.key === "stock_transactions") {
+      if (
+        e.key === "products" ||
+        e.key === "sales" ||
+        e.key === "inventory_items" ||
+        e.key === "stock_transactions" ||
+        e.key === "transaction_batches"
+      ) {
         loadData()
       }
     }
     window.addEventListener("storage", handleStorageChange)
     return () => window.removeEventListener("storage", handleStorageChange)
   }, [])
-
-  // Helper function to get category name for a product
-  const getCategoryNameForProduct = (productId: string): string => {
-    const product = products.find((p) => p.id === productId)
-    if (!product) return "Unknown"
-    const subCategory = subCategories.find((sc) => sc.id === product.subCategoryId)
-    if (!subCategory) return "Unknown"
-    return subCategory.name
-  }
-
-  // Update the loadData function to sync with POS data and fix category mapping
   const loadData = () => {
-    // Load inventory data
+
     const storedItems = localStorage.getItem(STORAGE_KEYS.INVENTORY_ITEMS)
     let currentInventoryItems: InventoryItem[] = []
     if (storedItems) {
@@ -198,7 +195,10 @@ export default function InventoryManagement() {
       setStockTransactions(JSON.parse(storedTransactions))
     }
 
-    // Load products and categories from DataManager
+    const storedBatches = localStorage.getItem(STORAGE_KEYS.TRANSACTION_BATCHES)
+    if (storedBatches) {
+      setTransactionBatches(JSON.parse(storedBatches))
+    }
     const productsData = DataManager.getProducts()
     const subCategoriesData = DataManager.getSubCategories()
     const superCategoriesData = DataManager.getSuperCategories()
@@ -206,9 +206,6 @@ export default function InventoryManagement() {
     setProducts(productsData)
     setSubCategories(subCategoriesData)
     setSuperCategories(superCategoriesData)
-    setCategories([...superCategoriesData, ...subCategoriesData])
-
-    // Fix category mapping for existing inventory items
     const updatedInventoryItems = currentInventoryItems.map((item) => {
       if (item.category === "Unknown" || !item.category) {
         const product = productsData.find((p) => p.id === item.productId)
@@ -223,30 +220,20 @@ export default function InventoryManagement() {
       }
       return item
     })
-
-    // Save the updated inventory items with fixed categories
     if (JSON.stringify(updatedInventoryItems) !== JSON.stringify(currentInventoryItems)) {
       saveInventoryItems(updatedInventoryItems)
     } else {
       setInventoryItems(updatedInventoryItems)
     }
-
-    // Sync inventory with POS data
     syncInventoryWithPOSData(productsData, updatedInventoryItems)
   }
-
-  // Add this new function to sync inventory with POS data
   const syncInventoryWithPOSData = (productsData: any[], currentInventoryItems: InventoryItem[]) => {
-    const sales = DataManager.getSales() // This line is not used, but kept from original code.
-
-    // Create a map of existing inventory items
+    const sales = DataManager.getSales()
     const inventoryMap = new Map(currentInventoryItems.map((item) => [item.productId, item]))
     let hasChanges = false
-
-    // Process each product to ensure it has inventory tracking
     for (const product of productsData) {
       if (!inventoryMap.has(product.id)) {
-        // Create inventory item for products that don't have one
+
         const subCategory = subCategories.find((c) => c.id === product.subCategoryId)
         const newInventoryItem: InventoryItem = {
           id: generateId(),
@@ -267,11 +254,11 @@ export default function InventoryManagement() {
         inventoryMap.set(product.id, newInventoryItem)
         hasChanges = true
       } else {
-        // Update closing stock to match current product stock and fix category
+
         const inventoryItem = inventoryMap.get(product.id)
         if (inventoryItem) {
           let itemChanged = false
-          // Fix category if it's unknown
+
           if (inventoryItem.category === "Unknown" || !inventoryItem.category) {
             const subCategory = subCategories.find((c) => c.id === product.subCategoryId)
             if (subCategory) {
@@ -279,7 +266,7 @@ export default function InventoryManagement() {
               itemChanged = true
             }
           }
-          // Update stock if different
+
           if (inventoryItem.closingStock !== product.stock) {
             inventoryItem.closingStock = product.stock
             itemChanged = true
@@ -291,8 +278,6 @@ export default function InventoryManagement() {
         }
       }
     }
-
-    // Save updated inventory if there were changes
     if (hasChanges) {
       DataManager.setInventoryItems(currentInventoryItems)
     }
@@ -311,28 +296,27 @@ export default function InventoryManagement() {
     setStockTransactions(transactions)
   }
 
+  const saveTransactionBatches = (batches: TransactionBatch[]) => {
+    localStorage.setItem(STORAGE_KEYS.TRANSACTION_BATCHES, JSON.stringify(batches))
+    setTransactionBatches(batches)
+  }
+
   const applyFilters = () => {
     let filtered = [...inventoryItems]
-
-    // Search filter
     if (searchQuery.trim()) {
       const query = searchQuery.toLowerCase()
       filtered = filtered.filter((item) => item.productName.toLowerCase().includes(query))
     }
-
-    // Category filter - now works with proper category names
     if (categoryFilter !== "all") {
       filtered = filtered.filter((item) => item.category === categoryFilter)
     }
-
-    // Stock level filter
     if (stockFilter === "low") {
       filtered = filtered.filter((item) => item.closingStock <= item.reorderLevel && item.closingStock > 0)
     } else if (stockFilter === "out") {
-      filtered = filtered.filter((item) => item.closingStock <= 0)
+      filtered = filtered.filter((item) => item.closingStock === 0)
+    } else if (stockFilter === "negative") {
+      filtered = filtered.filter((item) => item.closingStock < 0)
     }
-
-    // Sort by last updated date (most recent first)
     filtered.sort((a, b) => {
       const dateA = new Date(a.lastUpdated).getTime()
       const dateB = new Date(b.lastUpdated).getTime()
@@ -346,7 +330,12 @@ export default function InventoryManagement() {
     return Date.now().toString() + Math.random().toString(36).substr(2, 9)
   }
 
-  // Transaction handling functions
+  const generateBatchNumber = (type: string) => {
+    const date = new Date()
+    const dateStr = format(date, "yyyyMMdd")
+    const timeStr = format(date, "HHmmss")
+    return `${type.toUpperCase()}-${dateStr}-${timeStr}`
+  }
   const handleSuperCategorySelect = (categoryId: string) => {
     setSelectedSuperCategory(categoryId)
     setSelectedSubCategory("")
@@ -401,80 +390,117 @@ export default function InventoryManagement() {
   const clearTransactionItems = () => {
     setTransactionItems([])
   }
-
-  // Fixed processTransaction function to prevent duplicate transactions
   const processTransaction = async () => {
     if (transactionItems.length === 0) return
 
     try {
-      if (editingTransactionId) {
-        // Edit mode: update existing transaction
-        const oldTransaction = stockTransactions.find((t) => t.id === editingTransactionId)
-        if (!oldTransaction) {
-          alert("Original transaction not found.")
+      if (editingBatchId) {
+
+        const oldBatch = transactionBatches.find((b) => b.id === editingBatchId)
+        if (!oldBatch) {
+          alert("Original batch not found.")
           return
         }
+        const oldTransactions = stockTransactions.filter((t) => t.batchId === editingBatchId)
+        const remainingTransactions = stockTransactions.filter((t) => t.batchId !== editingBatchId)
+        for (const oldTransaction of oldTransactions) {
+          const inventoryItem = inventoryItems.find((item) => item.productId === oldTransaction.productId)
+          if (inventoryItem) {
 
-        // Only support editing single-item transactions for now (as per UI)
-        const item = transactionItems[0]
-        const updatedTransaction: StockTransaction = {
-          ...oldTransaction,
-          productId: item.id,
-          productName: item.name,
+            const updatedItem = { ...inventoryItem }
+            switch (oldTransaction.type) {
+              case "purchase":
+                updatedItem.purchases -= Math.abs(oldTransaction.quantity)
+                updatedItem.closingStock -= Math.abs(oldTransaction.quantity)
+                break
+              case "sale":
+                updatedItem.sales -= Math.abs(oldTransaction.quantity)
+                updatedItem.closingStock += Math.abs(oldTransaction.quantity)
+                break
+              case "adjustment":
+                updatedItem.adjustments -= oldTransaction.quantity
+                updatedItem.closingStock -= oldTransaction.quantity
+                break
+            }
+            updatedItem.lastUpdated = new Date().toISOString()
+            const updatedInventory = inventoryItems.map((item) =>
+              item.productId === oldTransaction.productId ? updatedItem : item,
+            )
+            saveInventoryItems(updatedInventory)
+            const product = products.find((p) => p.id === oldTransaction.productId)
+            if (product) {
+              let stockChange = 0
+              switch (oldTransaction.type) {
+                case "purchase":
+                  stockChange = -Math.abs(oldTransaction.quantity)
+                  break
+                case "sale":
+                  stockChange = Math.abs(oldTransaction.quantity)
+                  break
+                case "adjustment":
+                  stockChange = -oldTransaction.quantity
+                  break
+              }
+              await DataManager.updateProductStock(product.id, product.stock + stockChange)
+            }
+          }
+        }
+        const batchId = oldBatch.id
+        const batchNumber = oldBatch.batchNumber
+        const newTransactions: StockTransaction[] = []
+
+        for (const item of transactionItems) {
+          const newTransaction: StockTransaction = {
+            id: generateId(),
+            transactionNumber: `${batchNumber}-${item.id.slice(-4)}`,
+            productId: item.id,
+            productName: item.name,
+            type: transactionType,
+            quantity: transactionType === "sale" ? -item.quantity : item.quantity,
+            date: transactionDate,
+            reference: transactionReference || batchNumber,
+            notes: `${transactionType.charAt(0).toUpperCase() + transactionType.slice(1)} transaction - Batch: ${batchNumber}`,
+            createdAt: oldBatch.createdAt,
+            batchId: batchId,
+          }
+          newTransactions.push(newTransaction)
+          updateInventoryFromTransaction(newTransaction)
+          const product = products.find((p) => p.id === item.id)
+          if (product) {
+            let newStock = product.stock
+            if (transactionType === "purchase") {
+              newStock += item.quantity
+            } else if (transactionType === "sale") {
+              newStock -= item.quantity
+            } else if (transactionType === "adjustment") {
+              newStock += item.quantity
+            }
+            await DataManager.updateProductStock(product.id, newStock)
+          }
+        }
+        const updatedBatch: TransactionBatch = {
+          ...oldBatch,
           type: transactionType,
-          quantity: transactionType === "sale" ? -item.quantity : item.quantity,
           date: transactionDate,
-          reference: transactionReference || `${transactionType.toUpperCase()}-${Date.now().toString().slice(-4)}`,
-          notes: `${transactionType.charAt(0).toUpperCase() + transactionType.slice(1)} transaction`,
-          createdAt: oldTransaction.createdAt, // keep original createdAt
+          reference: transactionReference || batchNumber,
+          items: transactionItems.map((item) => ({
+            productId: item.id,
+            productName: item.name,
+            quantity: item.quantity,
+            unit: item.unit,
+          })),
+          totalItems: transactionItems.length,
+          totalQuantity: transactionItems.reduce((sum, item) => sum + item.quantity, 0),
+          notes: `Updated ${transactionType} batch`,
         }
+        const updatedBatches = transactionBatches.map((batch) => (batch.id === batchId ? updatedBatch : batch))
+        saveTransactionBatches(updatedBatches)
 
-        updateTransaction(editingTransactionId, updatedTransaction)
-
-        // Update product stock in DataManager - calculate the net change
-        const product = products.find((p) => p.id === item.id)
-        if (product) {
-          // Calculate net change from old to new transaction
-          let oldEffect = 0
-          let newEffect = 0
-
-          if (oldTransaction.type === "purchase") oldEffect = Math.abs(oldTransaction.quantity)
-          else if (oldTransaction.type === "sale") oldEffect = -Math.abs(oldTransaction.quantity)
-          else if (oldTransaction.type === "adjustment") oldEffect = oldTransaction.quantity
-
-          if (transactionType === "purchase") newEffect = item.quantity
-          else if (transactionType === "sale") newEffect = -item.quantity
-          else if (transactionType === "adjustment") newEffect = item.quantity
-
-          const netChange = newEffect - oldEffect
-          const newStock = Math.max(0, product.stock + netChange)
-
-          await DataManager.updateProductStock(product.id, newStock)
-        }
-
-        // Refresh products data
+        const updatedTransactions = [...remainingTransactions, ...newTransactions]
+        saveStockTransactions(updatedTransactions)
         setProducts(DataManager.getProducts())
-
-        // Set the transaction record and show receipt
-        setLastProcessedTransaction({
-          id: updatedTransaction.id,
-          type: updatedTransaction.type,
-          date: updatedTransaction.date,
-          reference: updatedTransaction.reference,
-          items: [
-            {
-              id: updatedTransaction.productId,
-              name: updatedTransaction.productName,
-              quantity: Math.abs(updatedTransaction.quantity),
-              unit: product ? product.unit : "unit",
-            },
-          ],
-          processedAt: updatedTransaction.createdAt,
-          transactionNumber: `${updatedTransaction.type.toUpperCase()}-${format(new Date(updatedTransaction.date), "yyyyMMdd")}-${updatedTransaction.id.slice(-4)}`,
-        })
+        setLastProcessedBatch(updatedBatch)
         setShowTransactionReceipt(true)
-
-        // Clear form and close dialog
         clearTransactionItems()
         setTransactionReference("")
         setTransactionDate(format(new Date(), "yyyy-MM-dd"))
@@ -482,65 +508,67 @@ export default function InventoryManagement() {
         setSelectedSuperCategory("")
         setSelectedSubCategory("")
         setShowTransactionDialog(false)
-        setEditingTransactionId(null)
+        setEditingBatchId(null)
         return
       }
-
-      const transactionRecord = {
-        id: generateId(),
-        type: transactionType,
-        date: transactionDate,
-        reference: transactionReference,
-        items: [...transactionItems],
-        processedAt: new Date().toISOString(),
-        transactionNumber: `${transactionType.toUpperCase()}-${format(new Date(), "yyyyMMdd")}-${Date.now().toString().slice(-4)}`,
-      }
-
-      // Process each item in the transaction
+      const batchId = generateId()
+      const batchNumber = generateBatchNumber(transactionType)
+      const newTransactions: StockTransaction[] = []
       for (const item of transactionItems) {
-        // Create stock transaction record
+
         const newTransaction: StockTransaction = {
           id: generateId(),
+          transactionNumber: `${batchNumber}-${item.id.slice(-4)}`,
           productId: item.id,
           productName: item.name,
           type: transactionType,
           quantity: transactionType === "sale" ? -item.quantity : item.quantity,
           date: transactionDate,
-          reference: transactionReference || `${transactionType.toUpperCase()}-${Date.now().toString().slice(-4)}`,
-          notes: `${transactionType.charAt(0).toUpperCase() + transactionType.slice(1)} transaction`,
+          reference: transactionReference || batchNumber,
+          notes: `${transactionType.charAt(0).toUpperCase() + transactionType.slice(1)} transaction - Batch: ${batchNumber}`,
           createdAt: new Date().toISOString(),
+          batchId: batchId,
         }
-
-        // Save stock transaction
-        const updatedTransactions = [...stockTransactions, newTransaction]
-        saveStockTransactions(updatedTransactions)
-
-        // Update inventory item directly (without calling DataManager methods to avoid duplication)
+        newTransactions.push(newTransaction)
         updateInventoryFromTransaction(newTransaction)
-
-        // Update product stock in DataManager
         const product = products.find((p) => p.id === item.id)
         if (product) {
           let newStock = product.stock
           if (transactionType === "purchase") {
             newStock += item.quantity
           } else if (transactionType === "sale") {
-            newStock = Math.max(0, newStock - item.quantity)
+            newStock -= item.quantity
           } else if (transactionType === "adjustment") {
-            newStock += item.quantity // Can be negative for adjustments
+            newStock += item.quantity
           }
-          await DataManager.updateProductStock(product.id, Math.max(0, newStock))
+          await DataManager.updateProductStock(product.id, newStock)
         }
       }
+      const newBatch: TransactionBatch = {
+        id: batchId,
+        batchNumber: batchNumber,
+        type: transactionType,
+        date: transactionDate,
+        reference: transactionReference || batchNumber,
+        items: transactionItems.map((item) => ({
+          productId: item.id,
+          productName: item.name,
+          quantity: item.quantity,
+          unit: item.unit,
+        })),
+        totalItems: transactionItems.length,
+        totalQuantity: transactionItems.reduce((sum, item) => sum + item.quantity, 0),
+        createdAt: new Date().toISOString(),
+        notes: `${transactionType.charAt(0).toUpperCase() + transactionType.slice(1)} batch transaction`,
+      }
+      const updatedTransactions = [...stockTransactions, ...newTransactions]
+      saveStockTransactions(updatedTransactions)
 
-      // Refresh products data
+      const updatedBatches = [...transactionBatches, newBatch]
+      saveTransactionBatches(updatedBatches)
       setProducts(DataManager.getProducts())
-
-      // Set the transaction record and show receipt
-      setLastProcessedTransaction(transactionRecord)
+      setLastProcessedBatch(newBatch)
       setShowTransactionReceipt(true)
-
-      // Clear form and close dialog
       clearTransactionItems()
       setTransactionReference("")
       setTransactionDate(format(new Date(), "yyyy-MM-dd"))
@@ -548,7 +576,7 @@ export default function InventoryManagement() {
       setSelectedSuperCategory("")
       setSelectedSubCategory("")
       setShowTransactionDialog(false)
-      setEditingTransactionId(null)
+      setEditingBatchId(null)
     } catch (error) {
       console.error("Error processing transaction:", error)
       alert("Error processing transaction. Please try again.")
@@ -577,11 +605,10 @@ export default function InventoryManagement() {
       lastUpdated: new Date().toISOString(),
       notes: itemForm.notes,
     }
-
-    // Add opening stock transaction if > 0
     if (itemForm.openingStock > 0) {
       const openingTransaction: StockTransaction = {
         id: generateId(),
+        transactionNumber: `OPENING-${Date.now().toString().slice(-6)}`,
         productId: product.id,
         productName: product.name,
         type: "opening",
@@ -597,8 +624,6 @@ export default function InventoryManagement() {
 
     const updatedItems = [...inventoryItems, newItem]
     saveInventoryItems(updatedItems)
-
-    // Reset form
     setItemForm({
       productId: "",
       openingStock: 0,
@@ -634,67 +659,9 @@ export default function InventoryManagement() {
     saveInventoryItems(updatedItems)
   }
 
-  const updateTransaction = (transactionId: string, updatedTransaction: StockTransaction) => {
-    // Find the old transaction
-    const oldTransaction = stockTransactions.find((t) => t.id === transactionId)
-    if (!oldTransaction) return
-
-    // First, reverse the old transaction effect on inventory
-    const updatedItems = inventoryItems.map((item) => {
-      if (item.productId === oldTransaction.productId) {
-        const updatedItem = { ...item }
-
-        // Reverse the old transaction
-        switch (oldTransaction.type) {
-          case "purchase":
-            updatedItem.purchases -= Math.abs(oldTransaction.quantity)
-            updatedItem.closingStock -= Math.abs(oldTransaction.quantity)
-            break
-          case "sale":
-            updatedItem.sales -= Math.abs(oldTransaction.quantity)
-            updatedItem.closingStock += Math.abs(oldTransaction.quantity)
-            break
-          case "adjustment":
-            updatedItem.adjustments -= oldTransaction.quantity
-            updatedItem.closingStock -= oldTransaction.quantity
-            break
-        }
-
-        // Apply the new transaction
-        switch (updatedTransaction.type) {
-          case "purchase":
-            updatedItem.purchases += Math.abs(updatedTransaction.quantity)
-            updatedItem.closingStock += Math.abs(updatedTransaction.quantity)
-            break
-          case "sale":
-            updatedItem.sales += Math.abs(updatedTransaction.quantity)
-            updatedItem.closingStock -= Math.abs(updatedTransaction.quantity)
-            break
-          case "adjustment":
-            updatedItem.adjustments += updatedTransaction.quantity
-            updatedItem.closingStock += updatedTransaction.quantity
-            break
-        }
-
-        updatedItem.lastUpdated = new Date().toISOString()
-        return updatedItem
-      }
-      return item
-    })
-
-    // Save updated inventory
-    saveInventoryItems(updatedItems)
-
-    // Replace the transaction in the list
-    const updatedTransactions = stockTransactions.map((t) => (t.id === transactionId ? updatedTransaction : t))
-    saveStockTransactions(updatedTransactions)
-  }
-
   const deleteInventoryItem = (itemId: string) => {
     const updatedItems = inventoryItems.filter((item) => item.id !== itemId)
     saveInventoryItems(updatedItems)
-
-    // Also remove related transactions
     const updatedTransactions = stockTransactions.filter((t) => {
       const item = inventoryItems.find((i) => i.id === itemId)
       return item ? t.productId !== item.productId : true
@@ -702,23 +669,52 @@ export default function InventoryManagement() {
     saveStockTransactions(updatedTransactions)
   }
 
+  const deleteBatch = (batchId: string) => {
+    const batch = transactionBatches.find((b) => b.id === batchId)
+    if (!batch) return
+    const batchTransactions = stockTransactions.filter((t) => t.batchId === batchId)
+    for (const transaction of batchTransactions) {
+      const reverseTransaction = {
+        ...transaction,
+        quantity: -transaction.quantity,
+      }
+      updateInventoryFromTransaction(reverseTransaction)
+      const product = products.find((p) => p.id === transaction.productId)
+      if (product) {
+        let stockChange = 0
+        switch (transaction.type) {
+          case "purchase":
+            stockChange = -Math.abs(transaction.quantity)
+            break
+          case "sale":
+            stockChange = Math.abs(transaction.quantity)
+            break
+          case "adjustment":
+            stockChange = -transaction.quantity
+            break
+        }
+        DataManager.updateProductStock(product.id, product.stock + stockChange)
+      }
+    }
+    const updatedBatches = transactionBatches.filter((b) => b.id !== batchId)
+    saveTransactionBatches(updatedBatches)
+
+    const updatedTransactions = stockTransactions.filter((t) => t.batchId !== batchId)
+    saveStockTransactions(updatedTransactions)
+    setProducts(DataManager.getProducts())
+  }
+
   const deleteTransaction = (transactionId: string) => {
     const transaction = stockTransactions.find((t) => t.id === transactionId)
     if (!transaction) return
-
-    // Reverse the transaction effect on inventory
     const reverseTransaction = {
       ...transaction,
       quantity: -transaction.quantity,
     }
     updateInventoryFromTransaction(reverseTransaction)
-
-    // Remove the transaction
     const updatedTransactions = stockTransactions.filter((t) => t.id !== transactionId)
     saveStockTransactions(updatedTransactions)
   }
-
-  // Render functions for transaction interface
   const renderSuperCategories = () => {
     if (superCategories.length === 0) {
       return (
@@ -893,27 +889,23 @@ export default function InventoryManagement() {
       </div>
     )
   }
-
-  // Generate report functions (simplified for inventory without prices)
-  // ...existing code...
   const generateReport = () => {
     let reportData: any[] = []
     let title = ""
     const totalValue = 0
-
-    // Parse date range
     const startDate = new Date(reportForm.startDate)
+    startDate.setHours(0, 0, 0, 0)
     const endDate = new Date(reportForm.endDate)
-    endDate.setHours(23, 59, 59, 999) // include the whole end day
-
-    // Helper: filter by category
+    endDate.setHours(23, 59, 59, 999)
     const filterByCategory = (item: InventoryItem) => {
       if (reportForm.categoryFilter === "all") return true
       return item.category === reportForm.categoryFilter
     }
-
-    // Helper: filter by date (lastUpdated)
-    const filterByDate = (item: InventoryItem) => {
+    const filterTransactionsByDate = (transaction: StockTransaction) => {
+      const transactionDate = new Date(transaction.date)
+      return transactionDate >= startDate && transactionDate <= endDate
+    }
+    const filterItemsByDate = (item: InventoryItem) => {
       const updated = new Date(item.lastUpdated)
       return updated >= startDate && updated <= endDate
     }
@@ -923,7 +915,7 @@ export default function InventoryManagement() {
         title = "Closing Stock Report"
         reportData = inventoryItems
           .filter(filterByCategory)
-          .filter(filterByDate)
+          .filter(filterItemsByDate)
           .map((item) => ({
             productName: item.productName,
             category: item.category,
@@ -933,16 +925,23 @@ export default function InventoryManagement() {
             sales: item.sales,
             adjustments: item.adjustments,
             closingStock: item.closingStock,
-            status: item.closingStock <= item.reorderLevel ? "Low Stock" : "Normal",
+            status:
+              item.closingStock < 0
+                ? "Negative Stock"
+                : item.closingStock === 0
+                  ? "Out of Stock"
+                  : item.closingStock <= item.reorderLevel
+                    ? "Low Stock"
+                    : "Normal",
+            lastUpdated: format(new Date(item.lastUpdated), "MMM dd, yyyy HH:mm"),
           }))
+          .sort((a, b) => new Date(b.lastUpdated).getTime() - new Date(a.lastUpdated).getTime())
         break
+
       case "stock_movement":
         title = "Stock Movement Report"
         reportData = stockTransactions
-          .filter((t) => {
-            const transactionDate = new Date(t.date)
-            return transactionDate >= startDate && transactionDate <= endDate
-          })
+          .filter(filterTransactionsByDate)
           .filter((t) => {
             if (reportForm.categoryFilter !== "all") {
               const item = inventoryItems.find((item) => item.productId === t.productId)
@@ -950,50 +949,49 @@ export default function InventoryManagement() {
             }
             return true
           })
-          .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())
           .map((t) => ({
-            date: t.date,
+            date: format(new Date(t.date), "MMM dd, yyyy"),
+            batchNumber: t.batchId ? transactionBatches.find((b) => b.id === t.batchId)?.batchNumber || "N/A" : "N/A",
             productName: t.productName,
-            type: t.type,
+            type: t.type.toUpperCase(),
             quantity: t.quantity,
             reference: t.reference || "-",
             notes: t.notes || "-",
+            createdAt: format(new Date(t.createdAt), "MMM dd, yyyy HH:mm"),
           }))
+          .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())
         break
+
       case "low_stock":
         title = "Low Stock Report"
-        // Find items that are low stock as of now, but only include if their last transaction is in the date range
         reportData = inventoryItems
           .filter(filterByCategory)
           .filter((item) => item.closingStock <= item.reorderLevel)
-          .filter((item) => {
-            // Find last transaction for this item
-            const lastTx = stockTransactions
-              .filter((t) => t.productId === item.productId)
-              .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())[0]
-            if (!lastTx) return false
-            const txDate = new Date(lastTx.date)
-            return txDate >= startDate && txDate <= endDate
-          })
           .map((item) => ({
             productName: item.productName,
             category: item.category,
             currentStock: item.closingStock,
             reorderLevel: item.reorderLevel,
             shortage: item.reorderLevel - item.closingStock,
-            lastUpdated: format(new Date(item.lastUpdated), "MMM dd, yyyy"),
+            status: item.closingStock < 0 ? "Negative Stock" : item.closingStock === 0 ? "Out of Stock" : "Low Stock",
+            lastUpdated: format(new Date(item.lastUpdated), "MMM dd, yyyy HH:mm"),
           }))
+          .sort((a, b) => a.currentStock - b.currentStock)
         break
+
       case "valuation":
         title = "Inventory Valuation Report"
         reportData = inventoryItems
           .filter(filterByCategory)
-          .filter(filterByDate)
+          .filter(filterItemsByDate)
           .map((item) => ({
             productName: item.productName,
             category: item.category,
             closingStock: item.closingStock,
+            status: item.closingStock < 0 ? "Negative Stock" : item.closingStock === 0 ? "Out of Stock" : "Normal",
+            lastUpdated: format(new Date(item.lastUpdated), "MMM dd, yyyy HH:mm"),
           }))
+          .sort((a, b) => new Date(b.lastUpdated).getTime() - new Date(a.lastUpdated).getTime())
         break
     }
 
@@ -1014,72 +1012,41 @@ export default function InventoryManagement() {
   }
 
   const printReport = (report: InventoryReport) => {
-    const printWindow = window.open("", "_blank")
-    if (!printWindow) {
-      alert("Please allow popups for this site to enable printing")
-      return
+    const printHtml = generatePrintableReport(report);
+    const printWindow = window.open("", "_blank");
+
+    if (printWindow) {
+      printWindow.document.write(printHtml);
+      printWindow.document.close();
+      printWindow.focus();
+      printWindow.print();
+      // Optional: printWindow.close();
     }
-
-    const printContent = generatePrintableReport(report)
-
-    printWindow.document.write(printContent)
-    printWindow.document.close()
-
-    // Wait for content to load before printing
-    printWindow.onload = () => {
-      setTimeout(() => {
-        if (!printWindow.closed) {
-          printWindow.focus()
-          printWindow.print()
-
-          // Close window after printing (with delay)
-          setTimeout(() => {
-            if (!printWindow.closed) {
-              printWindow.close()
-            }
-          }, 1000)
-        }
-      }, 500)
-    }
-
-    // Fallback in case onload doesn't fire
-    setTimeout(() => {
-      if (!printWindow.closed && printWindow.document.readyState === "complete") {
-        printWindow.focus()
-        printWindow.print()
-
-        setTimeout(() => {
-          if (!printWindow.closed) {
-            printWindow.close()
-          }
-        }, 1000)
-      }
-    }, 1000)
   }
 
   const generatePrintableReport = (report: InventoryReport): string => {
-    const currentDate = format(new Date(), "MMM dd, yyyy HH:mm")
-    let tableHeaders = ""
-    let tableRows = ""
+    const currentDate = format(new Date(), "MMM dd, yyyy HH:mm");
+
+    let tableHeaders = "";
+    let tableRows = "";
 
     switch (report.reportType) {
       case "closing_stock":
         tableHeaders = `
         <tr>
-          <th style="width: 25%;">Product Name</th>
-          <th style="width: 15%;">Category</th>
-          <th style="width: 8%;">Unit</th>
-          <th style="width: 10%;">Opening</th>
-          <th style="width: 10%;">Purchases</th>
-          <th style="width: 8%;">Sales</th>
-          <th style="width: 10%;">Adjustments</th>
+          <th style="width: 20%;">Product Name</th>
+          <th style="width: 12%;">Category</th>
+          <th style="width: 6%;">Unit</th>
+          <th style="width: 8%;">Opening</th>
+          <th style="width: 8%;">Purchases</th>
+          <th style="width: 6%;">Sales</th>
+          <th style="width: 8%;">Adjustments</th>
           <th style="width: 8%;">Closing</th>
-          <th style="width: 6%;">Status</th>
+          <th style="width: 8%;">Status</th>
+          <th style="width: 16%;">Last Updated</th>
         </tr>
-      `
-        tableRows = report.data
-          .map(
-            (item) => `
+      `;
+        tableRows = report.data.map(item => `
         <tr>
           <td>${item.productName}</td>
           <td>${item.category}</td>
@@ -1087,84 +1054,84 @@ export default function InventoryManagement() {
           <td class="text-center">${item.openingStock}</td>
           <td class="text-center">${item.purchases}</td>
           <td class="text-center">${item.sales}</td>
-          <td class="text-center">${item.adjustments}</td>
-          <td class="text-center">${item.closingStock}</td>
-          <td class="text-center">${item.status}</td>
+          <td class="text-center ${item.adjustments < 0 ? "negative-value" : ""}">${item.adjustments}</td>
+          <td class="text-center ${item.closingStock < 0 ? "negative-value" : ""}">${item.closingStock}</td>
+          <td class="text-center ${item.status === "Negative Stock" ? "negative-status" : ""}">${item.status}</td>
+          <td class="text-center">${item.lastUpdated}</td>
         </tr>
-      `,
-          )
-          .join("")
-        break
+      `).join("");
+        break;
+
       case "stock_movement":
         tableHeaders = `
         <tr>
-          <th style="width: 12%;">Date</th>
-          <th style="width: 35%;">Product Name</th>
-          <th style="width: 12%;">Type</th>
-          <th style="width: 12%;">Quantity</th>
-          <th style="width: 29%;">Reference</th>
+          <th style="width: 10%;">Date</th>
+          <th style="width: 15%;">Batch Number</th>
+          <th style="width: 20%;">Product Name</th>
+          <th style="width: 10%;">Type</th>
+          <th style="width: 10%;">Quantity</th>
+          <th style="width: 15%;">Reference</th>
+          <th style="width: 20%;">Created At</th>
         </tr>
-      `
-        tableRows = report.data
-          .map(
-            (item) => `
+      `;
+        tableRows = report.data.map(item => `
         <tr>
-          <td>${format(new Date(item.date), "MMM dd, yyyy")}</td>
+          <td>${item.date}</td>
+          <td class="text-center">${item.batchNumber}</td>
           <td>${item.productName}</td>
-          <td class="text-center">${item.type.toUpperCase()}</td>
-          <td class="text-center">${item.quantity}</td>
-          <td>${item.reference || "-"}</td>
+          <td class="text-center">${item.type}</td>
+          <td class="text-center ${item.quantity < 0 ? "negative-value" : ""}">${item.quantity}</td>
+          <td>${item.reference}</td>
+          <td class="text-center">${item.createdAt}</td>
         </tr>
-      `,
-          )
-          .join("")
-        break
+      `).join("");
+        break;
+
       case "low_stock":
         tableHeaders = `
         <tr>
-          <th style="width: 30%;">Product Name</th>
-          <th style="width: 20%;">Category</th>
+          <th style="width: 25%;">Product Name</th>
+          <th style="width: 15%;">Category</th>
           <th style="width: 12%;">Current Stock</th>
           <th style="width: 12%;">Reorder Level</th>
           <th style="width: 10%;">Shortage</th>
+          <th style="width: 10%;">Status</th>
           <th style="width: 16%;">Last Updated</th>
         </tr>
-      `
-        tableRows = report.data
-          .map(
-            (item) => `
+      `;
+        tableRows = report.data.map(item => `
         <tr>
           <td>${item.productName}</td>
           <td>${item.category}</td>
-          <td class="text-center">${item.currentStock}</td>
+          <td class="text-center ${item.currentStock < 0 ? "negative-value" : ""}">${item.currentStock}</td>
           <td class="text-center">${item.reorderLevel}</td>
           <td class="text-center">${item.shortage}</td>
+          <td class="text-center ${item.status === "Negative Stock" ? "negative-status" : ""}">${item.status}</td>
           <td class="text-center">${item.lastUpdated}</td>
         </tr>
-      `,
-          )
-          .join("")
-        break
+      `).join("");
+        break;
+
       case "valuation":
         tableHeaders = `
         <tr>
-          <th style="width: 50%;">Product Name</th>
-          <th style="width: 30%;">Category</th>
-          <th style="width: 20%;">Closing Stock</th>
+          <th style="width: 35%;">Product Name</th>
+          <th style="width: 20%;">Category</th>
+          <th style="width: 15%;">Closing Stock</th>
+          <th style="width: 15%;">Status</th>
+          <th style="width: 15%;">Last Updated</th>
         </tr>
-      `
-        tableRows = report.data
-          .map(
-            (item) => `
+      `;
+        tableRows = report.data.map(item => `
         <tr>
           <td>${item.productName}</td>
           <td>${item.category}</td>
-          <td class="text-center">${item.closingStock}</td>
+          <td class="text-center ${item.closingStock < 0 ? "negative-value" : ""}">${item.closingStock}</td>
+          <td class="text-center ${item.status === "Negative Stock" ? "negative-status" : ""}">${item.status}</td>
+          <td class="text-center">${item.lastUpdated}</td>
         </tr>
-      `,
-          )
-          .join("")
-        break
+      `).join("");
+        break;
     }
 
     return `
@@ -1175,7 +1142,7 @@ export default function InventoryManagement() {
         <style>
           * { margin: 0; padding: 0; box-sizing: border-box; }
           body {
-            font-family: 'Arial', sans-serif;
+            font-family: Arial, sans-serif;
             font-size: 10px;
             line-height: 1.2;
             color: #000;
@@ -1187,10 +1154,20 @@ export default function InventoryManagement() {
             border-bottom: 2px solid #000;
             padding-bottom: 8px;
           }
-          .company-name { font-size: 18px; font-weight: bold; margin-bottom: 2px; }
-          .report-title { font-size: 14px; font-weight: bold; margin-bottom: 4px; }
-          .report-info { font-size: 9px; color: #666; }
-
+          .company-name {
+            font-size: 18px;
+            font-weight: bold;
+            margin-bottom: 2px;
+          }
+          .report-title {
+            font-size: 14px;
+            font-weight: bold;
+            margin-bottom: 4px;
+          }
+          .report-info {
+            font-size: 9px;
+            color: #666;
+          }
           table {
             width: 100%;
             border-collapse: collapse;
@@ -1209,7 +1186,8 @@ export default function InventoryManagement() {
             text-align: center;
           }
           .text-center { text-align: center; }
-
+          .negative-value { color: #dc2626; font-weight: bold; }
+          .negative-status { color: #dc2626; font-weight: bold; background-color: #fef2f2; }
           .summary {
             margin-top: 8px;
             padding: 6px;
@@ -1221,7 +1199,6 @@ export default function InventoryManagement() {
             display: inline-block;
             margin-right: 20px;
           }
-
           @media print {
             body { margin: 0; padding: 8mm; }
             .no-print { display: none; }
@@ -1242,12 +1219,8 @@ export default function InventoryManagement() {
           </div>
         </div>
         <table>
-          <thead>
-            ${tableHeaders}
-          </thead>
-          <tbody>
-            ${tableRows}
-          </tbody>
+          <thead>${tableHeaders}</thead>
+          <tbody>${tableRows}</tbody>
         </table>
         <div class="summary">
           <div class="summary-item"><strong>Total Items:</strong> ${report.totalItems}</div>
@@ -1255,54 +1228,117 @@ export default function InventoryManagement() {
         </div>
       </body>
     </html>
-  `
+  `;
   }
 
-  const printTransactionReceipt = (transaction: any) => {
-    const printWindow = window.open("", "_blank")
+  const printBatchReceipt = (batch: TransactionBatch) => {
+    const printWindow = window.open("", "_blank");
     if (!printWindow) {
-      alert("Please allow popups for this site to enable printing")
-      return
+      alert("Please allow popups for this site to enable printing");
+      return;
     }
 
-    const printContent = generateTransactionReceiptHTML(transaction)
+    const printContent = generateBatchReceiptHTML(batch);
 
-    printWindow.document.write(printContent)
-    printWindow.document.close()
-
-    // Wait for content to load before printing
-    printWindow.onload = () => {
-      setTimeout(() => {
-        if (!printWindow.closed) {
-          printWindow.focus()
-          printWindow.print()
-
-          // Close window after printing (with delay)
-          setTimeout(() => {
-            if (!printWindow.closed) {
-              printWindow.close()
-            }
-          }, 1000)
-        }
-      }, 500)
-    }
-
-    // Fallback in case onload doesn't fire
-    setTimeout(() => {
-      if (!printWindow.closed && printWindow.document.readyState === "complete") {
-        printWindow.focus()
-        printWindow.print()
-
-        setTimeout(() => {
-          if (!printWindow.closed) {
-            printWindow.close()
+    printWindow.document.write(`
+    <html>
+      <head>
+        <title>${batch.type.toUpperCase()} Receipt - ${batch.batchNumber}</title>
+        <style>
+          * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
           }
-        }, 1000)
-      }
-    }, 1000)
-  }
 
-  const generateThermalTransactionReceiptText = (transaction: any): string => {
+          body {
+            font-family: Arial, sans-serif;
+            padding: 16px;
+            color: #000;
+            background: #fff;
+            font-size: 14px;
+            line-height: 1.5;
+          }
+
+          .no-print {
+            display: none !important;
+          }
+
+          table {
+            width: 100%;
+            border-collapse: collapse;
+            margin-bottom: 12px;
+            font-size: 13px;
+          }
+
+          th, td {
+            border: 1px solid #000;
+            padding: 6px 8px;
+            text-align: left;
+            vertical-align: top;
+          }
+
+          th {
+            background-color: #f0f0f0;
+            font-weight: bold;
+            font-size: 14px;
+            text-align: center;
+          }
+
+          .header {
+            text-align: center;
+            margin-bottom: 16px;
+          }
+
+          .header h1 {
+            font-size: 20px;
+            margin-bottom: 4px;
+          }
+
+          .header p {
+            font-size: 13px;
+          }
+
+          .receipt-details, .footer {
+            margin-bottom: 12px;
+          }
+
+          tr {
+            page-break-inside: avoid;
+          }
+
+          .signature {
+            border-top: 1px solid #000;
+            width: 180px;
+            margin-top: 24px;
+            text-align: center;
+            font-size: 13px;
+          }
+
+          @media print {
+            @page {
+              size: A4;
+              margin: 10mm;
+            }
+          }
+        </style>
+      </head>
+      <body>
+        ${printContent}
+        <div class="signature">
+          <p>Authorized Signature</p>
+        </div>
+      </body>
+    </html>
+  `);
+
+    printWindow.document.close();
+    printWindow.focus();
+    printWindow.print();
+  };
+
+
+  const generateThermalBatchReceiptText = (batch: TransactionBatch): string => {
     const currentDate = format(new Date(), "MMM dd, yyyy HH:mm")
     const line = "-".repeat(32)
     const doubleLine = "=".repeat(32)
@@ -1310,31 +1346,30 @@ export default function InventoryManagement() {
     let text = ""
     text += center("SNS") + "\n"
     text += center("Jodbhavi peth, Solapur") + "\n"
-    text += center("Ph: 8668749859") + "\n"
+    text += center("Ph: 9405842623") + "\n"
     text += doubleLine + "\n"
-    text += center(`${transaction.type.toUpperCase()} RECEIPT`) + "\n"
+    text += center(`${batch.type.toUpperCase()} RECEIPT`) + "\n"
     text += line + "\n"
 
-    text += `Receipt No: ${transaction.transactionNumber}\n`
-    text += `Date: ${transaction.date}\n`
-    text += `Time: ${format(new Date(transaction.processedAt), "HH:mm:ss")}\n`
-    if (transaction.reference) {
-      text += `Reference: ${transaction.reference}\n`
+    text += `Batch No: ${batch.batchNumber}\n`
+    text += `Date: ${batch.date}\n`
+    text += `Time: ${format(new Date(batch.createdAt), "HH:mm:ss")}\n`
+    if (batch.reference) {
+      text += `Reference: ${batch.reference}\n`
     }
     text += line + "\n"
 
     text += leftRight("Item", "Qty") + "\n"
     text += line + "\n"
 
-    transaction.items.forEach((item: any) => {
-      text += `${item.name}\n`
+    batch.items.forEach((item) => {
+      text += `${item.productName}\n`
       text += leftRight("", `${item.quantity} ${item.unit}`) + "\n"
     })
     text += line + "\n"
 
-    const totalQuantity = transaction.items.reduce((sum: number, item: any) => sum + item.quantity, 0)
-    text += leftRight("Total Items:", transaction.items.length.toString()) + "\n"
-    text += leftRight("Total Quantity:", totalQuantity.toString()) + "\n"
+    text += leftRight("Total Items:", batch.totalItems.toString()) + "\n"
+    text += leftRight("Total Quantity:", batch.totalQuantity.toString()) + "\n"
     text += doubleLine + "\n"
 
     text += center("Thank you for your business!") + "\n"
@@ -1354,20 +1389,20 @@ export default function InventoryManagement() {
     }
   }
 
-  const printThermalTransactionReceipt = (transaction: any) => {
+  const printThermalBatchReceipt = (batch: TransactionBatch) => {
     const printWindow = window.open("", "_blank")
     if (!printWindow) {
       alert("Please allow popups for this site to enable printing")
       return
     }
 
-    const textContent = generateThermalTransactionReceiptText(transaction)
+    const textContent = generateThermalBatchReceiptText(batch)
 
     const htmlContent = `
     <!DOCTYPE html>
     <html>
       <head>
-        <title>Thermal Receipt - ${transaction.transactionNumber}</title>
+        <title>Thermal Receipt - ${batch.batchNumber}</title>
         <style>
           * { margin: 0; padding: 0; }
           body {
@@ -1392,15 +1427,11 @@ export default function InventoryManagement() {
 
     printWindow.document.write(htmlContent)
     printWindow.document.close()
-
-    // Wait for content to load before printing
     printWindow.onload = () => {
       setTimeout(() => {
         if (!printWindow.closed) {
           printWindow.focus()
           printWindow.print()
-
-          // Close window after printing (with delay)
           setTimeout(() => {
             if (!printWindow.closed) {
               printWindow.close()
@@ -1409,8 +1440,6 @@ export default function InventoryManagement() {
         }
       }, 500)
     }
-
-    // Fallback in case onload doesn't fire
     setTimeout(() => {
       if (!printWindow.closed && printWindow.document.readyState === "complete") {
         printWindow.focus()
@@ -1425,13 +1454,13 @@ export default function InventoryManagement() {
     }, 1000)
   }
 
-  const generateTransactionReceiptHTML = (transaction: any): string => {
+  const generateBatchReceiptHTML = (batch: TransactionBatch): string => {
     const currentDate = format(new Date(), "MMM dd, yyyy HH:mm")
     return `
     <!DOCTYPE html>
     <html>
       <head>
-        <title>${transaction.type.toUpperCase()} Receipt - ${transaction.transactionNumber}</title>
+        <title>${batch.type.toUpperCase()} Receipt - ${batch.batchNumber}</title>
         <style>
           * { margin: 0; padding: 0; box-sizing: border-box; }
           body {
@@ -1518,28 +1547,28 @@ export default function InventoryManagement() {
         <div class="receipt">
           <div class="header">
             <div class="company-name">SNS</div>
-            <div class="company-details">Jodbhavi peth, Solapur | Ph: 8668749859</div>
-            <div class="receipt-title">${transaction.type.toUpperCase()} RECEIPT</div>
+            <div class="company-details">Jodbhavi peth, Solapur | Ph: 9405842623</div>
+            <div class="receipt-title">${batch.type.toUpperCase()} RECEIPT</div>
           </div>
 
           <div class="receipt-info">
             <div class="info-row">
-              <span class="info-label">Receipt No:</span>
-              <span>${transaction.transactionNumber}</span>
+              <span class="info-label">Batch No:</span>
+              <span>${batch.batchNumber}</span>
             </div>
             <div class="info-row">
               <span class="info-label">Date:</span>
-              <span>${transaction.date}</span>
+              <span>${batch.date}</span>
             </div>
             <div class="info-row">
               <span class="info-label">Time:</span>
-              <span>${format(new Date(transaction.processedAt), "HH:mm:ss")}</span>
+              <span>${format(new Date(batch.createdAt), "HH:mm:ss")}</span>
             </div>
-            ${transaction.reference
+            ${batch.reference
         ? `
               <div class="info-row">
                 <span class="info-label">Reference:</span>
-                <span>${transaction.reference}</span>
+                <span>${batch.reference}</span>
               </div>
             `
         : ""
@@ -1556,12 +1585,12 @@ export default function InventoryManagement() {
               </tr>
             </thead>
             <tbody>
-              ${transaction.items
+              ${batch.items
         .map(
-          (item: any, index: number) => `
+          (item, index) => `
                 <tr>
                   <td class="text-center">${index + 1}</td>
-                  <td>${item.name}</td>
+                  <td>${item.productName}</td>
                   <td class="text-center">${item.quantity}</td>
                   <td class="text-center">${item.unit}</td>
                 </tr>
@@ -1574,15 +1603,15 @@ export default function InventoryManagement() {
           <div class="summary">
             <div class="summary-row">
               <span><strong>Transaction Type:</strong></span>
-              <span>${transaction.type.toUpperCase()}</span>
+              <span>${batch.type.toUpperCase()}</span>
             </div>
             <div class="summary-row">
               <span><strong>Total Items:</strong></span>
-              <span>${transaction.items.length}</span>
+              <span>${batch.totalItems}</span>
             </div>
             <div class="summary-row">
               <span><strong>Total Quantity:</strong></span>
-              <span>${transaction.items.reduce((sum: number, item: any) => sum + item.quantity, 0)}</span>
+              <span>${batch.totalQuantity}</span>
             </div>
           </div>
 
@@ -1598,27 +1627,18 @@ export default function InventoryManagement() {
   }
 
   const getStockStatus = (item: InventoryItem) => {
-    if (item.closingStock <= 0) return { status: "Out of Stock", color: "bg-red-100 text-red-800" }
+    if (item.closingStock < 0) return { status: "Negative Stock", color: "bg-red-100 text-red-800" }
+    if (item.closingStock === 0) return { status: "Out of Stock", color: "bg-red-100 text-red-800" }
     if (item.closingStock <= item.reorderLevel) return { status: "Low Stock", color: "bg-yellow-100 text-yellow-800" }
     return { status: "In Stock", color: "bg-green-100 text-green-800" }
   }
-
-  const formatCurrency = (amount: number) => {
-    return new Intl.NumberFormat("en-IN", {
-      style: "currency",
-      currency: "INR",
-      minimumFractionDigits: 0,
-      maximumFractionDigits: 2,
-    }).format(amount)
-  }
-
-  // Calculate summary statistics
   const totalItems = inventoryItems.length
-  const totalStockValue = 0 // No pricing in inventory
-  const lowStockItems = inventoryItems.filter((item) => item.closingStock <= item.reorderLevel).length
-  const outOfStockItems = inventoryItems.filter((item) => item.closingStock <= 0).length
-
-  // Get unique categories for filter dropdown (excluding "Unknown")
+  const totalStockValue = 0
+  const lowStockItems = inventoryItems.filter(
+    (item) => item.closingStock <= item.reorderLevel && item.closingStock > 0,
+  ).length
+  const outOfStockItems = inventoryItems.filter((item) => item.closingStock === 0).length
+  const negativeStockItems = inventoryItems.filter((item) => item.closingStock < 0).length
   const uniqueCategories = Array.from(new Set(inventoryItems.map((item) => item.category)))
     .filter((category) => category && category !== "Unknown")
     .sort()
@@ -1683,7 +1703,7 @@ export default function InventoryManagement() {
         </div>
 
         {/* Summary Cards */}
-        <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-4 mb-6">
+        <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-5 gap-4 mb-6">
           <Card className="rounded-[11px]">
             <CardContent className="p-4">
               <div className="flex items-center justify-between">
@@ -1728,13 +1748,25 @@ export default function InventoryManagement() {
               </div>
             </CardContent>
           </Card>
+          <Card className="rounded-[11px]">
+            <CardContent className="p-4">
+              <div className="flex items-center justify-between">
+                <div>
+                  <p className="text-sm text-gray-600">Negative Stock</p>
+                  <p className="text-2xl font-bold text-red-600">{negativeStockItems}</p>
+                </div>
+                <AlertCircle className="w-8 h-8 text-red-500" />
+              </div>
+            </CardContent>
+          </Card>
         </div>
 
         {/* Main Content */}
         <Tabs value={activeTab} onValueChange={(value: any) => setActiveTab(value)} className="space-y-4">
-          <TabsList className="grid grid-cols-2 md:grid-cols-4 mb-4">
+          <TabsList className="grid grid-cols-2 md:grid-cols-5 mb-4">
             <TabsTrigger value="overview">Overview</TabsTrigger>
             <TabsTrigger value="transactions">Transactions</TabsTrigger>
+            <TabsTrigger value="batches">Batches</TabsTrigger>
             <TabsTrigger value="reports">Reports</TabsTrigger>
             <TabsTrigger value="settings">Settings</TabsTrigger>
           </TabsList>
@@ -1789,6 +1821,7 @@ export default function InventoryManagement() {
                         <SelectItem value="all">All Items</SelectItem>
                         <SelectItem value="low">Low Stock</SelectItem>
                         <SelectItem value="out">Out of Stock</SelectItem>
+                        <SelectItem value="negative">Negative Stock</SelectItem>
                       </SelectContent>
                     </Select>
                   </div>
@@ -1830,7 +1863,7 @@ export default function InventoryManagement() {
                             </div>
                             <div>
                               <span className="text-gray-500">Closing:</span>{" "}
-                              <span className="font-medium">
+                              <span className={`font-medium ${item.closingStock < 0 ? "text-red-600" : ""}`}>
                                 {item.closingStock} {item.unit}
                               </span>
                             </div>
@@ -1911,6 +1944,15 @@ export default function InventoryManagement() {
                             <span>{format(new Date(transaction.date), "MMM dd, yyyy")}</span>
                             <span className="mx-2">•</span>
                             <span>Qty: {Math.abs(transaction.quantity)}</span>
+                            {transaction.batchId && (
+                              <>
+                                <span className="mx-2">•</span>
+                                <span>
+                                  Batch:{" "}
+                                  {transactionBatches.find((b) => b.id === transaction.batchId)?.batchNumber || "N/A"}
+                                </span>
+                              </>
+                            )}
                             {transaction.reference && (
                               <>
                                 <span className="mx-2">•</span>
@@ -1923,60 +1965,6 @@ export default function InventoryManagement() {
                           </div>
                         </div>
                         <div className="flex items-center gap-2 mt-3 sm:mt-0">
-                          <Button
-                            size="sm"
-                            variant="outline"
-                            onClick={() => {
-                              // Create a transaction record for reprinting
-                              const transactionRecord = {
-                                id: transaction.id,
-                                type: transaction.type,
-                                date: transaction.date,
-                                reference: transaction.reference,
-                                items: [
-                                  {
-                                    id: transaction.productId,
-                                    name: transaction.productName,
-                                    quantity: Math.abs(transaction.quantity),
-                                    unit: "unit", // Default unit
-                                  },
-                                ],
-                                processedAt: transaction.createdAt,
-                                transactionNumber: `${transaction.type.toUpperCase()}-${format(new Date(transaction.date), "yyyyMMdd")}-${transaction.id.slice(-4)}`,
-                              }
-                              setLastProcessedTransaction(transactionRecord)
-                              setShowTransactionReceipt(true)
-                            }}
-                            className="rounded-[9px]"
-                          >
-                            <Printer className="w-4 h-4" />
-                          </Button>
-                          <Button
-                            size="sm"
-                            variant="outline"
-                            onClick={() => {
-                              // Find the product and add to transaction for editing
-                              const product = products.find((p) => p.id === transaction.productId)
-                              if (product) {
-                                setTransactionType(transaction.type as "sale" | "purchase" | "adjustment")
-                                setTransactionItems([
-                                  {
-                                    id: product.id,
-                                    name: product.name,
-                                    quantity: Math.abs(transaction.quantity),
-                                    unit: product.unit,
-                                  },
-                                ])
-                                setTransactionReference(transaction.reference || "")
-                                setTransactionDate(transaction.date)
-                                setShowTransactionDialog(true)
-                                setEditingTransactionId(transaction.id) // Set edit mode
-                              }
-                            }}
-                            className="rounded-[9px]"
-                          >
-                            <Edit className="w-4 h-4" />
-                          </Button>
                           <Button
                             size="sm"
                             variant="outline"
@@ -1993,6 +1981,124 @@ export default function InventoryManagement() {
                       <ShoppingCart className="w-12 h-12 mx-auto mb-4 opacity-50" />
                       <p>No transactions found</p>
                       <p className="text-sm">Add transactions to track stock movements</p>
+                    </div>
+                  )}
+                </div>
+              </CardContent>
+            </Card>
+          </TabsContent>
+
+          {/* Batches Tab - This is where you can see all items in a transaction */}
+          <TabsContent value="batches" className="space-y-4">
+            <Card className="rounded-[11px]">
+              <CardHeader>
+                <CardTitle>Transaction Batches</CardTitle>
+                <CardDescription>View and manage grouped transactions with all items</CardDescription>
+              </CardHeader>
+              <CardContent>
+                <div className="space-y-2 max-h-96 overflow-y-auto">
+                  {transactionBatches
+                    .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())
+                    .map((batch) => (
+                      <div
+                        key={batch.id}
+                        className="flex flex-col sm:flex-row items-start sm:items-center justify-between p-3 border rounded-[9px] hover:bg-gray-50"
+                      >
+                        <div className="flex-1 w-full sm:w-auto">
+                          <div className="flex items-center gap-3 mb-1">
+                            <Badge
+                              variant={
+                                batch.type === "purchase"
+                                  ? "default"
+                                  : batch.type === "sale"
+                                    ? "destructive"
+                                    : "secondary"
+                              }
+                              className="text-xs mr-2"
+                            >
+                              {batch.type.toUpperCase()}
+                            </Badge>
+                            <span className="font-medium">{batch.batchNumber}</span>
+                          </div>
+                          <div className="text-sm text-gray-600">
+                            <span>{format(new Date(batch.date), "MMM dd, yyyy")}</span>
+                            <span className="mx-2">•</span>
+                            <span>{batch.totalItems} items</span>
+                            <span className="mx-2">•</span>
+                            <span>Total Qty: {batch.totalQuantity}</span>
+                            {batch.reference && (
+                              <>
+                                <span className="mx-2">•</span>
+                                <span>Ref: {batch.reference}</span>
+                              </>
+                            )}
+                          </div>
+                          <div className="text-xs text-gray-500 mt-1">
+                            Items: {batch.items.map((item) => item.productName).join(", ")}
+                          </div>
+                          <div className="text-xs text-gray-500">
+                            {format(new Date(batch.createdAt), "MMM dd, yyyy HH:mm")}
+                          </div>
+                        </div>
+                        <div className="flex items-center gap-2 mt-3 sm:mt-0">
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            onClick={() => {
+                              setSelectedBatch(batch)
+                              setShowBatchDetailsDialog(true)
+                            }}
+                            className="rounded-[9px]"
+                          >
+                            <Eye className="w-4 h-4" />
+                          </Button>
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            onClick={() => printBatchReceipt(batch)}
+                            className="rounded-[9px]"
+                          >
+                            <Printer className="w-4 h-4" />
+                          </Button>
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            onClick={() => {
+
+                              setTransactionType(batch.type)
+                              setTransactionItems(
+                                batch.items.map((item) => ({
+                                  id: item.productId,
+                                  name: item.productName,
+                                  quantity: item.quantity,
+                                  unit: item.unit,
+                                })),
+                              )
+                              setTransactionReference(batch.reference || "")
+                              setTransactionDate(batch.date)
+                              setEditingBatchId(batch.id)
+                              setShowTransactionDialog(true)
+                            }}
+                            className="rounded-[9px]"
+                          >
+                            <Edit className="w-4 h-4" />
+                          </Button>
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            onClick={() => deleteBatch(batch.id)}
+                            className="rounded-[9px] text-red-500 hover:text-red-700"
+                          >
+                            <Trash2 className="w-4 h-4" />
+                          </Button>
+                        </div>
+                      </div>
+                    ))}
+                  {transactionBatches.length === 0 && (
+                    <div className="text-center py-8 text-gray-500">
+                      <Package className="w-12 h-12 mx-auto mb-4 opacity-50" />
+                      <p>No transaction batches found</p>
+                      <p className="text-sm">Process transactions to create batches</p>
                     </div>
                   )}
                 </div>
@@ -2090,7 +2196,7 @@ export default function InventoryManagement() {
                         onClick={() => {
                           const report = generateReport()
                           setShowReportDialog(true)
-                            ; (window as any).currentReport = report // Store the generated report for viewing
+                            ; (window as any).currentReport = report
                         }}
                         className="w-full bg-yellow-400 hover:bg-yellow-500 text-black rounded-[9px]"
                       >
@@ -2138,6 +2244,7 @@ export default function InventoryManagement() {
                       const data = {
                         inventoryItems,
                         stockTransactions,
+                        transactionBatches,
                         exportedAt: new Date().toISOString(),
                       }
                       const blob = new Blob([JSON.stringify(data, null, 2)], { type: "application/json" })
@@ -2172,6 +2279,9 @@ export default function InventoryManagement() {
                               if (data.stockTransactions) {
                                 saveStockTransactions(data.stockTransactions)
                               }
+                              if (data.transactionBatches) {
+                                saveTransactionBatches(data.transactionBatches)
+                              }
                               alert("Data imported successfully!")
                             } catch (error) {
                               alert("Error importing data. Please check the file format.")
@@ -2188,8 +2298,10 @@ export default function InventoryManagement() {
                       if (confirm("Are you sure you want to clear all inventory data? This action cannot be undone.")) {
                         localStorage.removeItem(STORAGE_KEYS.INVENTORY_ITEMS)
                         localStorage.removeItem(STORAGE_KEYS.STOCK_TRANSACTIONS)
+                        localStorage.removeItem(STORAGE_KEYS.TRANSACTION_BATCHES)
                         setInventoryItems([])
                         setStockTransactions([])
+                        setTransactionBatches([])
                         alert("All inventory data has been cleared.")
                       }
                     }}
@@ -2198,90 +2310,6 @@ export default function InventoryManagement() {
                   >
                     <Trash2 className="w-4 h-4 mr-2" />
                     Clear All Data
-                  </Button>
-                  <Button
-                    onClick={() => {
-                      // Fix all unknown categories
-                      const updatedItems = inventoryItems.map((item) => {
-                        if (item.category === "Unknown" || !item.category) {
-                          const categoryName = getCategoryNameForProduct(item.productId)
-                          return {
-                            ...item,
-                            category: categoryName,
-                            lastUpdated: new Date().toISOString(),
-                          }
-                        }
-                        return item
-                      })
-                      saveInventoryItems(updatedItems)
-                      alert("Category mapping has been fixed for all items!")
-                    }}
-                    variant="outline"
-                    className="rounded-[9px]"
-                  >
-                    <Package className="w-4 h-4 mr-2" />
-                    Fix Category Mapping
-                  </Button>
-                  <Button
-                    onClick={() => {
-                      // Remove duplicate transactions
-                      const uniqueTransactions = stockTransactions.filter((transaction, index, self) => {
-                        return (
-                          index ===
-                          self.findIndex(
-                            (t) =>
-                              t.productId === transaction.productId &&
-                              t.type === transaction.type &&
-                              t.quantity === transaction.quantity &&
-                              t.date === transaction.date &&
-                              Math.abs(new Date(t.createdAt).getTime() - new Date(transaction.createdAt).getTime()) <
-                              1000,
-                          )
-                        )
-                      })
-                      if (uniqueTransactions.length !== stockTransactions.length) {
-                        saveStockTransactions(uniqueTransactions)
-                        // Recalculate inventory based on unique transactions
-                        const recalculatedItems = inventoryItems.map((item) => {
-                          const itemTransactions = uniqueTransactions.filter((t) => t.productId === item.productId)
-                          let purchases = 0
-                          let sales = 0
-                          let adjustments = 0
-                          itemTransactions.forEach((t) => {
-                            switch (t.type) {
-                              case "purchase":
-                                purchases += Math.abs(t.quantity)
-                                break
-                              case "sale":
-                                sales += Math.abs(t.quantity)
-                                break
-                              case "adjustment":
-                                adjustments += t.quantity
-                                break
-                            }
-                          })
-                          return {
-                            ...item,
-                            purchases,
-                            sales,
-                            adjustments,
-                            closingStock: item.openingStock + purchases - sales + adjustments,
-                            lastUpdated: new Date().toISOString(),
-                          }
-                        })
-                        saveInventoryItems(recalculatedItems)
-                        alert(
-                          `Removed ${stockTransactions.length - uniqueTransactions.length} duplicate transactions and recalculated inventory!`,
-                        )
-                      } else {
-                        alert("No duplicate transactions found.")
-                      }
-                    }}
-                    variant="outline"
-                    className="rounded-[9px]"
-                  >
-                    <AlertCircle className="w-4 h-4 mr-2" />
-                    Fix Duplicate Transactions
                   </Button>
                 </div>
               </CardContent>
@@ -2294,31 +2322,31 @@ export default function InventoryManagement() {
       <Dialog open={showTransactionDialog} onOpenChange={setShowTransactionDialog}>
         <DialogContent className="max-w-full sm:max-w-xl md:max-w-3xl lg:max-w-7xl max-h-[95vh] overflow-auto p-0">
           <DialogHeader className="p-4 border-b">
-            <DialogTitle>{transactionType.charAt(0).toUpperCase() + transactionType.slice(1)} Transaction</DialogTitle>
+            <DialogTitle>
+              {editingBatchId ? "Edit" : "New"} {transactionType.charAt(0).toUpperCase() + transactionType.slice(1)}{" "}
+              Transaction
+            </DialogTitle>
           </DialogHeader>
           <div className="flex flex-col h-auto">
-            {" "}
-            {/* Changed to flex-col and h-auto */}
             {/* Product Selection - Top Section */}
             <div className="flex-1 overflow-y-auto p-4">
-              {" "}
-              {/* Removed h-[80vh] */}
               {currentView === "super" && renderSuperCategories()}
               {currentView === "sub" && renderSubCategories()}
               {currentView === "products" && renderProducts()}
             </div>
             {/* Transaction Items - Bottom Section */}
             <div className="w-full border-t border-gray-200 flex flex-col bg-gray-50">
-              {" "}
-              {/* Changed to w-full and border-t only */}
               <div className="p-3 border-b border-gray-200">
                 <h3 className="font-medium text-base">
                   {transactionType.charAt(0).toUpperCase() + transactionType.slice(1)} Items
+                  {editingBatchId && (
+                    <span className="text-sm text-gray-500 ml-2">
+                      (Editing: {transactionItems.length} items loaded)
+                    </span>
+                  )}
                 </h3>
               </div>
               <div className="flex-1 overflow-y-auto p-3">
-                {" "}
-                {/* Removed h-[80vh] */}
                 {transactionItems.length === 0 ? (
                   <div className="text-center py-8 text-gray-500">
                     <Package className="w-8 h-8 mx-auto mb-2 opacity-50" />
@@ -2419,7 +2447,8 @@ export default function InventoryManagement() {
                     className="w-full bg-yellow-500 hover:bg-yellow-600 text-white rounded-lg font-medium text-xs h-8"
                     disabled={transactionItems.length === 0}
                   >
-                    Process {transactionType.charAt(0).toUpperCase() + transactionType.slice(1)}
+                    {editingBatchId ? "Update" : "Process"}{" "}
+                    {transactionType.charAt(0).toUpperCase() + transactionType.slice(1)}
                   </Button>
                 </div>
               </div>
@@ -2610,6 +2639,86 @@ export default function InventoryManagement() {
         </DialogContent>
       </Dialog>
 
+      {/* Batch Details Dialog */}
+      <Dialog open={showBatchDetailsDialog} onOpenChange={setShowBatchDetailsDialog}>
+        <DialogContent className="max-w-full sm:max-w-lg md:max-w-2xl">
+          <DialogHeader>
+            <DialogTitle>Batch Details - {selectedBatch?.batchNumber}</DialogTitle>
+          </DialogHeader>
+          {selectedBatch && (
+            <div className="space-y-4">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <div>
+                  <Label className="text-sm font-medium">Batch Number</Label>
+                  <p className="text-sm">{selectedBatch.batchNumber}</p>
+                </div>
+                <div>
+                  <Label className="text-sm font-medium">Type</Label>
+                  <p className="text-sm">{selectedBatch.type.toUpperCase()}</p>
+                </div>
+                <div>
+                  <Label className="text-sm font-medium">Date</Label>
+                  <p className="text-sm">{format(new Date(selectedBatch.date), "MMM dd, yyyy")}</p>
+                </div>
+                <div>
+                  <Label className="text-sm font-medium">Total Items</Label>
+                  <p className="text-sm">{selectedBatch.totalItems}</p>
+                </div>
+                <div>
+                  <Label className="text-sm font-medium">Total Quantity</Label>
+                  <p className="text-sm">{selectedBatch.totalQuantity}</p>
+                </div>
+                <div>
+                  <Label className="text-sm font-medium">Reference</Label>
+                  <p className="text-sm">{selectedBatch.reference || "N/A"}</p>
+                </div>
+              </div>
+              {selectedBatch.notes && (
+                <div>
+                  <Label className="text-sm font-medium">Notes</Label>
+                  <p className="text-sm">{selectedBatch.notes}</p>
+                </div>
+              )}
+              <div>
+                <Label className="text-sm font-medium">Items in Batch</Label>
+                <div className="mt-2 space-y-2 max-h-40 overflow-y-auto">
+                  {selectedBatch.items.map((item, index) => (
+                    <div key={index} className="flex justify-between items-center p-2 bg-gray-50 rounded-[9px]">
+                      <div>
+                        <span className="text-sm font-medium">{item.productName}</span>
+                      </div>
+                      <div className="text-right">
+                        <span className="text-sm">
+                          {item.quantity} {item.unit}
+                        </span>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+              <div className="flex gap-2">
+                <Button
+                  onClick={() => printBatchReceipt(selectedBatch)}
+                  variant="outline"
+                  className="flex-1 rounded-[9px]"
+                >
+                  <Printer className="w-4 h-4 mr-2" />
+                  Print Receipt
+                </Button>
+                <Button
+                  onClick={() => printThermalBatchReceipt(selectedBatch)}
+                  variant="outline"
+                  className="flex-1 rounded-[9px]"
+                >
+                  <Printer className="w-4 h-4 mr-2" />
+                  Thermal Print
+                </Button>
+              </div>
+            </div>
+          )}
+        </DialogContent>
+      </Dialog>
+
       {/* Report Dialog */}
       <Dialog open={showReportDialog} onOpenChange={setShowReportDialog}>
         <DialogContent className="max-w-full sm:max-w-xl md:max-w-3xl lg:max-w-6xl max-h-[90vh] overflow-y-auto">
@@ -2653,12 +2762,12 @@ export default function InventoryManagement() {
             <DialogTitle>Transaction Receipt</DialogTitle>
             <DialogDescription>View and print the transaction receipt</DialogDescription>
           </DialogHeader>
-          {lastProcessedTransaction && (
+          {lastProcessedBatch && (
             <div className="space-y-4">
-              <div dangerouslySetInnerHTML={{ __html: generateTransactionReceiptHTML(lastProcessedTransaction) }} />
+              <div dangerouslySetInnerHTML={{ __html: generateBatchReceiptHTML(lastProcessedBatch) }} />
               <div className="flex flex-col sm:flex-row justify-end gap-2">
                 <Button
-                  onClick={() => printTransactionReceipt(lastProcessedTransaction)}
+                  onClick={() => printBatchReceipt(lastProcessedBatch)}
                   variant="outline"
                   className="rounded-[9px]"
                 >
@@ -2666,7 +2775,7 @@ export default function InventoryManagement() {
                   Print Receipt
                 </Button>
                 <Button
-                  onClick={() => printThermalTransactionReceipt(lastProcessedTransaction)}
+                  onClick={() => printThermalBatchReceipt(lastProcessedBatch)}
                   variant="outline"
                   className="rounded-[9px]"
                 >

@@ -1,4 +1,3 @@
-// Data Manager - Centralized data management for the POS system
 interface SuperCategory {
   id: string
   name: string
@@ -26,7 +25,7 @@ interface Product {
   unit: string
   image?: string
   subCategoryId: string
-  hamaliValue: number // Add this field
+  hamaliValue: number
   createdAt: string
   updatedAt: string
 }
@@ -113,8 +112,6 @@ interface SalesAnalytics {
     totalRevenue: number
   }>
 }
-
-// Default data for initial setup
 const defaultData = {
   superCategories: [
     {
@@ -282,7 +279,7 @@ const defaultData = {
 }
 
 export class DataManager {
-  // Utility methods
+
   private static generateId(): string {
     return Date.now().toString() + Math.random().toString(36).substr(2, 9)
   }
@@ -290,12 +287,10 @@ export class DataManager {
   private static getCurrentTimestamp(): string {
     return new Date().toISOString()
   }
-
-  // Generic storage methods
   private static setItem<T>(key: string, data: T[]): void {
     try {
       localStorage.setItem(key, JSON.stringify(data))
-      // Trigger storage event for real-time updates
+
       window.dispatchEvent(
         new StorageEvent("storage", {
           key,
@@ -314,23 +309,21 @@ export class DataManager {
       const stored = localStorage.getItem(key)
       if (stored) {
         const parsed = JSON.parse(stored)
-        // Validate data structure
+
         if (Array.isArray(parsed)) {
           return parsed
         }
       }
-      // Initialize with default data if not found or invalid
+
       this.setItem(key, defaultData)
       return defaultData
     } catch (error) {
       console.error(`Error loading ${key}:`, error)
-      // Return default data on error
+
       this.setItem(key, defaultData)
       return defaultData
     }
   }
-
-  // Super Categories
   static getSuperCategories(): SuperCategory[] {
     return this.getItem<SuperCategory>("superCategories", defaultData.superCategories)
   }
@@ -373,8 +366,6 @@ export class DataManager {
     if (filtered.length === categories.length) return false
 
     this.setItem("superCategories", filtered)
-
-    // Also delete related subcategories and products
     const subCategories = this.getSubCategories()
     const filteredSubs = subCategories.filter((sub) => sub.superCategoryId !== id)
     this.setItem("subCategories", filteredSubs)
@@ -386,8 +377,6 @@ export class DataManager {
 
     return true
   }
-
-  // Sub Categories
   static getSubCategories(): SubCategory[] {
     return this.getItem<SubCategory>("subCategories", defaultData.subCategories)
   }
@@ -430,16 +419,12 @@ export class DataManager {
     if (filtered.length === categories.length) return false
 
     this.setItem("subCategories", filtered)
-
-    // Also delete related products
     const products = this.getProducts()
     const filteredProducts = products.filter((prod) => prod.subCategoryId !== id)
     this.setItem("products", filteredProducts)
 
     return true
   }
-
-  // Products
   static getProducts(): Product[] {
     return this.getItem<Product>("products", defaultData.products)
   }
@@ -485,8 +470,6 @@ export class DataManager {
   static async updateProductStock(id: string, newStock: number): Promise<Product | null> {
     return this.updateProduct(id, { stock: newStock })
   }
-
-  // Customers
   static getCustomers(): Customer[] {
     return this.getItem<Customer>("customers", defaultData.customers)
   }
@@ -528,16 +511,12 @@ export class DataManager {
     this.setItem("customers", filtered)
     return true
   }
-
-  // Sales Management
   static getSales(): Sale[] {
     return this.getItem<Sale>("sales", [])
   }
-
-  // Add this method after the existing getSales method
   static getSalesWithEstimateNumber(): Sale[] {
     const sales = this.getSales()
-    // Ensure backward compatibility - map invoiceNumber to estimateNumber if needed
+
     return sales.map((sale) => ({
       ...sale,
       estimateNumber: sale.estimateNumber || (sale as any).invoiceNumber || "Unknown",
@@ -567,11 +546,7 @@ export class DataManager {
     const subCategories = this.getSubCategories()
     const superCategories = this.getSuperCategories()
     const customers = this.getCustomers()
-
-    // Get customer data if not cash sale
     const customer = saleData.customerId ? customers.find((c) => c.id === saleData.customerId) : null
-
-    // Build sale items with category information
     const saleItems: SaleItem[] = saleData.items.map((item) => {
       const product = products.find((p) => p.id === item.productId)
       if (!product) throw new Error(`Product not found: ${item.productId}`)
@@ -615,8 +590,6 @@ export class DataManager {
       createdAt: this.getCurrentTimestamp(),
       updatedAt: this.getCurrentTimestamp(),
     }
-
-    // Update product stock
     for (const item of saleData.items) {
       const product = products.find((p) => p.id === item.productId)
       if (product) {
@@ -652,8 +625,6 @@ export class DataManager {
     this.setItem("sales", filtered)
     return true
   }
-
-  // Sales Analytics
   static getSalesAnalytics(dateRange?: { start: Date; end: Date }): SalesAnalytics {
     const sales = this.getSales()
     let filteredSales = sales
@@ -668,8 +639,6 @@ export class DataManager {
     const totalSales = filteredSales.length
     const totalRevenue = filteredSales.reduce((sum, sale) => sum + sale.total, 0)
     const averageOrderValue = totalSales > 0 ? totalRevenue / totalSales : 0
-
-    // Top Products
     const productStats = new Map<string, { name: string; quantity: number; revenue: number }>()
     filteredSales.forEach((sale) => {
       sale.items.forEach((item) => {
@@ -689,8 +658,6 @@ export class DataManager {
       }))
       .sort((a, b) => b.totalRevenue - a.totalRevenue)
       .slice(0, 10)
-
-    // Top Customers
     const customerStats = new Map<string, { name: string; orders: number; revenue: number }>()
     filteredSales.forEach((sale) => {
       if (!sale.isCashSale && sale.customerId) {
@@ -710,8 +677,6 @@ export class DataManager {
       }))
       .sort((a, b) => b.totalRevenue - a.totalRevenue)
       .slice(0, 10)
-
-    // Category Performance
     const categoryStats = new Map<
       string,
       {
@@ -724,7 +689,7 @@ export class DataManager {
 
     filteredSales.forEach((sale) => {
       sale.items.forEach((item) => {
-        // Super category stats
+
         const superCat = categoryStats.get(item.superCategoryId) || {
           name: item.superCategoryName,
           quantity: 0,
@@ -733,8 +698,6 @@ export class DataManager {
         }
         superCat.quantity += item.quantity
         superCat.revenue += item.lineTotal
-
-        // Sub category stats
         const subCat = superCat.subCategories.get(item.subCategoryId) || {
           name: item.subCategoryName,
           quantity: 0,
@@ -764,8 +727,6 @@ export class DataManager {
           .sort((a, b) => b.totalRevenue - a.totalRevenue),
       }))
       .sort((a, b) => b.totalRevenue - a.totalRevenue)
-
-    // Daily Sales
     const dailyStats = new Map<string, { sales: number; revenue: number }>()
     filteredSales.forEach((sale) => {
       const date = new Date(sale.timestamp).toLocaleDateString("en-IN")
@@ -782,8 +743,6 @@ export class DataManager {
         totalRevenue: stats.revenue,
       }))
       .sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime())
-
-    // Monthly Sales
     const monthlyStats = new Map<string, { sales: number; revenue: number }>()
     filteredSales.forEach((sale) => {
       const date = new Date(sale.timestamp)
@@ -813,8 +772,6 @@ export class DataManager {
       monthlySales,
     }
   }
-
-  // Search and filter methods
   static searchProducts(query: string): Product[] {
     const products = this.getProducts()
     const lowercaseQuery = query.toLowerCase()
@@ -871,8 +828,6 @@ export class DataManager {
       return saleDate >= start && saleDate <= end
     })
   }
-
-  // Data validation methods
   static validateSuperCategory(data: Partial<SuperCategory>): string[] {
     const errors: string[] = []
 
@@ -952,8 +907,6 @@ export class DataManager {
 
     return errors
   }
-
-  // Bulk operations
   static async importData(data: {
     superCategories?: SuperCategory[]
     subCategories?: SubCategory[]
@@ -1002,8 +955,6 @@ export class DataManager {
       sales: this.getSales(),
     }
   }
-
-  // Data statistics
   static getDataStats(): {
     superCategories: number
     subCategories: number
@@ -1035,8 +986,6 @@ export class DataManager {
       totalRevenue,
     }
   }
-
-  // Clear all data (for testing/reset purposes)
   static clearAllData(): void {
     localStorage.removeItem("superCategories")
     localStorage.removeItem("subCategories")
@@ -1044,16 +993,12 @@ export class DataManager {
     localStorage.removeItem("customers")
     localStorage.removeItem("sales")
     localStorage.removeItem("estimateCounter")
-
-    // Trigger storage events
     window.dispatchEvent(new StorageEvent("storage", { key: "superCategories", storageArea: localStorage }))
     window.dispatchEvent(new StorageEvent("storage", { key: "subCategories", storageArea: localStorage }))
     window.dispatchEvent(new StorageEvent("storage", { key: "products", storageArea: localStorage }))
     window.dispatchEvent(new StorageEvent("storage", { key: "customers", storageArea: localStorage }))
     window.dispatchEvent(new StorageEvent("storage", { key: "sales", storageArea: localStorage }))
   }
-
-  // Add these methods to support inventory management
   static setInventoryItems(items: any[]): void {
     this.setItem("inventory_items", items)
   }

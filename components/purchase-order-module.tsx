@@ -67,8 +67,6 @@ const storeInfo = {
   address: "Jodbhavi Peth, Solapur",
   phone: "9420490692",
 }
-
-// Purchase Order counter
 const getPOCounter = () => {
   const stored = localStorage.getItem("poCounter")
   return stored ? Number.parseInt(stored) : 1
@@ -96,15 +94,11 @@ export default function PurchaseOrderModule({ onBack }: { onBack: () => void }) 
   const [purchaseOrders, setPurchaseOrders] = useState<PurchaseOrder[]>([])
   const [editingPO, setEditingPO] = useState<PurchaseOrder | null>(null)
   const [isEditMode, setIsEditMode] = useState(false)
-
-  // Data states
   const [superCategories, setSuperCategories] = useState<any[]>([])
   const [subCategories, setSubCategories] = useState<any[]>([])
   const [products, setProducts] = useState<any[]>([])
   const [suppliers, setSuppliers] = useState<Supplier[]>([])
   const [dataLoaded, setDataLoaded] = useState(false)
-
-  // Supplier form state
   const [supplierForm, setSupplierForm] = useState({
     name: "",
     email: "",
@@ -113,12 +107,6 @@ export default function PurchaseOrderModule({ onBack }: { onBack: () => void }) 
   })
 
   const poRef = useRef<HTMLDivElement>(null)
-
-  const PRINT_UTILITY_API_URL = process.env.NEXT_PUBLIC_PRINT_UTILITY_API_URL || "http://localhost:5000"
-  const THERMAL_PRINTER = process.env.NEXT_PUBLIC_THERMAL_PRINTER || "Microsoft Print to PDF"
-  const LAZER_PRINTER = process.env.NEXT_PUBLIC_LAZER_PRINTER || "Microsoft Print to PDF"
-
-  // Load data on component mount
   useEffect(() => {
     const loadAllData = async () => {
       try {
@@ -264,11 +252,9 @@ export default function PurchaseOrderModule({ onBack }: { onBack: () => void }) 
     setIsEditMode(false)
   }
 
-  const subtotal = orderItems.reduce((sum, item) => sum + item.lineTotal, 0)
-
   const generatePurchaseOrder = () => {
     if (isEditMode && editingPO) {
-      // Update existing purchase order
+
       const updatedPO: PurchaseOrder = {
         ...editingPO,
         date: orderDate,
@@ -286,7 +272,7 @@ export default function PurchaseOrderModule({ onBack }: { onBack: () => void }) 
       savePurchaseOrders(updatedOrders)
       setCurrentPO(updatedPO)
     } else {
-      // Create new purchase order
+
       const orderNumber = generatePONumber()
       const purchaseOrder: PurchaseOrder = {
         id: Date.now().toString(),
@@ -315,318 +301,287 @@ export default function PurchaseOrderModule({ onBack }: { onBack: () => void }) 
   }
 
   const printPurchaseOrder = () => {
-    if (!currentPO) return
+    if (!poRef.current) return;
 
-    const htmlContent = `
-    <!DOCTYPE html>
-    <html>
-      <head>
-        <title>Purchase Order - ${currentPO.orderNumber}</title>
-        <style>
-          * { margin: 0; padding: 0; box-sizing: border-box; }
-          body {
-            font-family: 'Arial', sans-serif;
-            font-size: 11px;
-            line-height: 1.2;
-            color: #000;
-            padding: 8mm;
-          }
-          .po { max-width: 100%; }
-          .header {
-            text-align: center;
-            border-bottom: 2px solid #000;
-            padding-bottom: 6px;
-            margin-bottom: 8px;
-          }
-          .company-name { font-size: 18px; font-weight: bold; margin-bottom: 2px; }
-          .company-details { font-size: 9px; margin-bottom: 2px; }
-          .po-title { font-size: 14px; font-weight: bold; margin-top: 4px; }
+    const printContent = poRef.current.innerHTML;
+    const printWindow = window.open("", "_blank");
 
-          .info-section {
-            display: flex;
-            justify-content: space-between;
-            margin-bottom: 8px;
-            gap: 10px;
-          }
-          .info-left, .info-right { flex: 1; }
-          .info-right { text-align: right; }
-          .info-label { font-weight: bold; font-size: 10px; }
-          .info-value { font-size: 10px; margin-bottom: 2px; }
-
-          table {
-            width: 100%;
-            border-collapse: collapse;
-            margin: 6px 0;
-            font-size: 10px;
-          }
-          th, td {
-            border: 1px solid #000;
-            padding: 3px 4px;
-            text-align: left;
-            vertical-align: top;
-          }
-          th {
-            background-color: #f0f0f0;
-            font-weight: bold;
-            font-size: 9px;
-            text-align: center;
-          }
-          .text-center { text-align: center; }
-
-          .footer {
-            display: flex;
-            justify-content: space-between;
-            align-items: end;
-            margin-top: 12px;
-            font-size: 9px;
-          }
-          .signature-section {
-            text-align: center;
-            border-top: 1px solid #000;
-            padding-top: 2px;
-            width: 120px;
-            margin-top: 20px;
-          }
-
-          @media print {
-            body { margin: 0; padding: 8mm; }
-            .no-print { display: none; }
-            @page {
-              size: A4;
-              margin: 8mm;
+    if (printWindow) {
+      printWindow.document.write(`
+      <html>
+        <head>
+          <title>Purchase Order - ${currentPO?.orderNumber || ""}</title>
+          <style>
+            * {
+              margin: 0;
+              padding: 0;
+              box-sizing: border-box;
             }
-          }
-        </style>
-      </head>
-      <body>
-        <div class="po">
-          <!-- Header -->
-          <div class="header">
-            <div class="company-name">${storeInfo.name}</div>
-            <div class="company-details">${storeInfo.address}</div>
-            <div class="company-details">Contact: ${storeInfo.phone}</div>
-            <div class="po-title">PURCHASE ORDER</div>
+
+            body {
+              font-family: Arial, sans-serif;
+              padding: 16px;
+              color: #000;
+              background: #fff;
+              font-size: 14px;
+              line-height: 1.5;
+            }
+
+            .no-print {
+              display: none !important;
+            }
+
+            .po {
+              max-width: 100%;
+            }
+
+            .header {
+              text-align: center;
+              border-bottom: 1px solid #000;
+              padding-bottom: 10px;
+              margin-bottom: 14px;
+            }
+
+            .company-name {
+              font-size: 20px;
+              font-weight: bold;
+              margin-bottom: 4px;
+            }
+
+            .company-details {
+              font-size: 12px;
+              margin-bottom: 2px;
+            }
+
+            .po-title {
+              font-size: 16px;
+              font-weight: bold;
+              margin-top: 8px;
+            }
+
+            .info-section {
+              display: flex;
+              justify-content: space-between;
+              margin-bottom: 14px;
+              gap: 12px;
+            }
+
+            .info-left, .info-right {
+              flex: 1;
+            }
+
+            .info-right {
+              text-align: right;
+            }
+
+            .info-label {
+              font-weight: bold;
+              font-size: 13px;
+            }
+
+            .info-value {
+              font-size: 13px;
+              margin-bottom: 4px;
+            }
+
+            table {
+              width: 100%;
+              border-collapse: collapse;
+              margin: 10px 0;
+              font-size: 13px;
+            }
+
+            th, td {
+              border: 1px solid #000;
+              padding: 6px 8px;
+              text-align: left;
+              vertical-align: top;
+            }
+
+            th {
+              background-color: #f2f2f2;
+              font-weight: bold;
+              font-size: 14px;
+              text-align: center;
+            }
+
+            .text-center {
+              text-align: center;
+            }
+
+            .footer {
+              display: flex;
+              justify-content: space-between;
+              align-items: flex-end;
+              margin-top: 14px;
+              font-size: 12px;
+            }
+
+            .signature-section {
+              text-align: center;
+              border-top: 1px solid #000;
+              padding-top: 8px;
+              width: 180px;
+              margin-top: 24px;
+              font-size: 13px;
+            }
+
+            @media print {
+              @page {
+                size: A4;
+                margin: 10mm;
+              }
+            }
+          </style>
+        </head>
+        <body>
+          ${printContent}
+          <div class="signature-section">
+            <p>Authorized Signature</p>
+            <p style="font-size: 12px; margin-top: 4px;">${storeInfo.name}</p>
           </div>
+        </body>
+      </html>
+    `);
 
-          <!-- Info Section -->
-          <div class="info-section">
-            <div class="info-left">
-              <div class="info-label">PO Details:</div>
-              <div class="info-value">PO No: ${currentPO.orderNumber}</div>
-              <div class="info-value">Date: ${currentPO.date}</div>
-              <div class="info-value">Status: ${currentPO.status.toUpperCase()}</div>
-              ${currentPO.reference ? `<div class="info-value">Ref: ${currentPO.reference}</div>` : ""}
-            </div>
-            <div class="info-right">
-              <div class="info-label">Supplier:</div>
-              ${currentPO.isCashPurchase
-        ? '<div class="info-value" style="font-weight: bold;">CASH PURCHASE</div>'
-        : `<div class="info-value">${currentPO.supplierName || ""}</div>
-                 <div class="info-value">${currentPO.supplierPhone || ""}</div>`
-      }
-            </div>
-          </div>
-
-          <!-- Items Table -->
-          <table>
-            <thead>
-              <tr>
-                <th style="width: 8%;">S.No</th>
-                <th style="width: 60%;">Item</th>
-                <th style="width: 16%;">QTY</th>
-                <th style="width: 16%;">Unit</th>
-              </tr>
-            </thead>
-            <tbody>
-              ${currentPO.items
-        .map(
-          (item, index) => `
-                <tr>
-                  <td class="text-center">${index + 1}</td>
-                  <td>${item.name}</td>
-                  <td class="text-center">${item.quantity}</td>
-                  <td class="text-center">${item.unit}</td>
-                </tr>
-              `,
-        )
-        .join("")}
-            </tbody>
-          </table>
-
-          ${currentPO.notes
-        ? `
-            <div style="margin-top: 10px;">
-              <div class="info-label">Notes:</div>
-              <div class="info-value">${currentPO.notes}</div>
-            </div>
-          `
-        : ""
-      }
-
-          <!-- Footer -->
-          <div class="footer">
-            <div>
-              <div>Thank you for your service!</div>
-              <div>Terms & Conditions Apply</div>
-            </div>
-            <div class="signature-section">
-              <div>Authorized Signature</div>
-              <div style="font-size: 8px; margin-top: 2px;">${storeInfo.name}</div>
-            </div>
-          </div>
-        </div>
-      </body>
-    </html>
-  `
-
-    const printWindow = window.open("", "_blank", "width=800,height=600")
-    if (!printWindow) {
-      alert("Please allow popups for this website to enable printing.")
-      return
+      printWindow.document.close();
+      printWindow.focus();
+      printWindow.print();
+    } else {
+      alert("Please allow popups for this website to enable printing.");
     }
+  };
 
-    printWindow.document.write(htmlContent)
-    printWindow.document.close()
-
-    // Wait for content to load before printing
-    printWindow.onload = () => {
-      setTimeout(() => {
-        printWindow.focus()
-        printWindow.print()
-
-        // Close window after printing (with delay to ensure print dialog appears)
-        setTimeout(() => {
-          printWindow.close()
-        }, 1000)
-      }, 500)
-    }
-
-    // Fallback if onload doesn't fire
-    setTimeout(() => {
-      if (printWindow && !printWindow.closed) {
-        printWindow.focus()
-        printWindow.print()
-        setTimeout(() => {
-          printWindow.close()
-        }, 1000)
-      }
-    }, 1000)
-  }
 
   const printThermalPurchaseOrder = () => {
-    if (!currentPO) return
+    if (!poRef.current) return;
 
-    const generateTextOutput = (po, store) => {
-      const lines = []
-      const center = (text) => text.padStart(Math.floor((48 + text.length) / 2), " ")
-      const line = (char = "-") => char.repeat(48)
+    const printContent = poRef.current.innerHTML;
+    const printWindow = window.open("", "_blank");
 
-      lines.push(center(store.name))
-      lines.push(center(store.address))
-      lines.push(center(`Contact: ${store.phone}`))
-      lines.push(line("="))
-      lines.push(`PO No: ${po.orderNumber}`)
-      lines.push(`Date : ${po.date}`)
-      lines.push(`Status: ${po.status.toUpperCase()}`)
-      if (po.reference) {
-        lines.push(`Ref  : ${po.reference}`)
-      }
-      lines.push(line())
-
-      lines.push("Supplier:")
-      if (po.isCashPurchase) {
-        lines.push("CASH PURCHASE")
-      } else {
-        if (po.supplierName) lines.push(po.supplierName)
-        if (po.supplierPhone) lines.push(po.supplierPhone)
-      }
-      lines.push(line())
-
-      lines.push("Item                            Qty Unit")
-      lines.push(line())
-
-      po.items.forEach((item) => {
-        const name = item.name.substring(0, 30).padEnd(30)
-        const qty = String(item.quantity).padStart(4)
-        const unit = item.unit.substring(0, 4).padStart(4)
-        lines.push(`${name}${qty} ${unit}`)
-      })
-
-      lines.push(line())
-      if (po.notes) {
-        lines.push("Notes:")
-        lines.push(po.notes)
-        lines.push(line())
-      }
-      lines.push(center("Thank you for your service!"))
-      lines.push(center("Terms & Conditions Apply"))
-
-      return lines.join("\n")
-    }
-
-    const textOutput = generateTextOutput(currentPO, storeInfo)
-
-    const htmlContent = `
-    <!DOCTYPE html>
-    <html>
-      <head>
-        <title>Thermal PO - ${currentPO.orderNumber}</title>
-        <style>
-          * { margin: 0; padding: 0; }
-          body {
-            font-family: 'Courier New', monospace;
-            font-size: 12px;
-            line-height: 1.2;
-            white-space: pre-wrap;
-            padding: 5mm;
-          }
-          @media print {
-            body { margin: 0; padding: 2mm; }
-            @page {
-              size: 80mm auto;
-              margin: 2mm;
+    if (printWindow) {
+      printWindow.document.write(`
+      <html>
+        <head>
+          <title>Print Purchase Order</title>
+          <style>
+            * {
+              margin: 0;
+              padding: 0;
+              box-sizing: border-box;
             }
-          }
-        </style>
-      </head>
-      <body>${textOutput}</body>
-    </html>
-  `
 
-    const printWindow = window.open("", "_blank", "width=400,height=600")
-    if (!printWindow) {
-      alert("Please allow popups for this website to enable printing.")
-      return
-    }
+            body {
+              font-family: Arial, sans-serif;
+              font-size: 9px;
+              color: #000;
+              background: #fff;
+              padding: 6px;
+              width: 72mm;
+              max-width: 72mm;
+              line-height: 1.3;
+            }
 
-    printWindow.document.write(htmlContent)
-    printWindow.document.close()
+            .no-print {
+              display: none !important;
+            }
 
-    // Wait for content to load before printing
-    printWindow.onload = () => {
+            .header {
+              text-align: center;
+              margin-bottom: 6px;
+            }
+
+            .header h1 {
+              font-size: 12px;
+              font-weight: bold;
+              margin-bottom: 2px;
+            }
+
+            .header p {
+              font-size: 8px;
+              line-height: 1.2;
+            }
+
+            .section {
+              margin-bottom: 5px;
+            }
+
+            .row {
+              display: flex;
+              justify-content: space-between;
+              font-size: 8px;
+              margin-bottom: 2px;
+            }
+
+            table {
+              width: 100%;
+              border-collapse: collapse;
+              margin-top: 4px;
+              font-size: 8px;
+            }
+
+            th, td {
+              border: 1px solid #000;
+              padding: 2px;
+              vertical-align: top;
+              text-align: left;
+            }
+
+            th {
+              background-color: #f0f0f0;
+              text-align: center;
+              font-weight: bold;
+            }
+
+            tr {
+              page-break-inside: avoid;
+            }
+
+            .footer {
+              text-align: center;
+              margin-top: 8px;
+              font-size: 8px;
+            }
+
+            .signature {
+              border-top: 1px solid #000;
+              width: 100px;
+              margin: 10px auto 0;
+              text-align: center;
+              font-size: 8px;
+            }
+
+            @media print {
+              @page {
+                size: 80mm auto;
+                margin: 4mm;
+              }
+              body {
+                margin: 0;
+                padding: 2mm;
+              }
+            }
+          </style>
+        </head>
+        <body>
+          ${printContent}
+          <div class="signature">
+            Authorized Signature
+          </div>
+        </body>
+      </html>
+    `);
+
+      printWindow.document.close();
+      printWindow.focus();
+      printWindow.print();
       setTimeout(() => {
-        printWindow.focus()
-        printWindow.print()
-
-        // Close window after printing (with delay to ensure print dialog appears)
-        setTimeout(() => {
-          printWindow.close()
-        }, 1000)
-      }, 500)
+        if (!printWindow.closed) printWindow.close();
+      }, 1000);
+    } else {
+      alert("Please allow popups for this website to enable printing.");
     }
-
-    // Fallback if onload doesn't fire
-    setTimeout(() => {
-      if (printWindow && !printWindow.closed) {
-        printWindow.focus()
-        printWindow.print()
-        setTimeout(() => {
-          printWindow.close()
-        }, 1000)
-      }
-    }, 1000)
-  }
-
+  };
   const editPurchaseOrder = (po: PurchaseOrder) => {
     setEditingPO(po)
     setIsEditMode(true)
@@ -647,23 +602,14 @@ export default function PurchaseOrderModule({ onBack }: { onBack: () => void }) 
   }
 
   const convertToPOS = (po: PurchaseOrder) => {
-    // Store the PO data in localStorage for POS to pick up
+
     const posData = {
       items: po.items,
       reference: `PO: ${po.orderNumber}`,
     }
     localStorage.setItem("posPrefilledOrder", JSON.stringify(posData))
-
-    // Navigate to POS
     onBack()
     alert("Purchase Order items have been added to POS. Please switch to the POS tab.")
-  }
-
-  const updatePOStatus = (poId: string, status: "pending" | "completed" | "cancelled") => {
-    const updatedOrders = purchaseOrders.map((po) =>
-      po.id === poId ? { ...po, status, updatedAt: new Date().toISOString() } : po,
-    )
-    savePurchaseOrders(updatedOrders)
   }
 
   if (!dataLoaded) {
@@ -859,7 +805,7 @@ export default function PurchaseOrderModule({ onBack }: { onBack: () => void }) 
                 <div className="relative flex-1">
                   <User className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-4 h-4" />
                   <Input
-                    placeholder="Search suppliers..."
+                    placeholder="Search customers..."
                     value={supplierSearch}
                     onChange={(e) => setSupplierSearch(e.target.value)}
                     className="pl-10 w-full rounded-[9px] text-sm"
@@ -1286,7 +1232,7 @@ export default function PurchaseOrderModule({ onBack }: { onBack: () => void }) 
                             {po.status.toUpperCase()}
                           </Badge>
                           <Badge variant="outline" className="text-xs">
-                            {po.isCashPurchase ? "Cash" : "Supplier"}
+                            {po.isCashPurchase ? "Cash" : "Customer"}
                           </Badge>
                         </div>
                         <div className="text-sm text-gray-600 break-words">

@@ -15,8 +15,6 @@ import ImageUpload from "./image-upload"
 import SalesAnalytics from "./sales-analytics"
 import { DataManager } from "./data-manager"
 import SalesDataManagement from "./sales-data-management"
-// Import the new dashboard component at the top
-import InventoryDashboard from "./inventory-dashboard"
 
 interface SuperCategory {
   id: string
@@ -61,28 +59,21 @@ interface Customer {
 }
 
 export default function AdminPanel({ onBack }: { onBack: () => void }) {
-  // Update the activeTab state to include dashboard
   const [activeTab, setActiveTab] = useState<
-    "dashboard" | "super" | "sub" | "products" | "customers" | "data" | "analytics" | "sales"
-  >("dashboard")
+    "super" | "sub" | "products" | "customers" | "data" | "analytics" | "sales"
+  >("super")
   const [superCategories, setSuperCategories] = useState<SuperCategory[]>([])
   const [subCategories, setSubCategories] = useState<SubCategory[]>([])
   const [products, setProducts] = useState<Product[]>([])
   const [customers, setCustomers] = useState<Customer[]>([])
-
-  // Dialog states
   const [showSuperDialog, setShowSuperDialog] = useState(false)
   const [showSubDialog, setShowSubDialog] = useState(false)
   const [showProductDialog, setShowProductDialog] = useState(false)
   const [showCustomerDialog, setShowCustomerDialog] = useState(false)
-
-  // Edit states
   const [editingSuperCategory, setEditingSuperCategory] = useState<SuperCategory | null>(null)
   const [editingSubCategory, setEditingSubCategory] = useState<SubCategory | null>(null)
   const [editingProduct, setEditingProduct] = useState<Product | null>(null)
   const [editingCustomer, setEditingCustomer] = useState<Customer | null>(null)
-
-  // Form states
   const [productForm, setProductForm] = useState({
     name: "",
     price: 0,
@@ -100,11 +91,7 @@ export default function AdminPanel({ onBack }: { onBack: () => void }) {
     phone: "",
     address: "",
   })
-
-  // Error states
   const [errors, setErrors] = useState<string[]>([])
-
-  // Load data from DataManager on component mount
   useEffect(() => {
     loadData()
   }, [])
@@ -115,33 +102,6 @@ export default function AdminPanel({ onBack }: { onBack: () => void }) {
     setProducts(DataManager.getProducts())
     setCustomers(DataManager.getCustomers())
   }
-
-  // Add this useEffect after the existing loadData useEffect
-  useEffect(() => {
-    // Trigger inventory sync when data changes
-    const handleDataChange = () => {
-      // Trigger a storage event to sync inventory
-      window.dispatchEvent(
-        new StorageEvent("storage", {
-          key: "products",
-          storageArea: localStorage,
-        }),
-      )
-    }
-
-    // Listen for product updates
-    const interval = setInterval(() => {
-      const currentProducts = DataManager.getProducts()
-      if (JSON.stringify(currentProducts) !== JSON.stringify(products)) {
-        setProducts(currentProducts)
-        handleDataChange()
-      }
-    }, 1000)
-
-    return () => clearInterval(interval)
-  }, [products])
-
-  // Super Category CRUD
   const handleSaveSuperCategory = async () => {
     const validationErrors = DataManager.validateSuperCategory(superForm)
     if (validationErrors.length > 0) {
@@ -180,8 +140,6 @@ export default function AdminPanel({ onBack }: { onBack: () => void }) {
     setEditingSuperCategory(null)
     setShowSuperDialog(false)
   }
-
-  // Sub Category CRUD
   const handleSaveSubCategory = async () => {
     const validationErrors = DataManager.validateSubCategory(subForm)
     if (validationErrors.length > 0) {
@@ -220,8 +178,6 @@ export default function AdminPanel({ onBack }: { onBack: () => void }) {
     setEditingSubCategory(null)
     setShowSubDialog(false)
   }
-
-  // Product CRUD
   const handleSaveProduct = async () => {
     const validationErrors = DataManager.validateProduct(productForm)
     if (validationErrors.length > 0) {
@@ -239,14 +195,6 @@ export default function AdminPanel({ onBack }: { onBack: () => void }) {
       loadData()
       resetProductForm()
       setErrors([])
-
-      // Trigger inventory sync
-      window.dispatchEvent(
-        new StorageEvent("storage", {
-          key: "products",
-          storageArea: localStorage,
-        }),
-      )
     } catch (error) {
       console.error("Error saving product:", error)
       setErrors(["Failed to save product"])
@@ -291,8 +239,6 @@ export default function AdminPanel({ onBack }: { onBack: () => void }) {
     setShowProductDialog(true)
     setErrors([])
   }
-
-  // Customer CRUD
   const handleSaveCustomer = async () => {
     const validationErrors = DataManager.validateCustomer(customerForm)
     if (validationErrors.length > 0) {
@@ -304,7 +250,7 @@ export default function AdminPanel({ onBack }: { onBack: () => void }) {
       if (editingCustomer) {
         await DataManager.updateCustomer(editingCustomer.id, customerForm)
       } else {
-        await DataManager.addProduct(customerForm)
+        await DataManager.addCustomer(customerForm)
       }
 
       loadData()
@@ -362,8 +308,6 @@ export default function AdminPanel({ onBack }: { onBack: () => void }) {
     setShowCustomerDialog(true)
     setErrors([])
   }
-
-  // Show analytics view
   if (activeTab === "analytics") {
     return <SalesAnalytics onBack={() => setActiveTab("super")} />
   }
@@ -386,7 +330,7 @@ export default function AdminPanel({ onBack }: { onBack: () => void }) {
         {/* Header */}
         <div className="flex items-center justify-between mb-6">
           <div className="flex items-center gap-4">
-            <Button onClick={onBack} variant="outline" className="rounded-[9px]">
+            <Button onClick={onBack} variant="outline" className="rounded-[9px] bg-transparent">
               <ArrowLeft className="w-4 h-4 mr-2" />
               Back to POS
             </Button>
@@ -409,14 +353,6 @@ export default function AdminPanel({ onBack }: { onBack: () => void }) {
 
         {/* Tabs */}
         <div className="flex flex-wrap gap-2 mb-6">
-          <Button
-            onClick={() => setActiveTab("dashboard")}
-            variant={activeTab === "dashboard" ? "default" : "outline"}
-            className={`rounded-[9px] ${activeTab === "dashboard" ? "bg-yellow-400 text-black hover:bg-yellow-500" : ""}`}
-          >
-            <BarChart3 className="w-4 h-4 mr-2" />
-            Dashboard
-          </Button>
           <Button
             onClick={() => setActiveTab("super")}
             variant={activeTab === "super" ? "default" : "outline"}
@@ -472,13 +408,6 @@ export default function AdminPanel({ onBack }: { onBack: () => void }) {
             Sales Management
           </Button>
         </div>
-
-        {/* Dashboard Tab */}
-        {activeTab === "dashboard" && (
-          <div className="space-y-6">
-            <InventoryDashboard onRefresh={loadData} />
-          </div>
-        )}
 
         {/* Super Categories Tab */}
         {activeTab === "super" && (
@@ -770,13 +699,13 @@ export default function AdminPanel({ onBack }: { onBack: () => void }) {
               />
             </div>
             <div>
-              <Label htmlFor="super-icon">Icon (Emoji) - Optional</Label>
+              <Label htmlFor="super-icon">Icon (Emoji)</Label>
               <Input
                 id="super-icon"
                 value={superForm.icon}
                 onChange={(e) => setSuperForm({ ...superForm, icon: e.target.value })}
                 className="rounded-[9px]"
-                placeholder="🌾 (optional)"
+                placeholder="🌾"
               />
             </div>
             <ImageUpload
@@ -794,7 +723,7 @@ export default function AdminPanel({ onBack }: { onBack: () => void }) {
                 <Save className="w-4 h-4 mr-2" />
                 Save
               </Button>
-              <Button onClick={resetSuperForm} variant="outline" className="rounded-[9px]">
+              <Button onClick={resetSuperForm} variant="outline" className="rounded-[9px] bg-transparent">
                 <X className="w-4 h-4 mr-2" />
                 Cancel
               </Button>
@@ -820,13 +749,13 @@ export default function AdminPanel({ onBack }: { onBack: () => void }) {
               />
             </div>
             <div>
-              <Label htmlFor="sub-icon">Icon (Emoji) - Optional</Label>
+              <Label htmlFor="sub-icon">Icon (Emoji)</Label>
               <Input
                 id="sub-icon"
                 value={subForm.icon}
                 onChange={(e) => setSubForm({ ...subForm, icon: e.target.value })}
                 className="rounded-[9px]"
-                placeholder="🍚 (optional)"
+                placeholder="🍚"
               />
             </div>
             <div>
@@ -862,7 +791,7 @@ export default function AdminPanel({ onBack }: { onBack: () => void }) {
                 <Save className="w-4 h-4 mr-2" />
                 Save
               </Button>
-              <Button onClick={resetSubForm} variant="outline" className="rounded-[9px]">
+              <Button onClick={resetSubForm} variant="outline" className="rounded-[9px] bg-transparent">
                 <X className="w-4 h-4 mr-2" />
                 Cancel
               </Button>
@@ -893,7 +822,6 @@ export default function AdminPanel({ onBack }: { onBack: () => void }) {
                 <Input
                   id="product-price"
                   type="number"
-                  step="0.01"
                   value={productForm.price}
                   onChange={(e) => setProductForm({ ...productForm, price: Number.parseFloat(e.target.value) || 0 })}
                   className="rounded-[9px]"
@@ -918,7 +846,7 @@ export default function AdminPanel({ onBack }: { onBack: () => void }) {
                   value={productForm.unit}
                   onChange={(e) => setProductForm({ ...productForm, unit: e.target.value })}
                   className="rounded-[9px]"
-                  placeholder="kg, pcs, ltr"
+                  placeholder="kg, pack, bottle, etc."
                 />
               </div>
               <div>
@@ -932,7 +860,7 @@ export default function AdminPanel({ onBack }: { onBack: () => void }) {
                     setProductForm({ ...productForm, hamaliValue: Number.parseFloat(e.target.value) || 0 })
                   }
                   className="rounded-[9px]"
-                  placeholder="0.00"
+                  placeholder="Per unit hamali charge"
                 />
               </div>
             </div>
@@ -957,9 +885,9 @@ export default function AdminPanel({ onBack }: { onBack: () => void }) {
             <ImageUpload
               currentImage={productForm.image || undefined}
               onImageChange={(imageData) => setProductForm({ ...productForm, image: imageData || "" })}
-              aspectRatio={1}
+              aspectRatio={4 / 3}
               maxWidth={300}
-              maxHeight={300}
+              maxHeight={225}
             />
             <div className="flex gap-2">
               <Button
@@ -969,7 +897,7 @@ export default function AdminPanel({ onBack }: { onBack: () => void }) {
                 <Save className="w-4 h-4 mr-2" />
                 Save
               </Button>
-              <Button onClick={resetProductForm} variant="outline" className="rounded-[9px]">
+              <Button onClick={resetProductForm} variant="outline" className="rounded-[9px] bg-transparent">
                 <X className="w-4 h-4 mr-2" />
                 Cancel
               </Button>
@@ -1030,7 +958,7 @@ export default function AdminPanel({ onBack }: { onBack: () => void }) {
                 <Save className="w-4 h-4 mr-2" />
                 Save
               </Button>
-              <Button onClick={resetCustomerForm} variant="outline" className="rounded-[9px]">
+              <Button onClick={resetCustomerForm} variant="outline" className="rounded-[9px] bg-transparent">
                 <X className="w-4 h-4 mr-2" />
                 Cancel
               </Button>
