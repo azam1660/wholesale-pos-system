@@ -14,6 +14,7 @@ import {
   Eye,
   Edit,
   Trash2,
+  X,
 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -23,6 +24,7 @@ import { Checkbox } from "@/components/ui/checkbox"
 import { Label } from "@/components/ui/label"
 import { Textarea } from "@/components/ui/textarea"
 import { Badge } from "@/components/ui/badge"
+import { Sheet, SheetContent } from "@/components/ui/sheet"
 import { format } from "date-fns"
 import "jspdf-autotable"
 import { DataManager } from "./data-manager"
@@ -67,6 +69,7 @@ const storeInfo = {
   address: "Jodbhavi Peth, Solapur",
   phone: "9420490692",
 }
+
 const getPOCounter = () => {
   const stored = localStorage.getItem("poCounter")
   return stored ? Number.parseInt(stored) : 1
@@ -99,6 +102,8 @@ export default function PurchaseOrderModule({ onBack }: { onBack: () => void }) 
   const [products, setProducts] = useState<any[]>([])
   const [suppliers, setSuppliers] = useState<Supplier[]>([])
   const [dataLoaded, setDataLoaded] = useState(false)
+  const [showMobileOrderSummary, setShowMobileOrderSummary] = useState(false)
+  const [isMobile, setIsMobile] = useState(false)
   const [supplierForm, setSupplierForm] = useState({
     name: "",
     email: "",
@@ -107,6 +112,18 @@ export default function PurchaseOrderModule({ onBack }: { onBack: () => void }) 
   })
 
   const poRef = useRef<HTMLDivElement>(null)
+
+  // Check if mobile on mount and resize
+  useEffect(() => {
+    const checkScreenSize = () => {
+      setIsMobile(window.innerWidth < 768)
+    }
+
+    checkScreenSize()
+    window.addEventListener("resize", checkScreenSize)
+    return () => window.removeEventListener("resize", checkScreenSize)
+  }, [])
+
   useEffect(() => {
     const loadAllData = async () => {
       try {
@@ -254,7 +271,6 @@ export default function PurchaseOrderModule({ onBack }: { onBack: () => void }) 
 
   const generatePurchaseOrder = () => {
     if (isEditMode && editingPO) {
-
       const updatedPO: PurchaseOrder = {
         ...editingPO,
         date: orderDate,
@@ -272,7 +288,6 @@ export default function PurchaseOrderModule({ onBack }: { onBack: () => void }) 
       savePurchaseOrders(updatedOrders)
       setCurrentPO(updatedPO)
     } else {
-
       const orderNumber = generatePONumber()
       const purchaseOrder: PurchaseOrder = {
         id: Date.now().toString(),
@@ -301,10 +316,10 @@ export default function PurchaseOrderModule({ onBack }: { onBack: () => void }) 
   }
 
   const printPurchaseOrder = () => {
-    if (!poRef.current) return;
+    if (!poRef.current) return
 
-    const printContent = poRef.current.innerHTML;
-    const printWindow = window.open("", "_blank");
+    const printContent = poRef.current.innerHTML
+    const printWindow = window.open("", "_blank")
 
     if (printWindow) {
       printWindow.document.write(`
@@ -442,22 +457,21 @@ export default function PurchaseOrderModule({ onBack }: { onBack: () => void }) 
           </div>
         </body>
       </html>
-    `);
+    `)
 
-      printWindow.document.close();
-      printWindow.focus();
-      printWindow.print();
+      printWindow.document.close()
+      printWindow.focus()
+      printWindow.print()
     } else {
-      alert("Please allow popups for this website to enable printing.");
+      alert("Please allow popups for this website to enable printing.")
     }
-  };
-
+  }
 
   const printThermalPurchaseOrder = () => {
-    if (!poRef.current) return;
+    if (!poRef.current) return
 
-    const printContent = poRef.current.innerHTML;
-    const printWindow = window.open("", "_blank");
+    const printContent = poRef.current.innerHTML
+    const printWindow = window.open("", "_blank")
 
     if (printWindow) {
       printWindow.document.write(`
@@ -570,18 +584,19 @@ export default function PurchaseOrderModule({ onBack }: { onBack: () => void }) 
           </div>
         </body>
       </html>
-    `);
+    `)
 
-      printWindow.document.close();
-      printWindow.focus();
-      printWindow.print();
+      printWindow.document.close()
+      printWindow.focus()
+      printWindow.print()
       setTimeout(() => {
-        if (!printWindow.closed) printWindow.close();
-      }, 1000);
+        if (!printWindow.closed) printWindow.close()
+      }, 1000)
     } else {
-      alert("Please allow popups for this website to enable printing.");
+      alert("Please allow popups for this website to enable printing.")
     }
-  };
+  }
+
   const editPurchaseOrder = (po: PurchaseOrder) => {
     setEditingPO(po)
     setIsEditMode(true)
@@ -602,7 +617,6 @@ export default function PurchaseOrderModule({ onBack }: { onBack: () => void }) 
   }
 
   const convertToPOS = (po: PurchaseOrder) => {
-
     const posData = {
       items: po.items,
       reference: `PO: ${po.orderNumber}`,
@@ -611,6 +625,144 @@ export default function PurchaseOrderModule({ onBack }: { onBack: () => void }) 
     onBack()
     alert("Purchase Order items have been added to POS. Please switch to the POS tab.")
   }
+
+  // Mobile Order Summary Sheet Component
+  const OrderSummarySheet = () => (
+    <Sheet open={showMobileOrderSummary} onOpenChange={setShowMobileOrderSummary}>
+      <SheetContent side="right" className="w-full sm:w-96 p-0">
+        <div className="flex flex-col h-full">
+          <div className="p-4 border-b border-gray-200">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <Package className="w-5 h-5" />
+                <h2 className="text-lg font-bold">
+                  {isEditMode ? `Edit PO: ${editingPO?.orderNumber}` : "Purchase Order"}
+                </h2>
+              </div>
+              <Button variant="ghost" size="sm" onClick={() => setShowMobileOrderSummary(false)} className="p-1">
+                <X className="w-4 h-4" />
+              </Button>
+            </div>
+          </div>
+
+          {orderItems.length === 0 ? (
+            <div className="flex-1 flex items-center justify-center">
+              <p className="text-gray-500 text-sm">No items in order</p>
+            </div>
+          ) : (
+            <div className="flex-1 overflow-y-auto p-4 space-y-3">
+              {orderItems.map((item) => (
+                <Card key={item.id} className="rounded-[9px] border-gray-200">
+                  <CardContent className="p-3">
+                    <div className="space-y-2">
+                      <div className="font-medium text-sm break-words hyphens-auto leading-tight">{item.name}</div>
+
+                      <div className="flex items-center gap-2">
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          onClick={() => updateQuantity(item.id, item.quantity - 1)}
+                          className="w-8 h-8 p-0 rounded-[9px] flex-shrink-0"
+                        >
+                          <Minus className="w-3 h-3" />
+                        </Button>
+                        <Input
+                          type="number"
+                          value={item.quantity}
+                          onChange={(e) => updateQuantity(item.id, Number.parseInt(e.target.value) || 0)}
+                          className="w-16 h-8 text-center rounded-[9px] text-sm"
+                          min="1"
+                        />
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          onClick={() => updateQuantity(item.id, item.quantity + 1)}
+                          className="w-8 h-8 p-0 rounded-[9px] flex-shrink-0"
+                        >
+                          <Plus className="w-3 h-3" />
+                        </Button>
+                        <span className="text-xs text-gray-500 flex-shrink-0">{item.unit}</span>
+                      </div>
+
+                      <div className="flex justify-between items-center">
+                        <span className="text-sm text-gray-600">Qty: {item.quantity}</span>
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          onClick={() => removeFromOrder(item.id)}
+                          className="w-7 h-7 p-0 rounded-[9px] text-red-500 hover:text-red-700 flex-shrink-0"
+                        >
+                          <Trash2 className="w-3 h-3" />
+                        </Button>
+                      </div>
+                    </div>
+                  </CardContent>
+                </Card>
+              ))}
+            </div>
+          )}
+
+          {/* Reference and Date Inputs */}
+          <div className="border-t border-gray-200 p-4 space-y-3">
+            <div>
+              <Label className="text-sm font-medium">Reference (Optional)</Label>
+              <Input
+                placeholder="Reference number or note"
+                value={orderReference}
+                onChange={(e) => setOrderReference(e.target.value)}
+                className="rounded-[9px]"
+              />
+            </div>
+            <div>
+              <Label className="text-sm font-medium">Order Date</Label>
+              <Input
+                type="date"
+                value={orderDate}
+                onChange={(e) => setOrderDate(e.target.value)}
+                className="rounded-[9px]"
+              />
+            </div>
+            <div>
+              <Label className="text-sm font-medium">Notes (Optional)</Label>
+              <Textarea
+                placeholder="Additional notes"
+                value={orderNotes}
+                onChange={(e) => setOrderNotes(e.target.value)}
+                className="rounded-[9px]"
+                rows={2}
+              />
+            </div>
+          </div>
+
+          {/* Action Buttons */}
+          <div className="border-t border-gray-200 p-4 space-y-3">
+            <div className="bg-white p-3 rounded-[9px] border">
+              <div className="text-sm font-bold">Total Items: {orderItems.length}</div>
+              <div className="text-xs text-gray-600">
+                Total Quantity: {orderItems.reduce((sum, item) => sum + item.quantity, 0)}
+              </div>
+            </div>
+            <Button
+              onClick={clearCart}
+              variant="outline"
+              className="w-full rounded-[9px] border-gray-300 bg-transparent"
+              disabled={orderItems.length === 0}
+            >
+              {isEditMode ? "Cancel Edit" : "Clear Order"}
+            </Button>
+            <Button
+              onClick={generatePurchaseOrder}
+              className="w-full bg-blue-500 hover:bg-blue-600 text-white rounded-[9px] font-medium"
+              disabled={orderItems.length === 0 || (!isCashPurchase && !selectedSupplier)}
+            >
+              <FileText className="w-4 h-4 mr-2" />
+              {isEditMode ? "Update Purchase Order" : "Generate Purchase Order"}
+            </Button>
+          </div>
+        </div>
+      </SheetContent>
+    </Sheet>
+  )
 
   if (!dataLoaded) {
     return (
@@ -758,241 +910,153 @@ export default function PurchaseOrderModule({ onBack }: { onBack: () => void }) 
   }
 
   return (
-    <div className="min-h-screen bg-white">
-      <div className="flex flex-col lg:flex-row h-[calc(100vh-200px)]">
-        {/* Main Content */}
-        <div className="flex-1 flex flex-col">
-          {/* Header */}
-          <div className="flex items-center justify-between p-4 border-b border-gray-200">
-            <div className="flex items-center gap-4">
-              <Button onClick={onBack} variant="outline" className="rounded-[9px] bg-transparent">
-                <ArrowLeft className="w-4 h-4 mr-2" />
-                Back to POS
-              </Button>
-              <h1 className="text-xl font-bold">Purchase Orders</h1>
-            </div>
-            <Button
-              onClick={() => setShowPOHistory(true)}
-              variant="outline"
-              className="rounded-[9px] border-gray-300 bg-transparent"
-            >
-              <FileText className="w-4 h-4 mr-2" />
-              PO History
-            </Button>
-          </div>
+    <div className="min-h-screen bg-white relative">
+      {/* Grid Background */}
+      <div
+        className="absolute inset-0 opacity-30"
+        style={{
+          backgroundImage: `
+            linear-gradient(rgba(0,0,0,0.03) 1px, transparent 1px),
+            linear-gradient(90deg, rgba(0,0,0,0.03) 1px, transparent 1px)
+          `,
+          backgroundSize: "20px 20px",
+        }}
+      />
 
-          {/* Supplier Selection */}
-          <div className="flex flex-col gap-3 sm:gap-4 w-full p-4 border-b border-gray-200">
-            <div className="flex items-center space-x-2">
-              <Checkbox
-                id="cash-purchase"
-                checked={isCashPurchase}
-                onCheckedChange={(checked) => {
-                  setIsCashPurchase(checked as boolean)
-                  if (checked) {
-                    setSelectedSupplier("")
-                    setSupplierSearch("")
-                  }
-                }}
-              />
-              <label htmlFor="cash-purchase" className="text-sm font-medium">
-                Cash Purchase
-              </label>
-            </div>
-
-            {!isCashPurchase && (
-              <div className="flex gap-2 w-full">
-                <div className="relative flex-1">
-                  <User className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-4 h-4" />
-                  <Input
-                    placeholder="Search customers..."
-                    value={supplierSearch}
-                    onChange={(e) => setSupplierSearch(e.target.value)}
-                    className="pl-10 w-full rounded-[9px] text-sm"
-                  />
-                  {supplierSearch && filteredSuppliers.length > 0 && (
-                    <div className="absolute top-full left-0 right-0 bg-white border border-gray-200 rounded-[9px] mt-1 max-h-40 overflow-y-auto z-20 shadow-lg">
-                      {filteredSuppliers.map((supplier) => (
-                        <button
-                          key={supplier.id}
-                          onClick={() => {
-                            setSelectedSupplier(supplier.id)
-                            setSupplierSearch("")
-                          }}
-                          className="w-full text-left p-3 hover:bg-gray-50 border-b border-gray-100 last:border-b-0"
-                        >
-                          <div className="font-medium text-sm break-words">{supplier.name}</div>
-                          <div className="text-xs text-gray-500 break-words">{supplier.phone}</div>
-                        </button>
-                      ))}
-                    </div>
-                  )}
-                </div>
+      <div className="relative z-10">
+        <div className="flex flex-col">
+          {/* Main Content */}
+          <div className="flex-1 flex flex-col">
+            {/* Header */}
+            <div className="flex items-center justify-between p-4 border-b border-gray-200">
+              <div className="flex items-center gap-4">
+                <Button onClick={onBack} variant="outline" className="rounded-[9px] bg-transparent">
+                  <ArrowLeft className="w-4 h-4 mr-2" />
+                  Back to POS
+                </Button>
+                <h1 className="text-xl font-bold">Purchase Orders</h1>
+              </div>
+              <div className="flex items-center gap-2">
+                {/* Mobile Order Summary Button */}
                 <Button
-                  onClick={() => setShowAddSupplier(true)}
-                  className="bg-blue-500 hover:bg-blue-600 text-white rounded-[9px] flex-shrink-0"
+                  onClick={() => setShowMobileOrderSummary(true)}
+                  className="bg-blue-500 hover:bg-blue-600 text-white rounded-[9px] relative"
                   size="sm"
                 >
-                  <UserPlus className="w-4 h-4" />
+                  <Package className="w-4 h-4" />
+                  {orderItems.length > 0 && (
+                    <Badge className="absolute -top-2 -right-2 bg-red-500 text-white text-xs min-w-[20px] h-5 flex items-center justify-center rounded-full">
+                      {orderItems.length}
+                    </Badge>
+                  )}
+                </Button>
+                <Button
+                  onClick={() => setShowPOHistory(true)}
+                  variant="outline"
+                  className="rounded-[9px] border-gray-300 bg-transparent"
+                >
+                  <FileText className="w-4 h-4 mr-2" />
+                  PO History
                 </Button>
               </div>
-            )}
-
-            {selectedSupplierData && !isCashPurchase && (
-              <Card className="rounded-[11px] border-gray-200">
-                <CardContent className="p-3">
-                  <div className="flex items-center justify-between">
-                    <div className="flex-1 min-w-0">
-                      <div className="text-sm font-medium break-words">{selectedSupplierData.name}</div>
-                      <div className="text-xs text-gray-500 break-words">{selectedSupplierData.phone}</div>
-                    </div>
-                  </div>
-                </CardContent>
-              </Card>
-            )}
-
-            {isCashPurchase && (
-              <Card className="rounded-[11px] border-blue-200 bg-blue-50">
-                <CardContent className="p-3">
-                  <div className="flex items-center justify-between">
-                    <div className="flex-1 min-w-0">
-                      <div className="text-sm font-medium text-blue-800">CASH PURCHASE</div>
-                      <div className="text-xs text-blue-600">No supplier required</div>
-                    </div>
-                  </div>
-                </CardContent>
-              </Card>
-            )}
-          </div>
-
-          {/* Product Selection Area */}
-          <main className="flex-1 overflow-y-auto">
-            {currentView === "super" && renderSuperCategories()}
-            {currentView === "sub" && renderSubCategories()}
-            {currentView === "products" && renderProducts()}
-          </main>
-        </div>
-
-        {/* Order Summary Panel */}
-        <div className="w-full lg:w-96 bg-gray-50 border-t lg:border-t-0 lg:border-l border-gray-200 flex flex-col">
-          <div className="p-4 lg:p-6 border-b border-gray-200">
-            <div className="flex items-center gap-2 mb-4">
-              <Package className="w-5 h-5" />
-              <h2 className="text-lg font-bold">
-                {isEditMode ? `Edit PO: ${editingPO?.orderNumber}` : "Purchase Order"}
-              </h2>
             </div>
 
-            {orderItems.length === 0 ? (
-              <p className="text-gray-500 text-sm">No items in order</p>
-            ) : (
-              <div className="space-y-3 max-h-48 lg:max-h-96 overflow-y-auto">
-                {orderItems.map((item) => (
-                  <Card key={item.id} className="rounded-[9px] border-gray-200">
-                    <CardContent className="p-3">
-                      <div className="space-y-2">
-                        <div className="font-medium text-sm break-words hyphens-auto leading-tight">{item.name}</div>
+            {/* Supplier Selection */}
+            <div className="flex flex-col gap-3 sm:gap-4 w-full p-4 border-b border-gray-200">
+              <div className="flex items-center space-x-2">
+                <Checkbox
+                  id="cash-purchase"
+                  checked={isCashPurchase}
+                  onCheckedChange={(checked) => {
+                    setIsCashPurchase(checked as boolean)
+                    if (checked) {
+                      setSelectedSupplier("")
+                      setSupplierSearch("")
+                    }
+                  }}
+                />
+                <label htmlFor="cash-purchase" className="text-sm font-medium">
+                  Cash Purchase
+                </label>
+              </div>
 
-                        <div className="flex items-center gap-2">
-                          <Button
-                            size="sm"
-                            variant="outline"
-                            onClick={() => updateQuantity(item.id, item.quantity - 1)}
-                            className="w-8 h-8 p-0 rounded-[9px] flex-shrink-0"
+              {!isCashPurchase && (
+                <div className="flex gap-2 w-full">
+                  <div className="relative flex-1">
+                    <User className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-4 h-4" />
+                    <Input
+                      placeholder="Search customers..."
+                      value={supplierSearch}
+                      onChange={(e) => setSupplierSearch(e.target.value)}
+                      className="pl-10 w-full rounded-[9px] text-sm"
+                    />
+                    {supplierSearch && filteredSuppliers.length > 0 && (
+                      <div className="absolute top-full left-0 right-0 bg-white border border-gray-200 rounded-[9px] mt-1 max-h-40 overflow-y-auto z-20 shadow-lg">
+                        {filteredSuppliers.map((supplier) => (
+                          <button
+                            key={supplier.id}
+                            onClick={() => {
+                              setSelectedSupplier(supplier.id)
+                              setSupplierSearch("")
+                            }}
+                            className="w-full text-left p-3 hover:bg-gray-50 border-b border-gray-100 last:border-b-0"
                           >
-                            <Minus className="w-3 h-3" />
-                          </Button>
-                          <Input
-                            type="number"
-                            value={item.quantity}
-                            onChange={(e) => updateQuantity(item.id, Number.parseInt(e.target.value) || 0)}
-                            className="w-16 h-8 text-center rounded-[9px] text-sm"
-                            min="1"
-                          />
-                          <Button
-                            size="sm"
-                            variant="outline"
-                            onClick={() => updateQuantity(item.id, item.quantity + 1)}
-                            className="w-8 h-8 p-0 rounded-[9px] flex-shrink-0"
-                          >
-                            <Plus className="w-3 h-3" />
-                          </Button>
-                          <span className="text-xs text-gray-500 flex-shrink-0">{item.unit}</span>
-                        </div>
-
-                        <div className="flex justify-between items-center">
-                          <span className="text-sm text-gray-600">Qty: {item.quantity}</span>
-                          <Button
-                            size="sm"
-                            variant="outline"
-                            onClick={() => removeFromOrder(item.id)}
-                            className="w-7 h-7 p-0 rounded-[9px] text-red-500 hover:text-red-700 flex-shrink-0"
-                          >
-                            <Trash2 className="w-3 h-3" />
-                          </Button>
-                        </div>
+                            <div className="font-medium text-sm break-words">{supplier.name}</div>
+                            <div className="text-xs text-gray-500 break-words">{supplier.phone}</div>
+                          </button>
+                        ))}
                       </div>
-                    </CardContent>
-                  </Card>
-                ))}
-              </div>
-            )}
-          </div>
+                    )}
+                  </div>
+                  <Button
+                    onClick={() => setShowAddSupplier(true)}
+                    className="bg-blue-500 hover:bg-blue-600 text-white rounded-[9px] flex-shrink-0"
+                    size="sm"
+                  >
+                    <UserPlus className="w-4 h-4" />
+                  </Button>
+                </div>
+              )}
 
-          {/* Reference and Date Inputs */}
-          <div className="p-4 lg:p-6 border-b border-gray-200">
-            <div className="space-y-3">
-              <div>
-                <Label className="text-sm font-medium">Reference (Optional)</Label>
-                <Input
-                  placeholder="Reference number or note"
-                  value={orderReference}
-                  onChange={(e) => setOrderReference(e.target.value)}
-                  className="rounded-[9px]"
-                />
-              </div>
-              <div>
-                <Label className="text-sm font-medium">Order Date</Label>
-                <Input
-                  type="date"
-                  value={orderDate}
-                  onChange={(e) => setOrderDate(e.target.value)}
-                  className="rounded-[9px]"
-                />
-              </div>
-              <div>
-                <Label className="text-sm font-medium">Notes (Optional)</Label>
-                <Textarea
-                  placeholder="Additional notes"
-                  value={orderNotes}
-                  onChange={(e) => setOrderNotes(e.target.value)}
-                  className="rounded-[9px]"
-                />
-              </div>
+              {selectedSupplierData && !isCashPurchase && (
+                <Card className="rounded-[11px] border-gray-200">
+                  <CardContent className="p-3">
+                    <div className="flex items-center justify-between">
+                      <div className="flex-1 min-w-0">
+                        <div className="text-sm font-medium break-words">{selectedSupplierData.name}</div>
+                        <div className="text-xs text-gray-500 break-words">{selectedSupplierData.phone}</div>
+                      </div>
+                    </div>
+                  </CardContent>
+                </Card>
+              )}
+
+              {isCashPurchase && (
+                <Card className="rounded-[11px] border-blue-200 bg-blue-50">
+                  <CardContent className="p-3">
+                    <div className="flex items-center justify-between">
+                      <div className="flex-1 min-w-0">
+                        <div className="text-sm font-medium text-blue-800">CASH PURCHASE</div>
+                        <div className="text-xs text-blue-600">No supplier required</div>
+                      </div>
+                    </div>
+                  </CardContent>
+                </Card>
+              )}
             </div>
-          </div>
 
-          {/* Action Buttons */}
-          <div className="p-4 lg:p-6 space-y-3">
-            <Button
-              onClick={clearCart}
-              variant="outline"
-              className="w-full rounded-[9px] border-gray-300 bg-transparent"
-              disabled={orderItems.length === 0}
-            >
-              {isEditMode ? "Cancel Edit" : "Clear Order"}
-            </Button>
-            <Button
-              onClick={generatePurchaseOrder}
-              className="w-full bg-blue-500 hover:bg-blue-600 text-white rounded-[9px] font-medium"
-              disabled={orderItems.length === 0 || (!isCashPurchase && !selectedSupplier)}
-            >
-              <FileText className="w-4 h-4 mr-2" />
-              {isEditMode ? "Update Purchase Order" : "Generate Purchase Order"}
-            </Button>
+            {/* Product Selection Area */}
+            <main className="flex-1 overflow-y-auto">
+              {currentView === "super" && renderSuperCategories()}
+              {currentView === "sub" && renderSubCategories()}
+              {currentView === "products" && renderProducts()}
+            </main>
           </div>
         </div>
       </div>
+
+      {/* Order Summary Sheet */}
+      <OrderSummarySheet />
 
       {/* Add Supplier Dialog */}
       <Dialog open={showAddSupplier} onOpenChange={setShowAddSupplier}>

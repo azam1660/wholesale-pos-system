@@ -30,9 +30,11 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Alert, AlertTitle, AlertDescription } from "@/components/ui/alert"
 import { Badge } from "@/components/ui/badge"
 import { Textarea } from "@/components/ui/textarea"
+import { Sheet, SheetContent } from "@/components/ui/sheet"
 import { format } from "date-fns"
 import "jspdf-autotable"
 import { DataManager } from "./data-manager"
+
 declare module "jspdf" {
   interface jsPDF {
     autoTable: (options: any) => jsPDF
@@ -116,7 +118,6 @@ const STORAGE_KEYS = {
 }
 
 export default function InventoryManagement() {
-
   const [inventoryItems, setInventoryItems] = useState<InventoryItem[]>([])
   const [stockTransactions, setStockTransactions] = useState<StockTransaction[]>([])
   const [transactionBatches, setTransactionBatches] = useState<TransactionBatch[]>([])
@@ -145,6 +146,8 @@ export default function InventoryManagement() {
   const [showBatchDetailsDialog, setShowBatchDetailsDialog] = useState(false)
   const [selectedItem, setSelectedItem] = useState<InventoryItem | null>(null)
   const [selectedBatch, setSelectedBatch] = useState<TransactionBatch | null>(null)
+  const [showMobileTransactionSummary, setShowMobileTransactionSummary] = useState(false)
+  const [isMobile, setIsMobile] = useState(false)
   const [itemForm, setItemForm] = useState({
     productId: "",
     openingStock: 0,
@@ -160,14 +163,28 @@ export default function InventoryManagement() {
   const [lastProcessedBatch, setLastProcessedBatch] = useState<any>(null)
   const [showTransactionReceipt, setShowTransactionReceipt] = useState(false)
   const reportRef = useRef<HTMLDivElement>(null)
+
+  // Check if mobile on mount and resize
+  useEffect(() => {
+    const checkScreenSize = () => {
+      const width = window.innerWidth
+      setIsMobile(width < 768) // md breakpoint
+    }
+
+    checkScreenSize()
+    window.addEventListener("resize", checkScreenSize)
+    return () => window.removeEventListener("resize", checkScreenSize)
+  }, [])
+
   useEffect(() => {
     loadData()
   }, [])
+
   useEffect(() => {
     applyFilters()
   }, [inventoryItems, searchQuery, categoryFilter, stockFilter])
-  useEffect(() => {
 
+  useEffect(() => {
     const handleStorageChange = (e: StorageEvent) => {
       if (
         e.key === "products" ||
@@ -182,8 +199,8 @@ export default function InventoryManagement() {
     window.addEventListener("storage", handleStorageChange)
     return () => window.removeEventListener("storage", handleStorageChange)
   }, [])
-  const loadData = () => {
 
+  const loadData = () => {
     const storedItems = localStorage.getItem(STORAGE_KEYS.INVENTORY_ITEMS)
     let currentInventoryItems: InventoryItem[] = []
     if (storedItems) {
@@ -199,6 +216,7 @@ export default function InventoryManagement() {
     if (storedBatches) {
       setTransactionBatches(JSON.parse(storedBatches))
     }
+
     const productsData = DataManager.getProducts()
     const subCategoriesData = DataManager.getSubCategories()
     const superCategoriesData = DataManager.getSuperCategories()
@@ -206,6 +224,7 @@ export default function InventoryManagement() {
     setProducts(productsData)
     setSubCategories(subCategoriesData)
     setSuperCategories(superCategoriesData)
+
     const updatedInventoryItems = currentInventoryItems.map((item) => {
       if (item.category === "Unknown" || !item.category) {
         const product = productsData.find((p) => p.id === item.productId)
@@ -220,20 +239,23 @@ export default function InventoryManagement() {
       }
       return item
     })
+
     if (JSON.stringify(updatedInventoryItems) !== JSON.stringify(currentInventoryItems)) {
       saveInventoryItems(updatedInventoryItems)
     } else {
       setInventoryItems(updatedInventoryItems)
     }
+
     syncInventoryWithPOSData(productsData, updatedInventoryItems)
   }
+
   const syncInventoryWithPOSData = (productsData: any[], currentInventoryItems: InventoryItem[]) => {
     const sales = DataManager.getSales()
     const inventoryMap = new Map(currentInventoryItems.map((item) => [item.productId, item]))
     let hasChanges = false
+
     for (const product of productsData) {
       if (!inventoryMap.has(product.id)) {
-
         const subCategory = subCategories.find((c) => c.id === product.subCategoryId)
         const newInventoryItem: InventoryItem = {
           id: generateId(),
@@ -254,7 +276,6 @@ export default function InventoryManagement() {
         inventoryMap.set(product.id, newInventoryItem)
         hasChanges = true
       } else {
-
         const inventoryItem = inventoryMap.get(product.id)
         if (inventoryItem) {
           let itemChanged = false
@@ -271,6 +292,7 @@ export default function InventoryManagement() {
             inventoryItem.closingStock = product.stock
             itemChanged = true
           }
+
           if (itemChanged) {
             inventoryItem.lastUpdated = new Date().toISOString()
             hasChanges = true
@@ -278,6 +300,7 @@ export default function InventoryManagement() {
         }
       }
     }
+
     if (hasChanges) {
       DataManager.setInventoryItems(currentInventoryItems)
     }
@@ -303,13 +326,16 @@ export default function InventoryManagement() {
 
   const applyFilters = () => {
     let filtered = [...inventoryItems]
+
     if (searchQuery.trim()) {
       const query = searchQuery.toLowerCase()
       filtered = filtered.filter((item) => item.productName.toLowerCase().includes(query))
     }
+
     if (categoryFilter !== "all") {
       filtered = filtered.filter((item) => item.category === categoryFilter)
     }
+
     if (stockFilter === "low") {
       filtered = filtered.filter((item) => item.closingStock <= item.reorderLevel && item.closingStock > 0)
     } else if (stockFilter === "out") {
@@ -317,6 +343,7 @@ export default function InventoryManagement() {
     } else if (stockFilter === "negative") {
       filtered = filtered.filter((item) => item.closingStock < 0)
     }
+
     filtered.sort((a, b) => {
       const dateA = new Date(a.lastUpdated).getTime()
       const dateB = new Date(b.lastUpdated).getTime()
@@ -336,6 +363,7 @@ export default function InventoryManagement() {
     const timeStr = format(date, "HHmmss")
     return `${type.toUpperCase()}-${dateStr}-${timeStr}`
   }
+
   const handleSuperCategorySelect = (categoryId: string) => {
     setSelectedSuperCategory(categoryId)
     setSelectedSubCategory("")
@@ -390,23 +418,24 @@ export default function InventoryManagement() {
   const clearTransactionItems = () => {
     setTransactionItems([])
   }
+
   const processTransaction = async () => {
     if (transactionItems.length === 0) return
 
     try {
       if (editingBatchId) {
-
         const oldBatch = transactionBatches.find((b) => b.id === editingBatchId)
         if (!oldBatch) {
           alert("Original batch not found.")
           return
         }
+
         const oldTransactions = stockTransactions.filter((t) => t.batchId === editingBatchId)
         const remainingTransactions = stockTransactions.filter((t) => t.batchId !== editingBatchId)
+
         for (const oldTransaction of oldTransactions) {
           const inventoryItem = inventoryItems.find((item) => item.productId === oldTransaction.productId)
           if (inventoryItem) {
-
             const updatedItem = { ...inventoryItem }
             switch (oldTransaction.type) {
               case "purchase":
@@ -423,10 +452,12 @@ export default function InventoryManagement() {
                 break
             }
             updatedItem.lastUpdated = new Date().toISOString()
+
             const updatedInventory = inventoryItems.map((item) =>
               item.productId === oldTransaction.productId ? updatedItem : item,
             )
             saveInventoryItems(updatedInventory)
+
             const product = products.find((p) => p.id === oldTransaction.productId)
             if (product) {
               let stockChange = 0
@@ -445,6 +476,7 @@ export default function InventoryManagement() {
             }
           }
         }
+
         const batchId = oldBatch.id
         const batchNumber = oldBatch.batchNumber
         const newTransactions: StockTransaction[] = []
@@ -465,6 +497,7 @@ export default function InventoryManagement() {
           }
           newTransactions.push(newTransaction)
           updateInventoryFromTransaction(newTransaction)
+
           const product = products.find((p) => p.id === item.id)
           if (product) {
             let newStock = product.stock
@@ -478,6 +511,7 @@ export default function InventoryManagement() {
             await DataManager.updateProductStock(product.id, newStock)
           }
         }
+
         const updatedBatch: TransactionBatch = {
           ...oldBatch,
           type: transactionType,
@@ -493,11 +527,13 @@ export default function InventoryManagement() {
           totalQuantity: transactionItems.reduce((sum, item) => sum + item.quantity, 0),
           notes: `Updated ${transactionType} batch`,
         }
+
         const updatedBatches = transactionBatches.map((batch) => (batch.id === batchId ? updatedBatch : batch))
         saveTransactionBatches(updatedBatches)
 
         const updatedTransactions = [...remainingTransactions, ...newTransactions]
         saveStockTransactions(updatedTransactions)
+
         setProducts(DataManager.getProducts())
         setLastProcessedBatch(updatedBatch)
         setShowTransactionReceipt(true)
@@ -511,11 +547,12 @@ export default function InventoryManagement() {
         setEditingBatchId(null)
         return
       }
+
       const batchId = generateId()
       const batchNumber = generateBatchNumber(transactionType)
       const newTransactions: StockTransaction[] = []
-      for (const item of transactionItems) {
 
+      for (const item of transactionItems) {
         const newTransaction: StockTransaction = {
           id: generateId(),
           transactionNumber: `${batchNumber}-${item.id.slice(-4)}`,
@@ -531,6 +568,7 @@ export default function InventoryManagement() {
         }
         newTransactions.push(newTransaction)
         updateInventoryFromTransaction(newTransaction)
+
         const product = products.find((p) => p.id === item.id)
         if (product) {
           let newStock = product.stock
@@ -544,6 +582,7 @@ export default function InventoryManagement() {
           await DataManager.updateProductStock(product.id, newStock)
         }
       }
+
       const newBatch: TransactionBatch = {
         id: batchId,
         batchNumber: batchNumber,
@@ -561,11 +600,13 @@ export default function InventoryManagement() {
         createdAt: new Date().toISOString(),
         notes: `${transactionType.charAt(0).toUpperCase() + transactionType.slice(1)} batch transaction`,
       }
+
       const updatedTransactions = [...stockTransactions, ...newTransactions]
       saveStockTransactions(updatedTransactions)
 
       const updatedBatches = [...transactionBatches, newBatch]
       saveTransactionBatches(updatedBatches)
+
       setProducts(DataManager.getProducts())
       setLastProcessedBatch(newBatch)
       setShowTransactionReceipt(true)
@@ -585,8 +626,10 @@ export default function InventoryManagement() {
 
   const handleAddInventoryItem = () => {
     if (!itemForm.productId) return
+
     const product = products.find((p) => p.id === itemForm.productId)
     if (!product) return
+
     const subCategory = subCategories.find((c) => c.id === product.subCategoryId)
     const categoryName = subCategory?.name || "Unknown"
 
@@ -605,6 +648,7 @@ export default function InventoryManagement() {
       lastUpdated: new Date().toISOString(),
       notes: itemForm.notes,
     }
+
     if (itemForm.openingStock > 0) {
       const openingTransaction: StockTransaction = {
         id: generateId(),
@@ -618,12 +662,14 @@ export default function InventoryManagement() {
         notes: "Initial opening stock entry",
         createdAt: new Date().toISOString(),
       }
+
       const updatedTransactions = [...stockTransactions, openingTransaction]
       saveStockTransactions(updatedTransactions)
     }
 
     const updatedItems = [...inventoryItems, newItem]
     saveInventoryItems(updatedItems)
+
     setItemForm({
       productId: "",
       openingStock: 0,
@@ -662,6 +708,7 @@ export default function InventoryManagement() {
   const deleteInventoryItem = (itemId: string) => {
     const updatedItems = inventoryItems.filter((item) => item.id !== itemId)
     saveInventoryItems(updatedItems)
+
     const updatedTransactions = stockTransactions.filter((t) => {
       const item = inventoryItems.find((i) => i.id === itemId)
       return item ? t.productId !== item.productId : true
@@ -672,13 +719,16 @@ export default function InventoryManagement() {
   const deleteBatch = (batchId: string) => {
     const batch = transactionBatches.find((b) => b.id === batchId)
     if (!batch) return
+
     const batchTransactions = stockTransactions.filter((t) => t.batchId === batchId)
+
     for (const transaction of batchTransactions) {
       const reverseTransaction = {
         ...transaction,
         quantity: -transaction.quantity,
       }
       updateInventoryFromTransaction(reverseTransaction)
+
       const product = products.find((p) => p.id === transaction.productId)
       if (product) {
         let stockChange = 0
@@ -696,25 +746,160 @@ export default function InventoryManagement() {
         DataManager.updateProductStock(product.id, product.stock + stockChange)
       }
     }
+
     const updatedBatches = transactionBatches.filter((b) => b.id !== batchId)
     saveTransactionBatches(updatedBatches)
 
     const updatedTransactions = stockTransactions.filter((t) => t.batchId !== batchId)
     saveStockTransactions(updatedTransactions)
+
     setProducts(DataManager.getProducts())
   }
 
   const deleteTransaction = (transactionId: string) => {
     const transaction = stockTransactions.find((t) => t.id === transactionId)
     if (!transaction) return
+
     const reverseTransaction = {
       ...transaction,
       quantity: -transaction.quantity,
     }
     updateInventoryFromTransaction(reverseTransaction)
+
     const updatedTransactions = stockTransactions.filter((t) => t.id !== transactionId)
     saveStockTransactions(updatedTransactions)
   }
+
+  // Mobile Transaction Summary Sheet Component
+  const MobileTransactionSummarySheet = () => (
+    <Sheet open={showMobileTransactionSummary} onOpenChange={setShowMobileTransactionSummary}>
+      <SheetContent side="right" className="w-full sm:w-96 p-0">
+        <div className="flex flex-col h-full">
+          <div className="p-4 border-b border-gray-200">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <Package className="w-5 h-5" />
+                <h2 className="text-lg font-bold">
+                  {editingBatchId
+                    ? "Edit Transaction"
+                    : `${transactionType.charAt(0).toUpperCase() + transactionType.slice(1)} Transaction`}
+                </h2>
+              </div>
+              <Button variant="ghost" size="sm" onClick={() => setShowMobileTransactionSummary(false)} className="p-1">
+                <X className="w-4 h-4" />
+              </Button>
+            </div>
+          </div>
+
+          {transactionItems.length === 0 ? (
+            <div className="flex-1 flex items-center justify-center">
+              <p className="text-gray-500 text-sm">No items selected</p>
+            </div>
+          ) : (
+            <div className="flex-1 overflow-y-auto p-4 space-y-3">
+              {transactionItems.map((item) => (
+                <Card key={item.id} className="rounded-[9px] border-gray-200">
+                  <CardContent className="p-3">
+                    <div className="space-y-2">
+                      <div className="font-medium text-sm break-words hyphens-auto leading-tight">{item.name}</div>
+
+                      <div className="flex items-center gap-2">
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          onClick={() => updateTransactionQuantity(item.id, item.quantity - 1)}
+                          className="w-8 h-8 p-0 rounded-[9px] flex-shrink-0"
+                        >
+                          <Minus className="w-3 h-3" />
+                        </Button>
+                        <Input
+                          type="number"
+                          value={item.quantity}
+                          onChange={(e) => updateTransactionQuantity(item.id, Number.parseInt(e.target.value) || 0)}
+                          className="w-16 h-8 text-center rounded-[9px] text-sm"
+                          min="1"
+                        />
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          onClick={() => updateTransactionQuantity(item.id, item.quantity + 1)}
+                          className="w-8 h-8 p-0 rounded-[9px] flex-shrink-0"
+                        >
+                          <Plus className="w-3 h-3" />
+                        </Button>
+                        <span className="text-xs text-gray-500 flex-shrink-0">{item.unit}</span>
+                      </div>
+
+                      <div className="flex justify-between items-center">
+                        <span className="text-sm text-gray-600">Qty: {item.quantity}</span>
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          onClick={() => removeFromTransaction(item.id)}
+                          className="w-7 h-7 p-0 rounded-[9px] text-red-500 hover:text-red-700 flex-shrink-0"
+                        >
+                          <Trash2 className="w-3 h-3" />
+                        </Button>
+                      </div>
+                    </div>
+                  </CardContent>
+                </Card>
+              ))}
+            </div>
+          )}
+
+          {/* Reference and Date Inputs */}
+          <div className="border-t border-gray-200 p-4 space-y-3">
+            <div>
+              <Label className="text-sm font-medium">Reference (Optional)</Label>
+              <Input
+                placeholder="Reference number or note"
+                value={transactionReference}
+                onChange={(e) => setTransactionReference(e.target.value)}
+                className="rounded-[9px]"
+              />
+            </div>
+            <div>
+              <Label className="text-sm font-medium">Transaction Date</Label>
+              <Input
+                type="date"
+                value={transactionDate}
+                onChange={(e) => setTransactionDate(e.target.value)}
+                className="rounded-[9px]"
+              />
+            </div>
+          </div>
+
+          {/* Action Buttons */}
+          <div className="border-t border-gray-200 p-4 space-y-3">
+            <div className="bg-white p-3 rounded-[9px] border">
+              <div className="text-sm font-bold">Total Items: {transactionItems.length}</div>
+              <div className="text-xs text-gray-600">
+                Total Quantity: {transactionItems.reduce((sum, item) => sum + item.quantity, 0)}
+              </div>
+            </div>
+            <Button
+              onClick={clearTransactionItems}
+              variant="outline"
+              className="w-full rounded-[9px] border-gray-300 bg-transparent"
+              disabled={transactionItems.length === 0}
+            >
+              Clear Items
+            </Button>
+            <Button
+              onClick={processTransaction}
+              className="w-full bg-yellow-500 hover:bg-yellow-600 text-white rounded-[9px] font-medium"
+              disabled={transactionItems.length === 0}
+            >
+              {editingBatchId ? "Update" : "Process"}{" "}
+              {transactionType.charAt(0).toUpperCase() + transactionType.slice(1)}
+            </Button>
+          </div>
+        </div>
+      </SheetContent>
+    </Sheet>
+  )
+
   const renderSuperCategories = () => {
     if (superCategories.length === 0) {
       return (
@@ -889,22 +1074,27 @@ export default function InventoryManagement() {
       </div>
     )
   }
+
   const generateReport = () => {
     let reportData: any[] = []
     let title = ""
     const totalValue = 0
+
     const startDate = new Date(reportForm.startDate)
     startDate.setHours(0, 0, 0, 0)
     const endDate = new Date(reportForm.endDate)
     endDate.setHours(23, 59, 59, 999)
+
     const filterByCategory = (item: InventoryItem) => {
       if (reportForm.categoryFilter === "all") return true
       return item.category === reportForm.categoryFilter
     }
+
     const filterTransactionsByDate = (transaction: StockTransaction) => {
       const transactionDate = new Date(transaction.date)
       return transactionDate >= startDate && transactionDate <= endDate
     }
+
     const filterItemsByDate = (item: InventoryItem) => {
       const updated = new Date(item.lastUpdated)
       return updated >= startDate && updated <= endDate
@@ -1008,27 +1198,27 @@ export default function InventoryManagement() {
       totalItems: reportData.length,
       totalValue,
     }
+
     return report
   }
 
   const printReport = (report: InventoryReport) => {
-    const printHtml = generatePrintableReport(report);
-    const printWindow = window.open("", "_blank");
+    const printHtml = generatePrintableReport(report)
+    const printWindow = window.open("", "_blank")
 
     if (printWindow) {
-      printWindow.document.write(printHtml);
-      printWindow.document.close();
-      printWindow.focus();
-      printWindow.print();
-      // Optional: printWindow.close();
+      printWindow.document.write(printHtml)
+      printWindow.document.close()
+      printWindow.focus()
+      printWindow.print()
     }
   }
 
   const generatePrintableReport = (report: InventoryReport): string => {
-    const currentDate = format(new Date(), "MMM dd, yyyy HH:mm");
+    const currentDate = format(new Date(), "MMM dd, yyyy HH:mm")
 
-    let tableHeaders = "";
-    let tableRows = "";
+    let tableHeaders = ""
+    let tableRows = ""
 
     switch (report.reportType) {
       case "closing_stock":
@@ -1045,8 +1235,10 @@ export default function InventoryManagement() {
           <th style="width: 8%;">Status</th>
           <th style="width: 16%;">Last Updated</th>
         </tr>
-      `;
-        tableRows = report.data.map(item => `
+      `
+        tableRows = report.data
+          .map(
+            (item) => `
         <tr>
           <td>${item.productName}</td>
           <td>${item.category}</td>
@@ -1059,8 +1251,10 @@ export default function InventoryManagement() {
           <td class="text-center ${item.status === "Negative Stock" ? "negative-status" : ""}">${item.status}</td>
           <td class="text-center">${item.lastUpdated}</td>
         </tr>
-      `).join("");
-        break;
+      `,
+          )
+          .join("")
+        break
 
       case "stock_movement":
         tableHeaders = `
@@ -1073,8 +1267,10 @@ export default function InventoryManagement() {
           <th style="width: 15%;">Reference</th>
           <th style="width: 20%;">Created At</th>
         </tr>
-      `;
-        tableRows = report.data.map(item => `
+      `
+        tableRows = report.data
+          .map(
+            (item) => `
         <tr>
           <td>${item.date}</td>
           <td class="text-center">${item.batchNumber}</td>
@@ -1084,8 +1280,10 @@ export default function InventoryManagement() {
           <td>${item.reference}</td>
           <td class="text-center">${item.createdAt}</td>
         </tr>
-      `).join("");
-        break;
+      `,
+          )
+          .join("")
+        break
 
       case "low_stock":
         tableHeaders = `
@@ -1098,8 +1296,10 @@ export default function InventoryManagement() {
           <th style="width: 10%;">Status</th>
           <th style="width: 16%;">Last Updated</th>
         </tr>
-      `;
-        tableRows = report.data.map(item => `
+      `
+        tableRows = report.data
+          .map(
+            (item) => `
         <tr>
           <td>${item.productName}</td>
           <td>${item.category}</td>
@@ -1109,8 +1309,10 @@ export default function InventoryManagement() {
           <td class="text-center ${item.status === "Negative Stock" ? "negative-status" : ""}">${item.status}</td>
           <td class="text-center">${item.lastUpdated}</td>
         </tr>
-      `).join("");
-        break;
+      `,
+          )
+          .join("")
+        break
 
       case "valuation":
         tableHeaders = `
@@ -1121,8 +1323,10 @@ export default function InventoryManagement() {
           <th style="width: 15%;">Status</th>
           <th style="width: 15%;">Last Updated</th>
         </tr>
-      `;
-        tableRows = report.data.map(item => `
+      `
+        tableRows = report.data
+          .map(
+            (item) => `
         <tr>
           <td>${item.productName}</td>
           <td>${item.category}</td>
@@ -1130,8 +1334,10 @@ export default function InventoryManagement() {
           <td class="text-center ${item.status === "Negative Stock" ? "negative-status" : ""}">${item.status}</td>
           <td class="text-center">${item.lastUpdated}</td>
         </tr>
-      `).join("");
-        break;
+      `,
+          )
+          .join("")
+        break
     }
 
     return `
@@ -1228,17 +1434,17 @@ export default function InventoryManagement() {
         </div>
       </body>
     </html>
-  `;
+  `
   }
 
   const printBatchReceipt = (batch: TransactionBatch) => {
-    const printWindow = window.open("", "_blank");
+    const printWindow = window.open("", "_blank")
     if (!printWindow) {
-      alert("Please allow popups for this site to enable printing");
-      return;
+      alert("Please allow popups for this site to enable printing")
+      return
     }
 
-    const printContent = generateBatchReceiptHTML(batch);
+    const printContent = generateBatchReceiptHTML(batch)
 
     printWindow.document.write(`
     <html>
@@ -1330,13 +1536,12 @@ export default function InventoryManagement() {
         </div>
       </body>
     </html>
-  `);
+  `)
 
-    printWindow.document.close();
-    printWindow.focus();
-    printWindow.print();
-  };
-
+    printWindow.document.close()
+    printWindow.focus()
+    printWindow.print()
+  }
 
   const generateThermalBatchReceiptText = (batch: TransactionBatch): string => {
     const currentDate = format(new Date(), "MMM dd, yyyy HH:mm")
@@ -1440,6 +1645,7 @@ export default function InventoryManagement() {
         }
       }, 500)
     }
+
     setTimeout(() => {
       if (!printWindow.closed && printWindow.document.readyState === "complete") {
         printWindow.focus()
@@ -1632,6 +1838,7 @@ export default function InventoryManagement() {
     if (item.closingStock <= item.reorderLevel) return { status: "Low Stock", color: "bg-yellow-100 text-yellow-800" }
     return { status: "In Stock", color: "bg-green-100 text-green-800" }
   }
+
   const totalItems = inventoryItems.length
   const totalStockValue = 0
   const lowStockItems = inventoryItems.filter(
@@ -1656,667 +1863,834 @@ export default function InventoryManagement() {
           backgroundSize: "20px 20px",
         }}
       />
-      <div className="relative z-10 p-4 sm:p-6">
-        {/* Header */}
-        <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between mb-6">
-          <div>
-            <h1 className="text-2xl sm:text-3xl font-bold text-black">Inventory Management</h1>
-            <p className="text-gray-600 mt-1 text-sm sm:text-base">
-              Manage stock levels, track movements, and generate reports
-            </p>
-          </div>
-          <div className="flex flex-col sm:flex-row gap-2 mt-4 sm:mt-0">
-            <Button
-              onClick={() => {
-                setTransactionType("purchase")
-                setShowTransactionDialog(true)
-              }}
-              variant="outline"
-              className="rounded-[9px]"
-            >
-              <Package className="w-4 h-4 mr-2" />
-              Purchase
-            </Button>
-            <Button
-              onClick={() => {
-                setTransactionType("sale")
-                setShowTransactionDialog(true)
-              }}
-              variant="outline"
-              className="rounded-[9px]"
-            >
-              <ShoppingCart className="w-4 h-4 mr-2" />
-              Sale
-            </Button>
-            <Button
-              onClick={() => {
-                setTransactionType("adjustment")
-                setShowTransactionDialog(true)
-              }}
-              variant="outline"
-              className="rounded-[9px]"
-            >
-              <TrendingUp className="w-4 h-4 mr-2" />
-              Adjust
-            </Button>
-          </div>
-        </div>
-
-        {/* Summary Cards */}
-        <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-5 gap-4 mb-6">
-          <Card className="rounded-[11px]">
-            <CardContent className="p-4">
-              <div className="flex items-center justify-between">
-                <div>
-                  <p className="text-sm text-gray-600">Total Items</p>
-                  <p className="text-2xl font-bold">{totalItems}</p>
-                </div>
-                <Package className="w-8 h-8 text-blue-500" />
-              </div>
-            </CardContent>
-          </Card>
-          <Card className="rounded-[11px]">
-            <CardContent className="p-4">
-              <div className="flex items-center justify-between">
-                <div>
-                  <p className="text-sm text-gray-600">Total Products</p>
-                  <p className="text-2xl font-bold">{products.length}</p>
-                </div>
-                <TrendingUp className="w-8 h-8 text-green-500" />
-              </div>
-            </CardContent>
-          </Card>
-          <Card className="rounded-[11px]">
-            <CardContent className="p-4">
-              <div className="flex items-center justify-between">
-                <div>
-                  <p className="text-sm text-gray-600">Low Stock</p>
-                  <p className="text-2xl font-bold text-yellow-600">{lowStockItems}</p>
-                </div>
-                <AlertCircle className="w-8 h-8 text-yellow-500" />
-              </div>
-            </CardContent>
-          </Card>
-          <Card className="rounded-[11px]">
-            <CardContent className="p-4">
-              <div className="flex items-center justify-between">
-                <div>
-                  <p className="text-sm text-gray-600">Out of Stock</p>
-                  <p className="text-2xl font-bold text-red-600">{outOfStockItems}</p>
-                </div>
-                <X className="w-8 h-8 text-red-500" />
-              </div>
-            </CardContent>
-          </Card>
-          <Card className="rounded-[11px]">
-            <CardContent className="p-4">
-              <div className="flex items-center justify-between">
-                <div>
-                  <p className="text-sm text-gray-600">Negative Stock</p>
-                  <p className="text-2xl font-bold text-red-600">{negativeStockItems}</p>
-                </div>
-                <AlertCircle className="w-8 h-8 text-red-500" />
-              </div>
-            </CardContent>
-          </Card>
-        </div>
-
+      <div className="relative z-10 flex h-screen">
         {/* Main Content */}
-        <Tabs value={activeTab} onValueChange={(value: any) => setActiveTab(value)} className="space-y-4">
-          <TabsList className="grid grid-cols-2 md:grid-cols-5 mb-4">
-            <TabsTrigger value="overview">Overview</TabsTrigger>
-            <TabsTrigger value="transactions">Transactions</TabsTrigger>
-            <TabsTrigger value="batches">Batches</TabsTrigger>
-            <TabsTrigger value="reports">Reports</TabsTrigger>
-            <TabsTrigger value="settings">Settings</TabsTrigger>
-          </TabsList>
+        <div className="flex-1 flex flex-col overflow-hidden">
+          <div className="p-4 sm:p-6">
+            {/* Header */}
+            <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between mb-6">
+              <div>
+                <h1 className="text-2xl sm:text-3xl font-bold text-black">Inventory Management</h1>
+                <p className="text-gray-600 mt-1 text-sm sm:text-base">
+                  Manage stock levels, track movements, and generate reports
+                </p>
+              </div>
+              <div className="flex flex-col sm:flex-row gap-2 mt-4 sm:mt-0">
+                {/* Mobile Transaction Summary Button */}
+                {isMobile && (
+                  <Button
+                    onClick={() => setShowMobileTransactionSummary(true)}
+                    className="bg-yellow-500 hover:bg-yellow-600 text-white rounded-[9px] relative"
+                    size="sm"
+                  >
+                    <Package className="w-4 h-4" />
+                    {transactionItems.length > 0 && (
+                      <Badge className="absolute -top-2 -right-2 bg-red-500 text-white text-xs min-w-[20px] h-5 flex items-center justify-center rounded-full">
+                        {transactionItems.length}
+                      </Badge>
+                    )}
+                  </Button>
+                )}
+                <Button
+                  onClick={() => {
+                    setTransactionType("purchase")
+                    setShowTransactionDialog(true)
+                  }}
+                  variant="outline"
+                  className="rounded-[9px]"
+                >
+                  <Package className="w-4 h-4 mr-2" />
+                  Purchase
+                </Button>
+                <Button
+                  onClick={() => {
+                    setTransactionType("sale")
+                    setShowTransactionDialog(true)
+                  }}
+                  variant="outline"
+                  className="rounded-[9px]"
+                >
+                  <ShoppingCart className="w-4 h-4 mr-2" />
+                  Sale
+                </Button>
+                <Button
+                  onClick={() => {
+                    setTransactionType("adjustment")
+                    setShowTransactionDialog(true)
+                  }}
+                  variant="outline"
+                  className="rounded-[9px]"
+                >
+                  <TrendingUp className="w-4 h-4 mr-2" />
+                  Adjust
+                </Button>
+              </div>
+            </div>
 
-          {/* Overview Tab */}
-          <TabsContent value="overview" className="space-y-4">
-            {/* Filters */}
-            <Card className="rounded-[11px]">
-              <CardHeader>
-                <CardTitle className="flex items-center gap-2">
-                  <Filter className="w-5 h-5" />
-                  Filters
-                </CardTitle>
-              </CardHeader>
-              <CardContent>
-                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                  <div>
-                    <Label>Search Products</Label>
-                    <div className="relative">
-                      <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-4 h-4" />
-                      <Input
-                        placeholder="Search by product name..."
-                        value={searchQuery}
-                        onChange={(e) => setSearchQuery(e.target.value)}
-                        className="pl-10 rounded-[9px]"
-                      />
-                    </div>
-                  </div>
-                  <div>
-                    <Label>Category</Label>
-                    <Select value={categoryFilter} onValueChange={setCategoryFilter}>
-                      <SelectTrigger className="rounded-[9px]">
-                        <SelectValue />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="all">All Categories</SelectItem>
-                        {uniqueCategories.map((category) => (
-                          <SelectItem key={category} value={category}>
-                            {category}
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-                  </div>
-                  <div>
-                    <Label>Stock Level</Label>
-                    <Select value={stockFilter} onValueChange={(value: any) => setStockFilter(value)}>
-                      <SelectTrigger className="rounded-[9px]">
-                        <SelectValue />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="all">All Items</SelectItem>
-                        <SelectItem value="low">Low Stock</SelectItem>
-                        <SelectItem value="out">Out of Stock</SelectItem>
-                        <SelectItem value="negative">Negative Stock</SelectItem>
-                      </SelectContent>
-                    </Select>
-                  </div>
-                </div>
-              </CardContent>
-            </Card>
-
-            {/* Inventory Items */}
-            <Card className="rounded-[11px]">
-              <CardHeader>
-                <CardTitle>Inventory Items ({filteredItems.length})</CardTitle>
-              </CardHeader>
-              <CardContent>
-                <div className="space-y-2 max-h-96 overflow-y-auto">
-                  {filteredItems.map((item) => {
-                    const stockStatus = getStockStatus(item)
-                    return (
-                      <div
-                        key={item.id}
-                        className="flex flex-col sm:flex-row items-start sm:items-center justify-between p-3 border rounded-[9px] hover:bg-gray-50"
-                      >
-                        <div className="flex-1 w-full sm:w-auto">
-                          <div className="flex flex-col sm:flex-row items-start sm:items-center gap-2 sm:gap-3 mb-2">
-                            <div>
-                              <h3 className="font-medium">{item.productName}</h3>
-                              <p className="text-sm text-gray-600">{item.category}</p>
-                            </div>
-                            <Badge className={`text-xs ${stockStatus.color}`}>{stockStatus.status}</Badge>
-                          </div>
-                          <div className="grid grid-cols-2 md:grid-cols-4 gap-2 sm:gap-4 text-sm">
-                            <div>
-                              <span className="text-gray-500">Opening:</span> {item.openingStock} {item.unit}
-                            </div>
-                            <div>
-                              <span className="text-gray-500">Purchases:</span> {item.purchases} {item.unit}
-                            </div>
-                            <div>
-                              <span className="text-gray-500">Sales:</span> {item.sales} {item.unit}
-                            </div>
-                            <div>
-                              <span className="text-gray-500">Closing:</span>{" "}
-                              <span className={`font-medium ${item.closingStock < 0 ? "text-red-600" : ""}`}>
-                                {item.closingStock} {item.unit}
-                              </span>
-                            </div>
-                          </div>
-                          <div className="text-xs text-gray-500 mt-1">
-                            Last updated: {format(new Date(item.lastUpdated), "MMM dd, yyyy HH:mm")}
-                          </div>
-                        </div>
-                        <div className="flex items-center gap-2 mt-3 sm:mt-0">
-                          <Button
-                            size="sm"
-                            variant="outline"
-                            onClick={() => {
-                              setSelectedItem(item)
-                              setShowItemDetailsDialog(true)
-                            }}
-                            className="rounded-[9px]"
-                          >
-                            <Eye className="w-4 h-4" />
-                          </Button>
-                          <Button
-                            size="sm"
-                            variant="outline"
-                            onClick={() => deleteInventoryItem(item.id)}
-                            className="rounded-[9px] text-red-500 hover:text-red-700"
-                          >
-                            <Trash2 className="w-4 h-4" />
-                          </Button>
-                        </div>
-                      </div>
-                    )
-                  })}
-                  {filteredItems.length === 0 && (
-                    <div className="text-center py-8 text-gray-500">
-                      <Package className="w-12 h-12 mx-auto mb-4 opacity-50" />
-                      <p>No inventory items found</p>
-                      <p className="text-sm">Add items to start managing your inventory</p>
-                    </div>
-                  )}
-                </div>
-              </CardContent>
-            </Card>
-          </TabsContent>
-
-          {/* Transactions Tab */}
-          <TabsContent value="transactions" className="space-y-4">
-            <Card className="rounded-[11px]">
-              <CardHeader>
-                <CardTitle>Recent Transactions</CardTitle>
-              </CardHeader>
-              <CardContent>
-                <div className="space-y-2 max-h-96 overflow-y-auto">
-                  {stockTransactions
-                    .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())
-                    .slice(0, 50)
-                    .map((transaction) => (
-                      <div
-                        key={transaction.id}
-                        className="flex flex-col sm:flex-row items-start sm:items-center justify-between p-3 border rounded-[9px] hover:bg-gray-50"
-                      >
-                        <div className="flex-1 w-full sm:w-auto">
-                          <div className="flex items-center gap-3 mb-1">
-                            <Badge
-                              variant={
-                                transaction.type === "purchase"
-                                  ? "default"
-                                  : transaction.type === "sale"
-                                    ? "destructive"
-                                    : "secondary"
-                              }
-                              className="text-xs mr-2"
-                            >
-                              {transaction.type.toUpperCase()}
-                            </Badge>
-                            <span className="font-medium">{transaction.productName}</span>
-                          </div>
-                          <div className="text-sm text-gray-600">
-                            <span>{format(new Date(transaction.date), "MMM dd, yyyy")}</span>
-                            <span className="mx-2">•</span>
-                            <span>Qty: {Math.abs(transaction.quantity)}</span>
-                            {transaction.batchId && (
-                              <>
-                                <span className="mx-2">•</span>
-                                <span>
-                                  Batch:{" "}
-                                  {transactionBatches.find((b) => b.id === transaction.batchId)?.batchNumber || "N/A"}
-                                </span>
-                              </>
-                            )}
-                            {transaction.reference && (
-                              <>
-                                <span className="mx-2">•</span>
-                                <span>Ref: {transaction.reference}</span>
-                              </>
-                            )}
-                          </div>
-                          <div className="text-xs text-gray-500">
-                            {format(new Date(transaction.createdAt), "MMM dd, yyyy HH:mm")}
-                          </div>
-                        </div>
-                        <div className="flex items-center gap-2 mt-3 sm:mt-0">
-                          <Button
-                            size="sm"
-                            variant="outline"
-                            onClick={() => deleteTransaction(transaction.id)}
-                            className="rounded-[9px] text-red-500 hover:text-red-700"
-                          >
-                            <Trash2 className="w-4 h-4" />
-                          </Button>
-                        </div>
-                      </div>
-                    ))}
-                  {stockTransactions.length === 0 && (
-                    <div className="text-center py-8 text-gray-500">
-                      <ShoppingCart className="w-12 h-12 mx-auto mb-4 opacity-50" />
-                      <p>No transactions found</p>
-                      <p className="text-sm">Add transactions to track stock movements</p>
-                    </div>
-                  )}
-                </div>
-              </CardContent>
-            </Card>
-          </TabsContent>
-
-          {/* Batches Tab - This is where you can see all items in a transaction */}
-          <TabsContent value="batches" className="space-y-4">
-            <Card className="rounded-[11px]">
-              <CardHeader>
-                <CardTitle>Transaction Batches</CardTitle>
-                <CardDescription>View and manage grouped transactions with all items</CardDescription>
-              </CardHeader>
-              <CardContent>
-                <div className="space-y-2 max-h-96 overflow-y-auto">
-                  {transactionBatches
-                    .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())
-                    .map((batch) => (
-                      <div
-                        key={batch.id}
-                        className="flex flex-col sm:flex-row items-start sm:items-center justify-between p-3 border rounded-[9px] hover:bg-gray-50"
-                      >
-                        <div className="flex-1 w-full sm:w-auto">
-                          <div className="flex items-center gap-3 mb-1">
-                            <Badge
-                              variant={
-                                batch.type === "purchase"
-                                  ? "default"
-                                  : batch.type === "sale"
-                                    ? "destructive"
-                                    : "secondary"
-                              }
-                              className="text-xs mr-2"
-                            >
-                              {batch.type.toUpperCase()}
-                            </Badge>
-                            <span className="font-medium">{batch.batchNumber}</span>
-                          </div>
-                          <div className="text-sm text-gray-600">
-                            <span>{format(new Date(batch.date), "MMM dd, yyyy")}</span>
-                            <span className="mx-2">•</span>
-                            <span>{batch.totalItems} items</span>
-                            <span className="mx-2">•</span>
-                            <span>Total Qty: {batch.totalQuantity}</span>
-                            {batch.reference && (
-                              <>
-                                <span className="mx-2">•</span>
-                                <span>Ref: {batch.reference}</span>
-                              </>
-                            )}
-                          </div>
-                          <div className="text-xs text-gray-500 mt-1">
-                            Items: {batch.items.map((item) => item.productName).join(", ")}
-                          </div>
-                          <div className="text-xs text-gray-500">
-                            {format(new Date(batch.createdAt), "MMM dd, yyyy HH:mm")}
-                          </div>
-                        </div>
-                        <div className="flex items-center gap-2 mt-3 sm:mt-0">
-                          <Button
-                            size="sm"
-                            variant="outline"
-                            onClick={() => {
-                              setSelectedBatch(batch)
-                              setShowBatchDetailsDialog(true)
-                            }}
-                            className="rounded-[9px]"
-                          >
-                            <Eye className="w-4 h-4" />
-                          </Button>
-                          <Button
-                            size="sm"
-                            variant="outline"
-                            onClick={() => printBatchReceipt(batch)}
-                            className="rounded-[9px]"
-                          >
-                            <Printer className="w-4 h-4" />
-                          </Button>
-                          <Button
-                            size="sm"
-                            variant="outline"
-                            onClick={() => {
-
-                              setTransactionType(batch.type)
-                              setTransactionItems(
-                                batch.items.map((item) => ({
-                                  id: item.productId,
-                                  name: item.productName,
-                                  quantity: item.quantity,
-                                  unit: item.unit,
-                                })),
-                              )
-                              setTransactionReference(batch.reference || "")
-                              setTransactionDate(batch.date)
-                              setEditingBatchId(batch.id)
-                              setShowTransactionDialog(true)
-                            }}
-                            className="rounded-[9px]"
-                          >
-                            <Edit className="w-4 h-4" />
-                          </Button>
-                          <Button
-                            size="sm"
-                            variant="outline"
-                            onClick={() => deleteBatch(batch.id)}
-                            className="rounded-[9px] text-red-500 hover:text-red-700"
-                          >
-                            <Trash2 className="w-4 h-4" />
-                          </Button>
-                        </div>
-                      </div>
-                    ))}
-                  {transactionBatches.length === 0 && (
-                    <div className="text-center py-8 text-gray-500">
-                      <Package className="w-12 h-12 mx-auto mb-4 opacity-50" />
-                      <p>No transaction batches found</p>
-                      <p className="text-sm">Process transactions to create batches</p>
-                    </div>
-                  )}
-                </div>
-              </CardContent>
-            </Card>
-          </TabsContent>
-
-          {/* Reports Tab */}
-          <TabsContent value="reports" className="space-y-4">
-            <Card className="rounded-[11px]">
-              <CardHeader>
-                <CardTitle className="flex items-center gap-2">
-                  <FileText className="w-5 h-5" />
-                  Generate Reports
-                </CardTitle>
-                <CardDescription>Create detailed inventory reports for analysis and compliance</CardDescription>
-              </CardHeader>
-              <CardContent className="space-y-4">
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                  <div className="space-y-4">
+            {/* Summary Cards */}
+            <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-5 gap-4 mb-6">
+              <Card className="rounded-[11px]">
+                <CardContent className="p-4">
+                  <div className="flex items-center justify-between">
                     <div>
-                      <Label>Report Type</Label>
-                      <Select
-                        value={reportForm.type}
-                        onValueChange={(value: any) => setReportForm({ ...reportForm, type: value })}
-                      >
-                        <SelectTrigger className="rounded-[9px]">
-                          <SelectValue />
-                        </SelectTrigger>
-                        <SelectContent>
-                          <SelectItem value="closing_stock">Closing Stock Report</SelectItem>
-                          <SelectItem value="stock_movement">Stock Movement Report</SelectItem>
-                          <SelectItem value="low_stock">Low Stock Report</SelectItem>
-                          <SelectItem value="valuation">Inventory Valuation Report</SelectItem>
-                        </SelectContent>
-                      </Select>
+                      <p className="text-sm text-gray-600">Total Items</p>
+                      <p className="text-2xl font-bold">{totalItems}</p>
                     </div>
-                    <div className="grid grid-cols-2 gap-2">
-                      <div>
-                        <Label>Start Date</Label>
-                        <Input
-                          type="date"
-                          value={reportForm.startDate}
-                          onChange={(e) => setReportForm({ ...reportForm, startDate: e.target.value })}
-                          className="rounded-[9px]"
-                        />
-                      </div>
-                      <div>
-                        <Label>End Date</Label>
-                        <Input
-                          type="date"
-                          value={reportForm.endDate}
-                          onChange={(e) => setReportForm({ ...reportForm, endDate: e.target.value })}
-                          className="rounded-[9px]"
-                        />
-                      </div>
-                    </div>
+                    <Package className="w-8 h-8 text-blue-500" />
+                  </div>
+                </CardContent>
+              </Card>
+              <Card className="rounded-[11px]">
+                <CardContent className="p-4">
+                  <div className="flex items-center justify-between">
                     <div>
-                      <Label>Category Filter</Label>
-                      <Select
-                        value={reportForm.categoryFilter}
-                        onValueChange={(value) => setReportForm({ ...reportForm, categoryFilter: value })}
-                      >
-                        <SelectTrigger className="rounded-[9px]">
-                          <SelectValue />
-                        </SelectTrigger>
-                        <SelectContent>
-                          <SelectItem value="all">All Categories</SelectItem>
-                          {uniqueCategories.map((category) => (
-                            <SelectItem key={category} value={category}>
-                              {category}
-                            </SelectItem>
+                      <p className="text-sm text-gray-600">Total Products</p>
+                      <p className="text-2xl font-bold">{products.length}</p>
+                    </div>
+                    <TrendingUp className="w-8 h-8 text-green-500" />
+                  </div>
+                </CardContent>
+              </Card>
+              <Card className="rounded-[11px]">
+                <CardContent className="p-4">
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <p className="text-sm text-gray-600">Low Stock</p>
+                      <p className="text-2xl font-bold text-yellow-600">{lowStockItems}</p>
+                    </div>
+                    <AlertCircle className="w-8 h-8 text-yellow-500" />
+                  </div>
+                </CardContent>
+              </Card>
+              <Card className="rounded-[11px]">
+                <CardContent className="p-4">
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <p className="text-sm text-gray-600">Out of Stock</p>
+                      <p className="text-2xl font-bold text-red-600">{outOfStockItems}</p>
+                    </div>
+                    <X className="w-8 h-8 text-red-500" />
+                  </div>
+                </CardContent>
+              </Card>
+              <Card className="rounded-[11px]">
+                <CardContent className="p-4">
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <p className="text-sm text-gray-600">Negative Stock</p>
+                      <p className="text-2xl font-bold text-red-600">{negativeStockItems}</p>
+                    </div>
+                    <AlertCircle className="w-8 h-8 text-red-500" />
+                  </div>
+                </CardContent>
+              </Card>
+            </div>
+          </div>
+
+          {/* Main Content Area */}
+          <div className="flex-1 overflow-hidden p-4 sm:p-6 pt-0">
+            <Tabs
+              value={activeTab}
+              onValueChange={(value: any) => setActiveTab(value)}
+              className="h-full flex flex-col"
+            >
+              <TabsList className="grid grid-cols-2 md:grid-cols-5 mb-4">
+                <TabsTrigger value="overview">Overview</TabsTrigger>
+                <TabsTrigger value="transactions">Transactions</TabsTrigger>
+                <TabsTrigger value="batches">Batches</TabsTrigger>
+                <TabsTrigger value="reports">Reports</TabsTrigger>
+                <TabsTrigger value="settings">Settings</TabsTrigger>
+              </TabsList>
+
+              <div className="flex-1 overflow-hidden">
+                {/* Overview Tab */}
+                <TabsContent value="overview" className="h-full space-y-4 overflow-y-auto">
+                  {/* Filters */}
+                  <Card className="rounded-[11px]">
+                    <CardHeader>
+                      <CardTitle className="flex items-center gap-2">
+                        <Filter className="w-5 h-5" />
+                        Filters
+                      </CardTitle>
+                    </CardHeader>
+                    <CardContent>
+                      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                        <div>
+                          <Label>Search Products</Label>
+                          <div className="relative">
+                            <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-4 h-4" />
+                            <Input
+                              placeholder="Search by product name..."
+                              value={searchQuery}
+                              onChange={(e) => setSearchQuery(e.target.value)}
+                              className="pl-10 rounded-[9px]"
+                            />
+                          </div>
+                        </div>
+                        <div>
+                          <Label>Category</Label>
+                          <Select value={categoryFilter} onValueChange={setCategoryFilter}>
+                            <SelectTrigger className="rounded-[9px]">
+                              <SelectValue />
+                            </SelectTrigger>
+                            <SelectContent>
+                              <SelectItem value="all">All Categories</SelectItem>
+                              {uniqueCategories.map((category) => (
+                                <SelectItem key={category} value={category}>
+                                  {category}
+                                </SelectItem>
+                              ))}
+                            </SelectContent>
+                          </Select>
+                        </div>
+                        <div>
+                          <Label>Stock Level</Label>
+                          <Select value={stockFilter} onValueChange={(value: any) => setStockFilter(value)}>
+                            <SelectTrigger className="rounded-[9px]">
+                              <SelectValue />
+                            </SelectTrigger>
+                            <SelectContent>
+                              <SelectItem value="all">All Items</SelectItem>
+                              <SelectItem value="low">Low Stock</SelectItem>
+                              <SelectItem value="out">Out of Stock</SelectItem>
+                              <SelectItem value="negative">Negative Stock</SelectItem>
+                            </SelectContent>
+                          </Select>
+                        </div>
+                      </div>
+                    </CardContent>
+                  </Card>
+
+                  {/* Inventory Items */}
+                  <Card className="rounded-[11px]">
+                    <CardHeader>
+                      <CardTitle>Inventory Items ({filteredItems.length})</CardTitle>
+                    </CardHeader>
+                    <CardContent>
+                      <div className="space-y-2 max-h-96 overflow-y-auto">
+                        {filteredItems.map((item) => {
+                          const stockStatus = getStockStatus(item)
+                          return (
+                            <div
+                              key={item.id}
+                              className="flex flex-col sm:flex-row items-start sm:items-center justify-between p-3 border rounded-[9px] hover:bg-gray-50"
+                            >
+                              <div className="flex-1 w-full sm:w-auto">
+                                <div className="flex flex-col sm:flex-row items-start sm:items-center gap-2 sm:gap-3 mb-2">
+                                  <div>
+                                    <h3 className="font-medium">{item.productName}</h3>
+                                    <p className="text-sm text-gray-600">{item.category}</p>
+                                  </div>
+                                  <Badge className={`text-xs ${stockStatus.color}`}>{stockStatus.status}</Badge>
+                                </div>
+                                <div className="grid grid-cols-2 md:grid-cols-4 gap-2 sm:gap-4 text-sm">
+                                  <div>
+                                    <span className="text-gray-500">Opening:</span> {item.openingStock} {item.unit}
+                                  </div>
+                                  <div>
+                                    <span className="text-gray-500">Purchases:</span> {item.purchases} {item.unit}
+                                  </div>
+                                  <div>
+                                    <span className="text-gray-500">Sales:</span> {item.sales} {item.unit}
+                                  </div>
+                                  <div>
+                                    <span className="text-gray-500">Closing:</span>{" "}
+                                    <span className={`font-medium ${item.closingStock < 0 ? "text-red-600" : ""}`}>
+                                      {item.closingStock} {item.unit}
+                                    </span>
+                                  </div>
+                                </div>
+                                <div className="text-xs text-gray-500 mt-1">
+                                  Last updated: {format(new Date(item.lastUpdated), "MMM dd, yyyy HH:mm")}
+                                </div>
+                              </div>
+                              <div className="flex items-center gap-2 mt-3 sm:mt-0">
+                                <Button
+                                  size="sm"
+                                  variant="outline"
+                                  onClick={() => {
+                                    setSelectedItem(item)
+                                    setShowItemDetailsDialog(true)
+                                  }}
+                                  className="rounded-[9px]"
+                                >
+                                  <Eye className="w-4 h-4" />
+                                </Button>
+                                <Button
+                                  size="sm"
+                                  variant="outline"
+                                  onClick={() => deleteInventoryItem(item.id)}
+                                  className="rounded-[9px] text-red-500 hover:text-red-700"
+                                >
+                                  <Trash2 className="w-4 h-4" />
+                                </Button>
+                              </div>
+                            </div>
+                          )
+                        })}
+                        {filteredItems.length === 0 && (
+                          <div className="text-center py-8 text-gray-500">
+                            <Package className="w-12 h-12 mx-auto mb-4 opacity-50" />
+                            <p>No inventory items found</p>
+                            <p className="text-sm">Add items to start managing your inventory</p>
+                          </div>
+                        )}
+                      </div>
+                    </CardContent>
+                  </Card>
+                </TabsContent>
+
+                {/* Transactions Tab */}
+                <TabsContent value="transactions" className="h-full space-y-4 overflow-y-auto">
+                  <Card className="rounded-[11px]">
+                    <CardHeader>
+                      <CardTitle>Recent Transactions</CardTitle>
+                    </CardHeader>
+                    <CardContent>
+                      <div className="space-y-2 max-h-96 overflow-y-auto">
+                        {stockTransactions
+                          .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())
+                          .slice(0, 50)
+                          .map((transaction) => (
+                            <div
+                              key={transaction.id}
+                              className="flex flex-col sm:flex-row items-start sm:items-center justify-between p-3 border rounded-[9px] hover:bg-gray-50"
+                            >
+                              <div className="flex-1 w-full sm:w-auto">
+                                <div className="flex items-center gap-3 mb-1">
+                                  <Badge
+                                    variant={
+                                      transaction.type === "purchase"
+                                        ? "default"
+                                        : transaction.type === "sale"
+                                          ? "destructive"
+                                          : "secondary"
+                                    }
+                                    className="text-xs mr-2"
+                                  >
+                                    {transaction.type.toUpperCase()}
+                                  </Badge>
+                                  <span className="font-medium">{transaction.productName}</span>
+                                </div>
+                                <div className="text-sm text-gray-600">
+                                  <span>{format(new Date(transaction.date), "MMM dd, yyyy")}</span>
+                                  <span className="mx-2">•</span>
+                                  <span>Qty: {Math.abs(transaction.quantity)}</span>
+                                  {transaction.batchId && (
+                                    <>
+                                      <span className="mx-2">•</span>
+                                      <span>
+                                        Batch:{" "}
+                                        {transactionBatches.find((b) => b.id === transaction.batchId)?.batchNumber ||
+                                          "N/A"}
+                                      </span>
+                                    </>
+                                  )}
+                                  {transaction.reference && (
+                                    <>
+                                      <span className="mx-2">•</span>
+                                      <span>Ref: {transaction.reference}</span>
+                                    </>
+                                  )}
+                                </div>
+                                <div className="text-xs text-gray-500">
+                                  {format(new Date(transaction.createdAt), "MMM dd, yyyy HH:mm")}
+                                </div>
+                              </div>
+                              <div className="flex items-center gap-2 mt-3 sm:mt-0">
+                                <Button
+                                  size="sm"
+                                  variant="outline"
+                                  onClick={() => deleteTransaction(transaction.id)}
+                                  className="rounded-[9px] text-red-500 hover:text-red-700"
+                                >
+                                  <Trash2 className="w-4 h-4" />
+                                </Button>
+                              </div>
+                            </div>
                           ))}
-                        </SelectContent>
-                      </Select>
-                    </div>
-                  </div>
-                  <div className="space-y-4">
-                    <div className="p-4 bg-gray-50 rounded-[9px]">
-                      <h3 className="font-medium mb-2">Report Preview</h3>
-                      <div className="text-sm text-gray-600 space-y-1">
-                        <p>
-                          <strong>Type:</strong> {reportForm.type.replace("_", " ").toUpperCase()}
-                        </p>
-                        <p>
-                          <strong>Period:</strong> {reportForm.startDate} to {reportForm.endDate}
-                        </p>
-                        <p>
-                          <strong>Items:</strong> {filteredItems.length} products
-                        </p>
+                        {stockTransactions.length === 0 && (
+                          <div className="text-center py-8 text-gray-500">
+                            <ShoppingCart className="w-12 h-12 mx-auto mb-4 opacity-50" />
+                            <p>No transactions found</p>
+                            <p className="text-sm">Add transactions to track stock movements</p>
+                          </div>
+                        )}
                       </div>
-                    </div>
-                    <div className="space-y-2">
-                      <Button
-                        onClick={() => {
-                          const report = generateReport()
-                          setShowReportDialog(true)
-                            ; (window as any).currentReport = report
-                        }}
-                        className="w-full bg-yellow-400 hover:bg-yellow-500 text-black rounded-[9px]"
-                      >
-                        <BarChart3 className="w-4 h-4 mr-2" />
-                        Generate Report
-                      </Button>
-                      <div className="grid grid-cols-2 gap-2">
+                    </CardContent>
+                  </Card>
+                </TabsContent>
+
+                {/* Batches Tab */}
+                <TabsContent value="batches" className="h-full space-y-4 overflow-y-auto">
+                  <Card className="rounded-[11px]">
+                    <CardHeader>
+                      <CardTitle>Transaction Batches</CardTitle>
+                      <CardDescription>View and manage grouped transactions with all items</CardDescription>
+                    </CardHeader>
+                    <CardContent>
+                      <div className="space-y-2 max-h-96 overflow-y-auto">
+                        {transactionBatches
+                          .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())
+                          .map((batch) => (
+                            <div
+                              key={batch.id}
+                              className="flex flex-col sm:flex-row items-start sm:items-center justify-between p-3 border rounded-[9px] hover:bg-gray-50"
+                            >
+                              <div className="flex-1 w-full sm:w-auto">
+                                <div className="flex items-center gap-3 mb-1">
+                                  <Badge
+                                    variant={
+                                      batch.type === "purchase"
+                                        ? "default"
+                                        : batch.type === "sale"
+                                          ? "destructive"
+                                          : "secondary"
+                                    }
+                                    className="text-xs mr-2"
+                                  >
+                                    {batch.type.toUpperCase()}
+                                  </Badge>
+                                  <span className="font-medium">{batch.batchNumber}</span>
+                                </div>
+                                <div className="text-sm text-gray-600">
+                                  <span>{format(new Date(batch.date), "MMM dd, yyyy")}</span>
+                                  <span className="mx-2">•</span>
+                                  <span>{batch.totalItems} items</span>
+                                  <span className="mx-2">•</span>
+                                  <span>Total Qty: {batch.totalQuantity}</span>
+                                  {batch.reference && (
+                                    <>
+                                      <span className="mx-2">•</span>
+                                      <span>Ref: {batch.reference}</span>
+                                    </>
+                                  )}
+                                </div>
+                                <div className="text-xs text-gray-500 mt-1">
+                                  Items: {batch.items.map((item) => item.productName).join(", ")}
+                                </div>
+                                <div className="text-xs text-gray-500">
+                                  {format(new Date(batch.createdAt), "MMM dd, yyyy HH:mm")}
+                                </div>
+                              </div>
+                              <div className="flex items-center gap-2 mt-3 sm:mt-0">
+                                <Button
+                                  size="sm"
+                                  variant="outline"
+                                  onClick={() => {
+                                    setSelectedBatch(batch)
+                                    setShowBatchDetailsDialog(true)
+                                  }}
+                                  className="rounded-[9px]"
+                                >
+                                  <Eye className="w-4 h-4" />
+                                </Button>
+                                <Button
+                                  size="sm"
+                                  variant="outline"
+                                  onClick={() => printBatchReceipt(batch)}
+                                  className="rounded-[9px]"
+                                >
+                                  <Printer className="w-4 h-4" />
+                                </Button>
+                                <Button
+                                  size="sm"
+                                  variant="outline"
+                                  onClick={() => {
+                                    setTransactionType(batch.type)
+                                    setTransactionItems(
+                                      batch.items.map((item) => ({
+                                        id: item.productId,
+                                        name: item.productName,
+                                        quantity: item.quantity,
+                                        unit: item.unit,
+                                      })),
+                                    )
+                                    setTransactionReference(batch.reference || "")
+                                    setTransactionDate(batch.date)
+                                    setEditingBatchId(batch.id)
+                                    setShowTransactionDialog(true)
+                                  }}
+                                  className="rounded-[9px]"
+                                >
+                                  <Edit className="w-4 h-4" />
+                                </Button>
+                                <Button
+                                  size="sm"
+                                  variant="outline"
+                                  onClick={() => deleteBatch(batch.id)}
+                                  className="rounded-[9px] text-red-500 hover:text-red-700"
+                                >
+                                  <Trash2 className="w-4 h-4" />
+                                </Button>
+                              </div>
+                            </div>
+                          ))}
+                        {transactionBatches.length === 0 && (
+                          <div className="text-center py-8 text-gray-500">
+                            <Package className="w-12 h-12 mx-auto mb-4 opacity-50" />
+                            <p>No transaction batches found</p>
+                            <p className="text-sm">Process transactions to create batches</p>
+                          </div>
+                        )}
+                      </div>
+                    </CardContent>
+                  </Card>
+                </TabsContent>
+
+                {/* Reports Tab */}
+                <TabsContent value="reports" className="h-full space-y-4 overflow-y-auto">
+                  <Card className="rounded-[11px]">
+                    <CardHeader>
+                      <CardTitle className="flex items-center gap-2">
+                        <FileText className="w-5 h-5" />
+                        Generate Reports
+                      </CardTitle>
+                      <CardDescription>Create detailed inventory reports for analysis and compliance</CardDescription>
+                    </CardHeader>
+                    <CardContent className="space-y-4">
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                        <div className="space-y-4">
+                          <div>
+                            <Label>Report Type</Label>
+                            <Select
+                              value={reportForm.type}
+                              onValueChange={(value: any) => setReportForm({ ...reportForm, type: value })}
+                            >
+                              <SelectTrigger className="rounded-[9px]">
+                                <SelectValue />
+                              </SelectTrigger>
+                              <SelectContent>
+                                <SelectItem value="closing_stock">Closing Stock Report</SelectItem>
+                                <SelectItem value="stock_movement">Stock Movement Report</SelectItem>
+                                <SelectItem value="low_stock">Low Stock Report</SelectItem>
+                                <SelectItem value="valuation">Inventory Valuation Report</SelectItem>
+                              </SelectContent>
+                            </Select>
+                          </div>
+                          <div className="grid grid-cols-2 gap-2">
+                            <div>
+                              <Label>Start Date</Label>
+                              <Input
+                                type="date"
+                                value={reportForm.startDate}
+                                onChange={(e) => setReportForm({ ...reportForm, startDate: e.target.value })}
+                                className="rounded-[9px]"
+                              />
+                            </div>
+                            <div>
+                              <Label>End Date</Label>
+                              <Input
+                                type="date"
+                                value={reportForm.endDate}
+                                onChange={(e) => setReportForm({ ...reportForm, endDate: e.target.value })}
+                                className="rounded-[9px]"
+                              />
+                            </div>
+                          </div>
+                          <div>
+                            <Label>Category Filter</Label>
+                            <Select
+                              value={reportForm.categoryFilter}
+                              onValueChange={(value) => setReportForm({ ...reportForm, categoryFilter: value })}
+                            >
+                              <SelectTrigger className="rounded-[9px]">
+                                <SelectValue />
+                              </SelectTrigger>
+                              <SelectContent>
+                                <SelectItem value="all">All Categories</SelectItem>
+                                {uniqueCategories.map((category) => (
+                                  <SelectItem key={category} value={category}>
+                                    {category}
+                                  </SelectItem>
+                                ))}
+                              </SelectContent>
+                            </Select>
+                          </div>
+                        </div>
+                        <div className="space-y-4">
+                          <div className="p-4 bg-gray-50 rounded-[9px]">
+                            <h3 className="font-medium mb-2">Report Preview</h3>
+                            <div className="text-sm text-gray-600 space-y-1">
+                              <p>
+                                <strong>Type:</strong> {reportForm.type.replace("_", " ").toUpperCase()}
+                              </p>
+                              <p>
+                                <strong>Period:</strong> {reportForm.startDate} to {reportForm.endDate}
+                              </p>
+                              <p>
+                                <strong>Items:</strong> {filteredItems.length} products
+                              </p>
+                            </div>
+                          </div>
+                          <div className="space-y-2">
+                            <Button
+                              onClick={() => {
+                                const report = generateReport()
+                                setShowReportDialog(true)
+                                  ; (window as any).currentReport = report
+                              }}
+                              className="w-full bg-yellow-400 hover:bg-yellow-500 text-black rounded-[9px]"
+                            >
+                              <BarChart3 className="w-4 h-4 mr-2" />
+                              Generate Report
+                            </Button>
+                            <div className="grid grid-cols-2 gap-2">
+                              <Button
+                                onClick={() => {
+                                  const report = generateReport()
+                                  printReport(report)
+                                }}
+                                variant="outline"
+                                className="rounded-[9px]"
+                              >
+                                <Printer className="w-4 h-4 mr-2" />
+                                Print
+                              </Button>
+                            </div>
+                          </div>
+                        </div>
+                      </div>
+                    </CardContent>
+                  </Card>
+                </TabsContent>
+
+                {/* Settings Tab */}
+                <TabsContent value="settings" className="h-full space-y-4 overflow-y-auto">
+                  <Card className="rounded-[11px]">
+                    <CardHeader>
+                      <CardTitle>Inventory Settings</CardTitle>
+                      <CardDescription>Configure inventory management preferences</CardDescription>
+                    </CardHeader>
+                    <CardContent className="space-y-4">
+                      <Alert>
+                        <AlertCircle className="h-4 w-4" />
+                        <AlertTitle>Data Management</AlertTitle>
+                        <AlertDescription>
+                          Inventory data is stored locally in your browser. Make sure to backup your data regularly.
+                        </AlertDescription>
+                      </Alert>
+                      <div className="space-y-4">
+                        <Button
+                          onClick={() => setShowAddItemDialog(true)}
+                          className="w-full bg-yellow-400 hover:bg-yellow-500 text-black rounded-[9px]"
+                        >
+                          <Plus className="w-4 h-4 mr-2" />
+                          Add New Inventory Item
+                        </Button>
                         <Button
                           onClick={() => {
-                            const report = generateReport()
-                            printReport(report)
+                            const data = {
+                              inventoryItems,
+                              stockTransactions,
+                              transactionBatches,
+                              exportedAt: new Date().toISOString(),
+                            }
+                            const blob = new Blob([JSON.stringify(data, null, 2)], { type: "application/json" })
+                            const url = URL.createObjectURL(blob)
+                            const a = document.createElement("a")
+                            a.href = url
+                            a.download = `inventory_backup_${format(new Date(), "yyyy-MM-dd")}.json`
+                            a.click()
+                            URL.revokeObjectURL(url)
                           }}
                           variant="outline"
                           className="rounded-[9px]"
                         >
-                          <Printer className="w-4 h-4 mr-2" />
-                          Print
+                          <Download className="w-4 h-4 mr-2" />
+                          Export Inventory Data
+                        </Button>
+                        <div>
+                          <Label>Import Inventory Data</Label>
+                          <Input
+                            type="file"
+                            accept=".json"
+                            onChange={(e) => {
+                              const file = e.target.files?.[0]
+                              if (file) {
+                                const reader = new FileReader()
+                                reader.onload = (event) => {
+                                  try {
+                                    const data = JSON.parse(event.target?.result as string)
+                                    if (data.inventoryItems) {
+                                      saveInventoryItems(data.inventoryItems)
+                                    }
+                                    if (data.stockTransactions) {
+                                      saveStockTransactions(data.stockTransactions)
+                                    }
+                                    if (data.transactionBatches) {
+                                      saveTransactionBatches(data.transactionBatches)
+                                    }
+                                    alert("Data imported successfully!")
+                                  } catch (error) {
+                                    alert("Error importing data. Please check the file format.")
+                                  }
+                                }
+                                reader.readAsText(file)
+                              }
+                            }}
+                            className="rounded-[9px]"
+                          />
+                        </div>
+                        <Button
+                          onClick={() => {
+                            if (
+                              confirm(
+                                "Are you sure you want to clear all inventory data? This action cannot be undone.",
+                              )
+                            ) {
+                              localStorage.removeItem(STORAGE_KEYS.INVENTORY_ITEMS)
+                              localStorage.removeItem(STORAGE_KEYS.STOCK_TRANSACTIONS)
+                              localStorage.removeItem(STORAGE_KEYS.TRANSACTION_BATCHES)
+                              setInventoryItems([])
+                              setStockTransactions([])
+                              setTransactionBatches([])
+                              alert("All inventory data has been cleared.")
+                            }
+                          }}
+                          variant="destructive"
+                          className="rounded-[9px]"
+                        >
+                          <Trash2 className="w-4 h-4 mr-2" />
+                          Clear All Data
                         </Button>
                       </div>
-                    </div>
-                  </div>
-                </div>
-              </CardContent>
-            </Card>
-          </TabsContent>
+                    </CardContent>
+                  </Card>
+                </TabsContent>
+              </div>
+            </Tabs>
+          </div>
+        </div>
 
-          {/* Settings Tab */}
-          <TabsContent value="settings" className="space-y-4">
-            <Card className="rounded-[11px]">
-              <CardHeader>
-                <CardTitle>Inventory Settings</CardTitle>
-                <CardDescription>Configure inventory management preferences</CardDescription>
-              </CardHeader>
-              <CardContent className="space-y-4">
-                <Alert>
-                  <AlertCircle className="h-4 w-4" />
-                  <AlertTitle>Data Management</AlertTitle>
-                  <AlertDescription>
-                    Inventory data is stored locally in your browser. Make sure to backup your data regularly.
-                  </AlertDescription>
-                </Alert>
-                <div className="space-y-4">
-                  <Button
-                    onClick={() => {
-                      const data = {
-                        inventoryItems,
-                        stockTransactions,
-                        transactionBatches,
-                        exportedAt: new Date().toISOString(),
-                      }
-                      const blob = new Blob([JSON.stringify(data, null, 2)], { type: "application/json" })
-                      const url = URL.createObjectURL(blob)
-                      const a = document.createElement("a")
-                      a.href = url
-                      a.download = `inventory_backup_${format(new Date(), "yyyy-MM-dd")}.json`
-                      a.click()
-                      URL.revokeObjectURL(url)
-                    }}
-                    variant="outline"
-                    className="rounded-[9px]"
-                  >
-                    <Download className="w-4 h-4 mr-2" />
-                    Export Inventory Data
-                  </Button>
-                  <div>
-                    <Label>Import Inventory Data</Label>
-                    <Input
-                      type="file"
-                      accept=".json"
-                      onChange={(e) => {
-                        const file = e.target.files?.[0]
-                        if (file) {
-                          const reader = new FileReader()
-                          reader.onload = (event) => {
-                            try {
-                              const data = JSON.parse(event.target?.result as string)
-                              if (data.inventoryItems) {
-                                saveInventoryItems(data.inventoryItems)
-                              }
-                              if (data.stockTransactions) {
-                                saveStockTransactions(data.stockTransactions)
-                              }
-                              if (data.transactionBatches) {
-                                saveTransactionBatches(data.transactionBatches)
-                              }
-                              alert("Data imported successfully!")
-                            } catch (error) {
-                              alert("Error importing data. Please check the file format.")
-                            }
-                          }
-                          reader.readAsText(file)
-                        }
-                      }}
-                      className="rounded-[9px]"
-                    />
-                  </div>
-                  <Button
-                    onClick={() => {
-                      if (confirm("Are you sure you want to clear all inventory data? This action cannot be undone.")) {
-                        localStorage.removeItem(STORAGE_KEYS.INVENTORY_ITEMS)
-                        localStorage.removeItem(STORAGE_KEYS.STOCK_TRANSACTIONS)
-                        localStorage.removeItem(STORAGE_KEYS.TRANSACTION_BATCHES)
-                        setInventoryItems([])
-                        setStockTransactions([])
-                        setTransactionBatches([])
-                        alert("All inventory data has been cleared.")
-                      }
-                    }}
-                    variant="destructive"
-                    className="rounded-[9px]"
-                  >
-                    <Trash2 className="w-4 h-4 mr-2" />
-                    Clear All Data
-                  </Button>
+        {/* Desktop Summary Panel */}
+        {!isMobile && (
+          <div className="w-96 border-l border-gray-200 bg-gray-50 flex flex-col">
+            <div className="p-4 border-b border-gray-200 bg-white">
+              <div className="flex items-center gap-2">
+                <Package className="w-5 h-5" />
+                <h2 className="text-lg font-bold">
+                  {editingBatchId
+                    ? "Edit Transaction"
+                    : `${transactionType.charAt(0).toUpperCase() + transactionType.slice(1)} Transaction`}
+                </h2>
+              </div>
+            </div>
+
+            {transactionItems.length === 0 ? (
+              <div className="flex-1 flex items-center justify-center">
+                <div className="text-center">
+                  <Package className="w-12 h-12 mx-auto mb-4 opacity-50 text-gray-400" />
+                  <p className="text-gray-500 text-sm">No items selected</p>
+                  <p className="text-gray-400 text-xs mt-1">Add products to create a transaction</p>
                 </div>
-              </CardContent>
-            </Card>
-          </TabsContent>
-        </Tabs>
+              </div>
+            ) : (
+              <div className="flex-1 overflow-y-auto p-4 space-y-3">
+                {transactionItems.map((item) => (
+                  <Card key={item.id} className="rounded-[9px] border-gray-200 bg-white">
+                    <CardContent className="p-3">
+                      <div className="space-y-2">
+                        <div className="font-medium text-sm break-words hyphens-auto leading-tight">{item.name}</div>
+
+                        <div className="flex items-center gap-2">
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            onClick={() => updateTransactionQuantity(item.id, item.quantity - 1)}
+                            className="w-8 h-8 p-0 rounded-[9px] flex-shrink-0"
+                          >
+                            <Minus className="w-3 h-3" />
+                          </Button>
+                          <Input
+                            type="number"
+                            value={item.quantity}
+                            onChange={(e) => updateTransactionQuantity(item.id, Number.parseInt(e.target.value) || 0)}
+                            className="w-16 h-8 text-center rounded-[9px] text-sm"
+                            min="1"
+                          />
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            onClick={() => updateTransactionQuantity(item.id, item.quantity + 1)}
+                            className="w-8 h-8 p-0 rounded-[9px] flex-shrink-0"
+                          >
+                            <Plus className="w-3 h-3" />
+                          </Button>
+                          <span className="text-xs text-gray-500 flex-shrink-0">{item.unit}</span>
+                        </div>
+
+                        <div className="flex justify-between items-center">
+                          <span className="text-sm text-gray-600">Qty: {item.quantity}</span>
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            onClick={() => removeFromTransaction(item.id)}
+                            className="w-7 h-7 p-0 rounded-[9px] text-red-500 hover:text-red-700 flex-shrink-0"
+                          >
+                            <Trash2 className="w-3 h-3" />
+                          </Button>
+                        </div>
+                      </div>
+                    </CardContent>
+                  </Card>
+                ))}
+              </div>
+            )}
+
+            {/* Reference and Date Inputs */}
+            <div className="border-t border-gray-200 p-4 space-y-3 bg-white">
+              <div>
+                <Label className="text-sm font-medium">Reference (Optional)</Label>
+                <Input
+                  placeholder="Reference number or note"
+                  value={transactionReference}
+                  onChange={(e) => setTransactionReference(e.target.value)}
+                  className="rounded-[9px]"
+                />
+              </div>
+              <div>
+                <Label className="text-sm font-medium">Transaction Date</Label>
+                <Input
+                  type="date"
+                  value={transactionDate}
+                  onChange={(e) => setTransactionDate(e.target.value)}
+                  className="rounded-[9px]"
+                />
+              </div>
+            </div>
+
+            {/* Action Buttons */}
+            <div className="border-t border-gray-200 p-4 space-y-3 bg-white">
+              <div className="bg-gray-50 p-3 rounded-[9px] border">
+                <div className="text-sm font-bold">Total Items: {transactionItems.length}</div>
+                <div className="text-xs text-gray-600">
+                  Total Quantity: {transactionItems.reduce((sum, item) => sum + item.quantity, 0)}
+                </div>
+              </div>
+              <Button
+                onClick={clearTransactionItems}
+                variant="outline"
+                className="w-full rounded-[9px] border-gray-300 bg-transparent"
+                disabled={transactionItems.length === 0}
+              >
+                Clear Items
+              </Button>
+              <Button
+                onClick={processTransaction}
+                className="w-full bg-yellow-500 hover:bg-yellow-600 text-white rounded-[9px] font-medium"
+                disabled={transactionItems.length === 0}
+              >
+                {editingBatchId ? "Update" : "Process"}{" "}
+                {transactionType.charAt(0).toUpperCase() + transactionType.slice(1)}
+              </Button>
+            </div>
+          </div>
+        )}
       </div>
+
+      {/* Mobile Transaction Summary Sheet */}
+      <MobileTransactionSummarySheet />
 
       {/* Transaction Dialog - Responsive */}
       <Dialog open={showTransactionDialog} onOpenChange={setShowTransactionDialog}>
@@ -2333,125 +2707,6 @@ export default function InventoryManagement() {
               {currentView === "super" && renderSuperCategories()}
               {currentView === "sub" && renderSubCategories()}
               {currentView === "products" && renderProducts()}
-            </div>
-            {/* Transaction Items - Bottom Section */}
-            <div className="w-full border-t border-gray-200 flex flex-col bg-gray-50">
-              <div className="p-3 border-b border-gray-200">
-                <h3 className="font-medium text-base">
-                  {transactionType.charAt(0).toUpperCase() + transactionType.slice(1)} Items
-                  {editingBatchId && (
-                    <span className="text-sm text-gray-500 ml-2">
-                      (Editing: {transactionItems.length} items loaded)
-                    </span>
-                  )}
-                </h3>
-              </div>
-              <div className="flex-1 overflow-y-auto p-3">
-                {transactionItems.length === 0 ? (
-                  <div className="text-center py-8 text-gray-500">
-                    <Package className="w-8 h-8 mx-auto mb-2 opacity-50" />
-                    <p className="text-sm">No items selected</p>
-                  </div>
-                ) : (
-                  <div className="space-y-2">
-                    {transactionItems.map((item) => (
-                      <Card key={item.id} className="rounded-lg border-gray-200">
-                        <CardContent className="p-3">
-                          <div className="space-y-2">
-                            <div className="font-medium text-sm truncate">{item.name}</div>
-                            <div className="flex items-center gap-2">
-                              <Button
-                                size="sm"
-                                variant="outline"
-                                onClick={() => updateTransactionQuantity(item.id, item.quantity - 1)}
-                                className="w-7 h-7 p-0 rounded-lg"
-                              >
-                                <Minus className="w-3 h-3" />
-                              </Button>
-                              <Input
-                                type="number"
-                                value={item.quantity}
-                                onChange={(e) =>
-                                  updateTransactionQuantity(item.id, Number.parseInt(e.target.value) || 0)
-                                }
-                                className="w-14 h-7 text-center rounded-lg border-gray-300 text-xs"
-                                min="1"
-                              />
-                              <Button
-                                size="sm"
-                                variant="outline"
-                                onClick={() => updateTransactionQuantity(item.id, item.quantity + 1)}
-                                className="w-7 h-7 p-0 rounded-lg"
-                              >
-                                <Plus className="w-3 h-3" />
-                              </Button>
-                              <span className="text-xs text-gray-500 ml-1">{item.unit}</span>
-                            </div>
-                            <div className="flex justify-between items-center">
-                              <span className="text-xs text-gray-600">
-                                Total: {item.quantity} {item.unit}
-                              </span>
-                              <Button
-                                size="sm"
-                                variant="outline"
-                                onClick={() => removeFromTransaction(item.id)}
-                                className="w-6 h-6 p-0 rounded-lg text-red-500 hover:text-red-700"
-                              >
-                                <Trash2 className="w-3 h-3" />
-                              </Button>
-                            </div>
-                          </div>
-                        </CardContent>
-                      </Card>
-                    ))}
-                  </div>
-                )}
-              </div>
-              {/* Transaction Summary */}
-              <div className="border-t border-gray-200 p-3 space-y-3">
-                <div>
-                  <Label className="text-xs">Reference (Optional)</Label>
-                  <Input
-                    placeholder="Reference number or note"
-                    value={transactionReference}
-                    onChange={(e) => setTransactionReference(e.target.value)}
-                    className="rounded-lg border-gray-300 text-xs h-8"
-                  />
-                </div>
-                <div>
-                  <Label className="text-xs">Transaction Date</Label>
-                  <Input
-                    type="date"
-                    value={transactionDate}
-                    onChange={(e) => setTransactionDate(e.target.value)}
-                    className="rounded-lg border-gray-300 text-xs h-8"
-                  />
-                </div>
-                <div className="bg-white p-2 rounded-lg border">
-                  <div className="text-sm font-bold">Total Items: {transactionItems.length}</div>
-                  <div className="text-xs text-gray-600">
-                    Total Quantity: {transactionItems.reduce((sum, item) => sum + item.quantity, 0)}
-                  </div>
-                </div>
-                <div className="space-y-2">
-                  <Button
-                    onClick={clearTransactionItems}
-                    variant="outline"
-                    className="w-full rounded-lg text-xs h-8 bg-transparent"
-                    disabled={transactionItems.length === 0}
-                  >
-                    Clear Items
-                  </Button>
-                  <Button
-                    onClick={processTransaction}
-                    className="w-full bg-yellow-500 hover:bg-yellow-600 text-white rounded-lg font-medium text-xs h-8"
-                    disabled={transactionItems.length === 0}
-                  >
-                    {editingBatchId ? "Update" : "Process"}{" "}
-                    {transactionType.charAt(0).toUpperCase() + transactionType.slice(1)}
-                  </Button>
-                </div>
-              </div>
             </div>
           </div>
         </DialogContent>
@@ -2560,51 +2815,51 @@ export default function InventoryManagement() {
                 <div>
                   <Label className="text-sm font-medium">Opening Stock</Label>
                   <p className="text-sm">
-                    {selectedItem.openingStock} {selectedItem.unit}
+                    {selectedItem?.openingStock} {selectedItem?.unit}
                   </p>
                 </div>
                 <div>
                   <Label className="text-sm font-medium">Reorder Level</Label>
                   <p className="text-sm">
-                    {selectedItem.reorderLevel} {selectedItem.unit}
+                    {selectedItem?.reorderLevel} {selectedItem?.unit}
                   </p>
                 </div>
                 <div>
                   <Label className="text-sm font-medium">Total Purchases</Label>
                   <p className="text-sm">
-                    {selectedItem.purchases} {selectedItem.unit}
+                    {selectedItem?.purchases} {selectedItem?.unit}
                   </p>
                 </div>
                 <div>
                   <Label className="text-sm font-medium">Total Sales</Label>
                   <p className="text-sm">
-                    {selectedItem.sales} {selectedItem.unit}
+                    {selectedItem?.sales} {selectedItem?.unit}
                   </p>
                 </div>
                 <div>
                   <Label className="text-sm font-medium">Adjustments</Label>
                   <p className="text-sm">
-                    {selectedItem.adjustments} {selectedItem.unit}
+                    {selectedItem?.adjustments} {selectedItem?.unit}
                   </p>
                 </div>
                 <div>
                   <Label className="text-sm font-medium">Current Stock</Label>
                   <p className="text-sm font-bold">
-                    {selectedItem.closingStock} {selectedItem.unit}
+                    {selectedItem?.closingStock} {selectedItem?.unit}
                   </p>
                 </div>
               </div>
-              {selectedItem.notes && (
+              {selectedItem?.notes && (
                 <div>
                   <Label className="text-sm font-medium">Notes</Label>
-                  <p className="text-sm">{selectedItem.notes}</p>
+                  <p className="text-sm">{selectedItem?.notes}</p>
                 </div>
               )}
               <div>
                 <Label className="text-sm font-medium">Recent Transactions</Label>
                 <div className="mt-2 space-y-2 max-h-40 overflow-y-auto">
                   {stockTransactions
-                    .filter((t) => t.productId === selectedItem.productId)
+                    .filter((t) => t.productId === selectedItem?.productId)
                     .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())
                     .slice(0, 10)
                     .map((transaction) => (
@@ -2626,7 +2881,7 @@ export default function InventoryManagement() {
                             {transaction.type.toUpperCase()}
                           </Badge>
                           <span className="text-sm">
-                            {Math.abs(transaction.quantity)} {selectedItem.unit}
+                            {Math.abs(transaction.quantity)} {selectedItem?.unit}
                           </span>
                         </div>
                         <span className="text-xs text-gray-500">{format(new Date(transaction.date), "MMM dd")}</span>
