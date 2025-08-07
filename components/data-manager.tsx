@@ -279,7 +279,6 @@ const defaultData = {
 }
 
 export class DataManager {
-
   private static generateId(): string {
     return Date.now().toString() + Math.random().toString(36).substr(2, 9)
   }
@@ -689,7 +688,6 @@ export class DataManager {
 
     filteredSales.forEach((sale) => {
       sale.items.forEach((item) => {
-
         const superCat = categoryStats.get(item.superCategoryId) || {
           name: item.superCategoryName,
           quantity: 0,
@@ -1013,5 +1011,208 @@ export class DataManager {
 
   static getStockTransactions(): any[] {
     return this.getItem("stock_transactions", [])
+  }
+
+  static getAllDataTypes(): Array<{
+    key: string
+    name: string
+    description: string
+    count: number
+    size: string
+  }> {
+    const dataTypes = [
+      { key: "superCategories", name: "Super Categories", description: "Main product categories" },
+      { key: "subCategories", name: "Sub Categories", description: "Product subcategories" },
+      { key: "products", name: "Products", description: "Product inventory items" },
+      { key: "customers", name: "Customers", description: "Customer information" },
+      { key: "sales", name: "Sales Records", description: "Sales transactions" },
+      { key: "inventory_items", name: "Inventory Items", description: "Inventory management data" },
+      { key: "stock_transactions", name: "Stock Transactions", description: "Stock movement history" },
+      { key: "estimateCounter", name: "Estimate Counter", description: "Invoice/estimate numbering" },
+      { key: "pos_backups", name: "Backup History", description: "System backup records" },
+      { key: "salesRecords", name: "Legacy Sales", description: "Legacy sales data" },
+    ]
+
+    return dataTypes.map((type) => {
+      const data = this.getRawData(type.key)
+      const dataStr = JSON.stringify(data)
+      const sizeInBytes = new Blob([dataStr]).size
+      const sizeFormatted = this.formatBytes(sizeInBytes)
+
+      return {
+        ...type,
+        count: Array.isArray(data) ? data.length : data ? 1 : 0,
+        size: sizeFormatted,
+      }
+    })
+  }
+
+  static getRawData(key: string): any {
+    try {
+      const stored = localStorage.getItem(key)
+      return stored ? JSON.parse(stored) : null
+    } catch (error) {
+      console.error(`Error loading ${key}:`, error)
+      return null
+    }
+  }
+
+  static formatBytes(bytes: number): string {
+    if (bytes === 0) return "0 B"
+    const k = 1024
+    const sizes = ["B", "KB", "MB", "GB"]
+    const i = Math.floor(Math.log(bytes) / Math.log(k))
+    return Number.parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + " " + sizes[i]
+  }
+
+  static exportSelectedData(selectedTypes: string[], format: "json" | "csv"): { [key: string]: any } | string {
+    const exportData: { [key: string]: any } = {}
+
+    selectedTypes.forEach((type) => {
+      const data = this.getRawData(type)
+      if (data !== null) {
+        exportData[type] = data
+      }
+    })
+
+    if (format === "json") {
+      return exportData
+    } else {
+
+      return this.convertToCSV(exportData)
+    }
+  }
+
+  static convertToCSV(data: { [key: string]: any }): string {
+    let csvContent = ""
+
+    Object.entries(data).forEach(([key, value]) => {
+      csvContent += `\n\n=== ${key.toUpperCase()} ===\n`
+
+      if (Array.isArray(value) && value.length > 0) {
+
+        const headers = Object.keys(value[0])
+        csvContent += headers.join(",") + "\n"
+
+        value.forEach((item) => {
+          const row = headers.map((header) => {
+            const cellValue = item[header]
+
+            if (typeof cellValue === "string" && (cellValue.includes(",") || cellValue.includes('"'))) {
+              return `"${cellValue.replace(/"/g, '""')}"`
+            }
+            return cellValue || ""
+          })
+          csvContent += row.join(",") + "\n"
+        })
+      } else if (value && typeof value === "object") {
+
+        const headers = Object.keys(value)
+        csvContent += headers.join(",") + "\n"
+        const row = headers.map((header) => value[header] || "")
+        csvContent += row.join(",") + "\n"
+      } else {
+        csvContent += `${value}\n`
+      }
+    })
+
+    return csvContent
+  }
+
+  static async importSelectedData(data: any, selectedTypes: string[], format: "json" | "csv"): Promise<void> {
+    try {
+      let importData: { [key: string]: any } = {}
+
+      if (format === "json") {
+        importData = typeof data === "string" ? JSON.parse(data) : data
+      } else {
+
+        importData = this.parseCSV(data)
+      }
+
+      selectedTypes.forEach((type) => {
+        if (importData[type] !== undefined) {
+          localStorage.setItem(type, JSON.stringify(importData[type]))
+
+          window.dispatchEvent(
+            new StorageEvent("storage", {
+              key: type,
+              newValue: JSON.stringify(importData[type]),
+              storageArea: localStorage,
+            }),
+          )
+        }
+      })
+    } catch (error) {
+      console.error("Error importing data:", error)
+      throw new Error("Failed to import data")
+    }
+  }
+
+  static parseCSV(csvData: string): { [key: string]: any } {
+    const result: { [key: string]: any } = {}
+    const sections = csvData.split(/\n\n=== (\w+) ===\n/)
+
+    for (let i = 1; i < sections.length; i += 2) {
+      const sectionName = sections[i].toLowerCase()
+      const sectionData = sections[i + 1]
+
+      if (sectionData && sectionData.trim()) {
+        const lines = sectionData.trim().split("\n")
+        if (lines.length > 1) {
+          const headers = lines[0].split(",")
+          const rows = lines.slice(1).map((line) => {
+            const values = line.split(",")
+            const obj: any = {}
+            headers.forEach((header, index) => {
+              obj[header] = values[index] || ""
+            })
+            return obj
+          })
+          result[sectionName] = rows
+        }
+      }
+    }
+
+    return result
+  }
+
+  static getStorageInfo(): {
+    used: number
+    total: number
+    available: number
+    usedFormatted: string
+    totalFormatted: string
+    availableFormatted: string
+    percentage: number
+  } {
+    let used = 0
+
+    for (const key in localStorage) {
+      if (localStorage.hasOwnProperty(key)) {
+        used += localStorage[key].length + key.length
+      }
+    }
+
+    const total = 5 * 1024 * 1024
+    const available = total - used
+    const percentage = (used / total) * 100
+
+    return {
+      used,
+      total,
+      available,
+      usedFormatted: this.formatBytes(used),
+      totalFormatted: this.formatBytes(total),
+      availableFormatted: this.formatBytes(available),
+      percentage: Math.min(percentage, 100),
+    }
+  }
+
+  static clearSelectedData(selectedTypes: string[]): void {
+    selectedTypes.forEach((type) => {
+      localStorage.removeItem(type)
+      window.dispatchEvent(new StorageEvent("storage", { key: type, storageArea: localStorage }))
+    })
   }
 }

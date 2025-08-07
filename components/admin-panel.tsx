@@ -60,7 +60,7 @@ interface Customer {
 
 export default function AdminPanel({ onBack }: { onBack: () => void }) {
   const [activeTab, setActiveTab] = useState<
-    "super" | "sub" | "products" | "customers" | "data" | "analytics" | "sales"
+    "super" | "sub" | "products" | "customers" | "data" | "sales" | "analytics"
   >("super")
   const [superCategories, setSuperCategories] = useState<SuperCategory[]>([])
   const [subCategories, setSubCategories] = useState<SubCategory[]>([])

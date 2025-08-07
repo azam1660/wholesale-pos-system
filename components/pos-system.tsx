@@ -105,8 +105,15 @@ interface Sale {
   isCashSale: boolean
   items: {
     productId: string
+    productName?: string
     quantity: number
     unitPrice: number
+    lineTotal?: number
+    unit?: string
+    subCategoryId?: string
+    subCategoryName?: string
+    superCategoryId?: string
+    superCategoryName?: string
   }[]
   paymentMethod: "cash" | "card" | "upi" | "credit"
   createdAt: string
@@ -117,6 +124,7 @@ interface Sale {
   total: number
   hamaliCharges: number
   reference?: string
+  updatedAt?: string
 }
 
 const storeInfo = {
@@ -132,12 +140,6 @@ const getEstimateCounter = () => {
 
 const setEstimateCounter = (counter: number) => {
   localStorage.setItem("estimateCounter", counter.toString())
-}
-const getNextEstimateNumber = (date: string) => {
-  const counter = getEstimateCounter()
-  const dateObj = new Date(date)
-  const dateStr = dateObj.toISOString().split("T")[0].replace(/-/g, "")
-  return `EST/${dateStr}/${counter.toString().padStart(4, "0")}`
 }
 const generateEstimateNumber = (date: string) => {
   const counter = getEstimateCounter()
@@ -169,7 +171,7 @@ export default function POSSystem() {
   const [isCashSale, setIsCashSale] = useState(true)
   const [showAddCustomer, setShowAddCustomer] = useState(false)
   const [paymentMethod, setPaymentMethod] = useState<"cash" | "card" | "upi" | "credit">("cash")
-  const estimateRef = useRef<HTMLDivElement>(null);
+  const estimateRef = useRef<HTMLDivElement>(null)
 
   const [showEditEstimate, setShowEditEstimate] = useState(false)
   const [editableEstimate, setEditableEstimate] = useState<Estimate | null>(null)
@@ -237,41 +239,49 @@ export default function POSSystem() {
         subtotal: updatedSubtotal,
         total: updatedTotal,
       }
+
       const sales = DataManager.getSales()
       const saleIndex = sales.findIndex((sale) => sale.estimateNumber === editableEstimate.estimateNumber)
 
-      if (saleIndex !== -1) {
+      function generateUUID() {
+        // Simple RFC4122 version 4 compliant UUID generator
+        return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, function (c) {
+          const r = Math.random() * 16 | 0,
+            v = c === 'x' ? r : (r & 0x3 | 0x8)
+          return v.toString(16)
+        })
+      }
 
-        const updatedSale = {
-          ...sales[saleIndex],
-          items: estimateItems.map((item) => ({
+      if (saleIndex !== -1) {
+        const originalSale = sales[saleIndex]
+
+        const updatedSaleItems = estimateItems.map((item) => {
+          const originalItem = originalSale.items.find((saleItem) => saleItem.productId === item.id)
+          return {
+            id: originalItem?.id || generateUUID(),
             productId: item.id,
             productName: item.name,
             quantity: item.quantity,
             unitPrice: item.unitPrice,
             lineTotal: item.lineTotal,
             unit: item.unit,
-            subCategoryId:
-              sales[saleIndex].items.find((saleItem) => saleItem.productId === item.id)?.subCategoryId || "",
-            subCategoryName:
-              sales[saleIndex].items.find((saleItem) => saleItem.productId === item.id)?.subCategoryName || "",
-            superCategoryId:
-              sales[saleIndex].items.find((saleItem) => saleItem.productId === item.id)?.superCategoryId || "",
-            superCategoryName:
-              sales[saleIndex].items.find((saleItem) => saleItem.productId === item.id)?.superCategoryName || "",
-          })),
+            subCategoryId: originalItem?.subCategoryId || "",
+            subCategoryName: originalItem?.subCategoryName || "",
+            superCategoryId: originalItem?.superCategoryId || "",
+            superCategoryName: originalItem?.superCategoryName || "",
+          }
+        })
+
+        await DataManager.updateSale(originalSale.id, {
+          items: updatedSaleItems,
           subtotal: updatedSubtotal,
           hamaliCharges: editableEstimate.hamaliCharges || 0,
           total: updatedTotal,
           updatedAt: new Date().toISOString(),
-        }
-        await DataManager.updateSale(sales[saleIndex].id, {
-          items: updatedSale.items,
-          subtotal: updatedSale.subtotal,
-          hamaliCharges: updatedSale.hamaliCharges,
-          total: updatedSale.total,
         })
-        const originalItems = sales[saleIndex].items
+
+        // Handle stock updates
+        const originalItems = originalSale.items
         for (const newItem of estimateItems) {
           const originalItem = originalItems.find((item) => item.productId === newItem.id)
           if (originalItem) {
@@ -284,7 +294,7 @@ export default function POSSystem() {
               }
             }
           } else {
-
+            // New item added
             const product = products.find((p) => p.id === newItem.id)
             if (product) {
               const newStock = Math.max(0, product.stock - newItem.quantity)
@@ -292,6 +302,8 @@ export default function POSSystem() {
             }
           }
         }
+
+        // Handle removed items
         for (const originalItem of originalItems) {
           const stillExists = estimateItems.find((item) => item.id === originalItem.productId)
           if (!stillExists) {
@@ -302,6 +314,7 @@ export default function POSSystem() {
             }
           }
         }
+
         setProducts(DataManager.getProducts())
       }
 
@@ -372,10 +385,10 @@ export default function POSSystem() {
   )
 
   const handlePrint = () => {
-    if (!estimateRef.current) return;
+    if (!estimateRef.current) return
 
-    const printContent = estimateRef.current.innerHTML;
-    const printWindow = window.open("", "_blank");
+    const printContent = estimateRef.current.innerHTML
+    const printWindow = window.open("", "_blank")
 
     if (printWindow) {
       printWindow.document.write(`
@@ -394,24 +407,20 @@ export default function POSSystem() {
               padding: 16px;
               color: #000;
               background: #fff;
-              font-size: 16px;
+              font-size: 14px;
               line-height: 1.5;
-            }
-
-            .no-print {
-              display: none !important;
             }
 
             table {
               width: 100%;
               border-collapse: collapse;
               margin-bottom: 1rem;
-              font-size: 14px;
+              font-size: 12px;
             }
 
             th, td {
               border: 1px solid #000;
-              padding: 6px 8px;
+              padding: 3px 4px;
               text-align: left;
               vertical-align: top;
             }
@@ -419,25 +428,41 @@ export default function POSSystem() {
             th {
               background-color: #f0f0f0;
               font-weight: bold;
-              font-size: 15px;
+              font-size: 13px;
             }
 
             .header {
               text-align: center;
-              margin-bottom: 20px;
+              margin-bottom: 14px;
             }
 
-            .header h1 {
-              font-size: 22px;
-              margin-bottom: 6px;
+            /* Make Estimate Heading smaller for print */
+            .estimate-heading {
+              font-size: 18px !important;  /* Smaller for print */
+              margin-bottom: 5px !important;  /* Reduce gap between estimate heading and details */
             }
 
-            .header p {
-              font-size: 14px;
+            /* Make Estimate Details smaller for print */
+            .estimate-details {
+              font-size: 13px !important;  /* Smaller for print */
+              margin-bottom: 2px !important; /* Reduce gap between estimate details */
+            }
+
+            /* Make Bill To heading smaller for print */
+            .bill-to-heading {
+              font-size: 13px !important;  /* Smaller for print */
+              margin-top: 5px !important; /* Reduce gap between Bill To label and address */
+            }
+
+            /* Make Bill To Info smaller for print */
+            .bill-to-info {
+              font-size: 10px !important;  /* Smaller for print */
+              margin-top: 0px !important;  /* Remove extra space before Bill To details */
             }
 
             .estimate-details, .footer {
               margin-bottom: 16px;
+              font-size: 10px;
             }
 
             tr {
@@ -453,35 +478,130 @@ export default function POSSystem() {
               padding-top: 8px;
             }
 
-            @media print {
-              @page {
-                size: A4;
-                margin: 10mm;
-              }
+            /* Make Total INR larger for print */
+table tbody tr.total-row td {
+  font-size: 12px !important;
+  font-weight: bold !important;
+  text-align: right;
+  padding: 4px 6px;
+}
+
+            /* Total row first column to right align */
+            table tbody tr.total-row td:first-child {
+              text-align: right;
             }
+
+           @media print {
+  @page {
+    size: A6;
+  }
+
+  /* Store Info - Smaller for print */
+  .header h1 {
+    font-size: 14px !important; /* Smaller font for header */
+  }
+
+  .header p {
+    font-size: 10px !important; /* Smaller font for store details */
+  }
+
+  /* Estimate Heading smaller for print */
+  .estimate-heading {
+    font-size: 10px !important; /* Smaller font for the estimate heading */
+    margin-bottom: 5px !important; /* Reduced gap */
+  }
+
+  /* Estimate Details smaller for print */
+  .estimate-details {
+    font-size: 10px !important; /* Smaller font for estimate details */
+    margin-bottom: 2px !important; /* Reduced gap */
+  }
+
+  /* Make Bill To heading smaller for print */
+  .bill-to-heading {
+    font-size: 10px !important; /* Reduced font size */
+    margin-top: 5px !important; /* Reduced gap */
+  }
+
+  /* Make Bill To Info smaller for print */
+  .bill-to-info {
+    font-size: 9px !important; /* Smaller font for customer details */
+    margin-top: 0px !important;  /* Removed extra space */
+  }
+
+  /* Estimate table - make font smaller */
+  table {
+    width: 100% !important; /* Ensure the table spans the entire page */
+    border-collapse: collapse;
+    font-size: 9px !important; /* Smaller font for table content */
+  }
+
+  th, td {
+    padding: 3px 4px !important;
+    text-align: left;
+    border: 1px solid #000 !important;
+  }
+
+  th {
+    background-color: #f0f0f0;
+    font-weight: bold;
+  }
+
+  /* Make Total INR row font larger for print */
+  table tbody tr.total-row td {
+    font-size: 12px !important; /* Larger font for total row */
+    font-weight: bold !important;
+    text-align: right;
+    padding: 4px 6px !important;
+  }
+
+  /* Total row first column to right align */
+  table tbody tr.total-row td:first-child {
+    text-align: right !important;
+  }
+
+  /* Adjust flex layout for side-by-side Estimate and Bill To */
+  .flex {
+    display: flex !important;
+    justify-content: space-between !important;
+    flex-wrap: wrap;
+  }
+
+  .w-1/2 {
+    width: 48% !important; /* Ensures both sections take up equal space */
+  }
+
+  /* Ensure proper alignment of elements for printing */
+  .estimate-details, .bill-to-info {
+    font-size: 9px !important; /* Ensure font is consistent in print */
+  }
+
+  /* Footer Text */
+  .footer p {
+    font-size: 9px !important; /* Smaller font for footer */
+    text-align: center;
+  }
+}
+
           </style>
         </head>
         <body>
           ${printContent}
-          <div class="signature">
-            <p>Authorized Signature</p>
-          </div>
         </body>
       </html>
-    `);
+    `)
 
-      printWindow.document.close();
-      printWindow.focus();
-      printWindow.print();
+      printWindow.document.close()
+      printWindow.focus()
+      printWindow.print()
     }
-  };
-
+  }
 
   const printThermalEstimate = () => {
-    if (!estimateRef.current) return;
+    if (!estimateRef.current) return
 
-    const printContent = estimateRef.current.innerHTML;
-    const printWindow = window.open("", "_blank");
+    const printContent = estimateRef.current.innerHTML
+    const printWindow = window.open("", "_blank")
 
     if (printWindow) {
       printWindow.document.write(`
@@ -540,7 +660,7 @@ export default function POSSystem() {
             table {
               width: 100%;
               border-collapse: collapse;
-              margin: 4px 0;
+              margin: 2px 0;
               font-size: 8px;
             }
 
@@ -571,8 +691,9 @@ export default function POSSystem() {
             }
 
             .footer {
-              text-align: center;
-              margin-top: 8px;
+            width: 100vw;
+              text-align: center; !important
+              margin-top: 2px;
               font-size: 8px;
             }
 
@@ -582,7 +703,6 @@ export default function POSSystem() {
 
             @media print {
               @page {
-                size: 80mm auto;
                 margin: 4mm;
               }
 
@@ -595,22 +715,19 @@ export default function POSSystem() {
         </head>
         <body>
           ${printContent}
-          <div class="signature">
-            Authorized Signature
-          </div>
         </body>
       </html>
-    `);
+    `)
 
-      printWindow.document.close();
-      printWindow.focus();
-      printWindow.print();
+      printWindow.document.close()
+      printWindow.focus()
+      printWindow.print()
 
       setTimeout(() => {
-        if (!printWindow.closed) printWindow.close();
-      }, 1000);
+        if (!printWindow.closed) printWindow.close()
+      }, 1000)
     }
-  };
+  }
   useEffect(() => {
     const loadAllData = async () => {
       try {
@@ -639,7 +756,7 @@ export default function POSSystem() {
     if (prefilledData) {
       try {
         const orderData = JSON.parse(prefilledData)
-        const posItems = orderData.items.map((item) => {
+        const posItems = orderData.items.map((item: any) => {
           const product = products.find((p) => p.id === item.id)
           const lastUsedRate = getLastUsedRate(item.id) || product?.price || 0
 
@@ -755,7 +872,6 @@ export default function POSSystem() {
     if (existingItem) {
       updateQuantity(product.id, existingItem.quantity + 1)
     } else {
-
       const lastUsedRate = getLastUsedRate(product.id) || product.price
       const newItem: OrderItem = {
         id: product.id,
@@ -1631,7 +1747,6 @@ export default function POSSystem() {
         onOpenChange={(open) => {
           setShowEstimate(open)
           if (!open) {
-
             setCurrentView("super")
             setSelectedSuperCategory("")
             setSelectedSubCategory("")
@@ -1691,38 +1806,45 @@ export default function POSSystem() {
             <div ref={estimateRef} className="estimate bg-white p-4 sm:p-6 lg:p-8">
               {/* Store Header */}
               <div className="header text-center border-b-2 border-black pb-4 mb-6">
-                <h1 className="text-2xl sm:text-3xl font-bold">{storeInfo.name}</h1>
-                <p className="text-xs sm:text-sm mt-2 break-words">{storeInfo.address}</p>
+                <h1 className="text-lg sm:text-xl font-bold">{storeInfo.name}</h1> {/* Store name */}
+                <p className="text-xs sm:text-sm mt-2 break-words">{storeInfo.address}</p> {/* Store address */}
                 <p className="text-xs sm:text-sm mt-1 break-words">
                   Phone: {storeInfo.phone} | Contact: {storeInfo.contact}
                 </p>
               </div>
 
-              {/* Estimate Details */}
-              <div className="flex flex-col sm:flex-row justify-between mb-6 gap-4">
-                <div>
-                  <h2 className="text-lg sm:text-xl font-bold">ESTIMATE</h2>
-                  <p className="text-sm break-words">
+              <div className="flex justify-between mb-6 gap-4">
+                {/* Estimate Details Section */}
+                <div className="w-1/2">
+                  <h2 className="text-sm font-bold estimate-heading">ESTIMATE</h2>
+                  <p className="text-sm estimate-details">
                     <strong>Estimate No:</strong> {currentEstimate.estimateNumber}
                   </p>
-                  <p className="text-sm break-words">
+                  <p className="text-sm estimate-details">
                     <strong>Date:</strong> {currentEstimate.date}
                   </p>
                   {currentEstimate.reference && (
-                    <p className="text-sm break-words">
+                    <p className="text-sm estimate-details">
                       <strong>Reference:</strong> {currentEstimate.reference}
                     </p>
                   )}
                 </div>
-                <div className="text-left sm:text-right">
-                  <h3 className="font-bold">Bill To:</h3>
+
+                {/* Bill To Section */}
+                <div className="w-1/2 text-left sm:text-right">
+                  <h3 className="font-bold bill-to-heading">Bill To:</h3>
                   {currentEstimate.isCashSale ? (
-                    <p className="text-base sm:text-lg font-bold">CASH CUSTOMER</p>
+                    <p
+                      className="text-base sm:text-lg font-bold bill-to-info"
+                      style={{ fontSize: "16px", fontWeight: "bold" }}
+                    >
+                      CASH CUSTOMER
+                    </p>
                   ) : (
                     <div>
-                      <p className="font-medium break-words">{currentEstimate.customer?.name}</p>
-                      <p className="text-sm break-words">{currentEstimate.customer?.address}</p>
-                      <p className="text-sm break-words">{currentEstimate.customer?.phone}</p>
+                      <p className="font-medium break-words bill-to-info">{currentEstimate.customer?.name}</p>
+                      <p className="text-sm break-words bill-to-info">{currentEstimate.customer?.address}</p>
+                      <p className="text-sm break-words bill-to-info">{currentEstimate.customer?.phone}</p>
                     </div>
                   )}
                 </div>
@@ -1737,8 +1859,8 @@ export default function POSSystem() {
                       <th className="border border-black p-2 text-left text-xs sm:text-sm">Particulars</th>
                       <th className="border border-black p-2 text-center text-xs sm:text-sm">QTY</th>
                       <th className="border border-black p-2 text-center text-xs sm:text-sm">Unit</th>
-                      <th className="border border-black p-2 text-right text-xs sm:text-sm">Rate (₹)</th>
-                      <th className="border border-black p-2 text-right text-xs sm:text-sm">Amount (₹)</th>
+                      <th className="border border-black p-2 text-right text-xs sm:text-sm">Rate </th>
+                      <th className="border border-black p-2 text-right text-xs sm:text-sm">Amount </th>
                     </tr>
                   </thead>
                   <tbody>
@@ -1750,12 +1872,8 @@ export default function POSSystem() {
                         </td>
                         <td className="border border-black p-2 text-center text-xs sm:text-sm">{item.quantity}</td>
                         <td className="border border-black p-2 text-center text-xs sm:text-sm">{item.unit}</td>
-                        <td className="border border-black p-2 text-right text-xs sm:text-sm">
-                          {item.unitPrice.toFixed(2)}
-                        </td>
-                        <td className="border border-black p-2 text-right text-xs sm:text-sm">
-                          {item.lineTotal.toFixed(2)}
-                        </td>
+                        <td className="border border-black p-2 text-right text-xs sm:text-sm">{item.unitPrice}</td>
+                        <td className="border border-black p-2 text-right text-xs sm:text-sm">{item.lineTotal}</td>
                       </tr>
                     ))}
                     {currentEstimate.hamaliCharges > 0 && (
@@ -1768,30 +1886,17 @@ export default function POSSystem() {
                         </td>
                       </tr>
                     )}
-                    <tr>
-                      <td colSpan={5} className="border border-black p-2 text-right font-bold text-xs sm:text-sm">
-                        Total (INR):
-                      </td>
-                      <td className="border border-black p-2 text-right font-bold text-xs sm:text-sm">
-                        ₹{currentEstimate.total.toFixed(2)}
-                      </td>
+                    <tr className="total-row">
+                      <td colSpan={5}>Total (INR):</td>
+                      <td>₹{currentEstimate.total}</td>
                     </tr>
                   </tbody>
                 </table>
               </div>
 
               {/* Footer */}
-              <div className="flex flex-col sm:flex-row justify-between items-start sm:items-end mt-8 gap-4">
-                <div>
-                  <p className="text-xs sm:text-sm">Thank you for your business!</p>
-                  <p className="text-xs sm:text-sm">Terms & Conditions Apply</p>
-                </div>
-                <div className="text-center">
-                  <div className="border-t border-black pt-2 mt-8 sm:mt-16 w-32 sm:w-48">
-                    <p className="text-xs sm:text-sm">Authorized Signature</p>
-                    <p className="text-xs break-words">{storeInfo.name}</p>
-                  </div>
-                </div>
+              <div className="footer">
+                <p>Thank you for your business!</p>
               </div>
             </div>
           )}
@@ -1804,7 +1909,6 @@ export default function POSSystem() {
         onOpenChange={(open) => {
           setShowEditEstimate(open)
           if (!open) {
-
             setCurrentView("super")
             setSelectedSuperCategory("")
             setSelectedSubCategory("")
@@ -2037,7 +2141,6 @@ export default function POSSystem() {
         onOpenChange={(open) => {
           setShowTransactionHistory(open)
           if (!open) {
-
             setCurrentView("super")
             setSelectedSuperCategory("")
             setSelectedSubCategory("")
@@ -2158,7 +2261,6 @@ export default function POSSystem() {
         onOpenChange={(open) => {
           setShowCashTransactions(open)
           if (!open) {
-
             setCurrentView("super")
             setSelectedSuperCategory("")
             setSelectedSubCategory("")
