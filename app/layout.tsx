@@ -1,10 +1,14 @@
 import type { Metadata } from 'next';
 import './globals.css';
+import { LanguageProvider } from '@/contexts/LanguageContext';
+import { AuthProvider } from '@/contexts/AuthContext';
 
 export const viewport = {
   width: 'device-width',
   initialScale: 1,
-  maximumScale: 1,
+  maximumScale: 5,
+  userScalable: true,
+  viewportFit: 'cover',
 };
 
 export const metadata: Metadata = {
@@ -71,7 +75,13 @@ export default function RootLayout({
         <link rel="icon" href="/favicon.ico" sizes="any" />
         <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
       </head>
-      <body>{children}</body>
+      <body>
+        <AuthProvider>
+          <LanguageProvider>
+            {children}
+          </LanguageProvider>
+        </AuthProvider>
+      </body>
     </html>
   );
 }

@@ -1,6 +1,7 @@
 "use client"
 
 import { useState, useEffect, useRef } from "react"
+import { useLanguage } from "@/contexts/LanguageContext"
 import {
   Package,
   Plus,
@@ -57,6 +58,7 @@ interface InventoryItem {
 
 interface StockTransaction {
   id: string
+  _id?: string
   transactionNumber: string
   productId: string
   productName: string
@@ -85,6 +87,22 @@ interface TransactionBatch {
   totalQuantity: number
   createdAt: string
   notes?: string
+}
+
+const getSafeTime = (dateVal: any): number => {
+  if (!dateVal) return 0
+  const date = new Date(dateVal)
+  const time = date.getTime()
+  return isNaN(time) ? 0 : time
+}
+
+const safeFormatDate = (dateVal: any, formatStr: string = "MMM dd, yyyy HH:mm"): string => {
+  if (!dateVal) return "N/A"
+  const date = new Date(dateVal)
+  if (isNaN(date.getTime())) {
+    return "N/A"
+  }
+  return format(date, formatStr)
 }
 
 interface TransactionItem {
@@ -116,6 +134,7 @@ const STORAGE_KEYS = {
 }
 
 export default function InventoryManagement() {
+  const { tName, language } = useLanguage()
   const [inventoryItems, setInventoryItems] = useState<InventoryItem[]>([])
   const [stockTransactions, setStockTransactions] = useState<StockTransaction[]>([])
   const [transactionBatches, setTransactionBatches] = useState<TransactionBatch[]>([])
@@ -164,50 +183,29 @@ export default function InventoryManagement() {
   }, [])
   useEffect(() => {
     applyFilters()
-  }, [inventoryItems, searchQuery, categoryFilter, stockFilter])
-  useEffect(() => {
-    const handleStorageChange = (e: StorageEvent) => {
-      if (
-        e.key === "products" ||
-        e.key === "sales" ||
-        e.key === "inventory_items" ||
-        e.key === "stock_transactions" ||
-        e.key === "transaction_batches"
-      ) {
-        loadData()
-      }
-    }
-    window.addEventListener("storage", handleStorageChange)
-    return () => window.removeEventListener("storage", handleStorageChange)
-  }, [])
-  const loadData = () => {
-    const storedItems = localStorage.getItem(STORAGE_KEYS.INVENTORY_ITEMS)
-    let currentInventoryItems: InventoryItem[] = []
-    if (storedItems) {
-      currentInventoryItems = JSON.parse(storedItems)
-    }
+  }, [inventoryItems, searchQuery, categoryFilter, stockFilter, products, subCategories, language])
+  // Storage event listeners removed - using MongoDB now
+  const loadData = async () => {
+    const [storedItems, storedTransactions, storedBatches, productsData, subCategoriesData, superCategoriesData] = await Promise.all([
+      DataManager.getInventoryItems(),
+      DataManager.getStockTransactions(),
+      DataManager.getTransactionBatches(),
+      DataManager.getProducts(),
+      DataManager.getSubCategories(),
+      DataManager.getSuperCategories(),
+    ])
 
-    const storedTransactions = localStorage.getItem(STORAGE_KEYS.STOCK_TRANSACTIONS)
-    if (storedTransactions) {
-      setStockTransactions(JSON.parse(storedTransactions))
-    }
-
-    const storedBatches = localStorage.getItem(STORAGE_KEYS.TRANSACTION_BATCHES)
-    if (storedBatches) {
-      setTransactionBatches(JSON.parse(storedBatches))
-    }
-    const productsData = DataManager.getProducts()
-    const subCategoriesData = DataManager.getSubCategories()
-    const superCategoriesData = DataManager.getSuperCategories()
-
+    setStockTransactions(storedTransactions)
+    setTransactionBatches(storedBatches)
     setProducts(productsData)
     setSubCategories(subCategoriesData)
     setSuperCategories(superCategoriesData)
-    const updatedInventoryItems = currentInventoryItems.map((item) => {
+
+    const updatedInventoryItems = storedItems.map((item: any) => {
       if (item.category === "Unknown" || !item.category) {
-        const product = productsData.find((p) => p.id === item.productId)
+        const product = productsData.find((p: any) => p.id === item.productId)
         if (product) {
-          const subCategory = subCategoriesData.find((sc) => sc.id === product.subCategoryId)
+          const subCategory = subCategoriesData.find((sc: any) => sc.id === product.subCategoryId)
           return {
             ...item,
             category: subCategory?.name || "Unknown",
@@ -217,15 +215,12 @@ export default function InventoryManagement() {
       }
       return item
     })
-    if (JSON.stringify(updatedInventoryItems) !== JSON.stringify(currentInventoryItems)) {
-      saveInventoryItems(updatedInventoryItems)
-    } else {
-      setInventoryItems(updatedInventoryItems)
-    }
+
+    setInventoryItems(updatedInventoryItems)
     syncInventoryWithPOSData(productsData, updatedInventoryItems)
   }
-  const syncInventoryWithPOSData = (productsData: any[], currentInventoryItems: InventoryItem[]) => {
-    const sales = DataManager.getSales()
+  const syncInventoryWithPOSData = async (productsData: any[], currentInventoryItems: InventoryItem[]) => {
+    const sales = await DataManager.getSales()
     const inventoryMap = new Map(currentInventoryItems.map((item) => [item.productId, item]))
     let hasChanges = false
     for (const product of productsData) {
@@ -274,33 +269,47 @@ export default function InventoryManagement() {
       }
     }
     if (hasChanges) {
-      DataManager.setInventoryItems(currentInventoryItems)
+      await DataManager.setInventoryItems(currentInventoryItems)
     }
     setInventoryItems(currentInventoryItems)
   }
 
-  const saveInventoryItems = (items: InventoryItem[]) => {
-    localStorage.setItem(STORAGE_KEYS.INVENTORY_ITEMS, JSON.stringify(items))
-    DataManager.setInventoryItems(items)
+  const saveInventoryItems = async (items: InventoryItem[]) => {
+    await DataManager.setInventoryItems(items)
     setInventoryItems(items)
   }
 
-  const saveStockTransactions = (transactions: StockTransaction[]) => {
-    localStorage.setItem(STORAGE_KEYS.STOCK_TRANSACTIONS, JSON.stringify(transactions))
-    DataManager.setStockTransactions(transactions)
+  const saveStockTransactions = async (transactions: StockTransaction[]) => {
+    await DataManager.setStockTransactions(transactions)
     setStockTransactions(transactions)
   }
 
-  const saveTransactionBatches = (batches: TransactionBatch[]) => {
-    localStorage.setItem(STORAGE_KEYS.TRANSACTION_BATCHES, JSON.stringify(batches))
+  const saveTransactionBatches = async (batches: TransactionBatch[]) => {
+    await DataManager.setTransactionBatches(batches)
     setTransactionBatches(batches)
   }
 
   const applyFilters = () => {
-    let filtered = [...inventoryItems]
+    const translated = inventoryItems.map((item) => {
+      const product = products.find((p) => p.id === item.productId)
+      const subCategory = product ? subCategories.find((sc) => sc.id === product.subCategoryId) : null
+      return {
+        ...item,
+        productName: product ? tName(product) : item.productName,
+        category: subCategory ? tName(subCategory) : item.category,
+      }
+    })
+    let filtered = [...translated]
     if (searchQuery.trim()) {
       const query = searchQuery.toLowerCase()
-      filtered = filtered.filter((item) => item.productName.toLowerCase().includes(query))
+      filtered = filtered.filter((item) => {
+        const product = products.find((p) => p.id === item.productId)
+        return (
+          item.productName.toLowerCase().includes(query) ||
+          (product && product.name.toLowerCase().includes(query)) ||
+          (product && product.nameMr && product.nameMr.toLowerCase().includes(query))
+        )
+      })
     }
     if (categoryFilter !== "all") {
       filtered = filtered.filter((item) => item.category === categoryFilter)
@@ -313,8 +322,8 @@ export default function InventoryManagement() {
       filtered = filtered.filter((item) => item.closingStock < 0)
     }
     filtered.sort((a, b) => {
-      const dateA = new Date(a.lastUpdated).getTime()
-      const dateB = new Date(b.lastUpdated).getTime()
+      const dateA = getSafeTime(a.lastUpdated || (a as any).updatedAt || (a as any).createdAt)
+      const dateB = getSafeTime(b.lastUpdated || (b as any).updatedAt || (b as any).createdAt)
       return dateB - dateA
     })
 
@@ -323,6 +332,15 @@ export default function InventoryManagement() {
 
   const generateId = () => {
     return Date.now().toString() + Math.random().toString(36).substr(2, 9)
+  }
+
+  // Generates a 24‑character hex string compatible with MongoDB ObjectId format
+  const generateObjectId = () => {
+    const timestamp = Math.floor(Date.now() / 1000).toString(16).padStart(8, '0');
+    const random = Array.from({ length: 16 })
+      .map(() => Math.floor(Math.random() * 16).toString(16))
+      .join('');
+    return timestamp + random; // 8 + 16 = 24 hex characters
   }
 
   const generateBatchNumber = (type: string) => {
@@ -419,7 +437,7 @@ export default function InventoryManagement() {
             const updatedInventory = inventoryItems.map((item) =>
               item.productId === oldTransaction.productId ? updatedItem : item,
             )
-            saveInventoryItems(updatedInventory)
+            await saveInventoryItems(updatedInventory)
             const product = products.find((p) => p.id === oldTransaction.productId)
             if (product) {
               let stockChange = 0
@@ -487,11 +505,12 @@ export default function InventoryManagement() {
           notes: `Updated ${transactionType} batch`,
         }
         const updatedBatches = transactionBatches.map((batch) => (batch.id === batchId ? updatedBatch : batch))
-        saveTransactionBatches(updatedBatches)
+        await saveTransactionBatches(updatedBatches)
 
         const updatedTransactions = [...remainingTransactions, ...newTransactions]
-        saveStockTransactions(updatedTransactions)
-        setProducts(DataManager.getProducts())
+        await saveStockTransactions(updatedTransactions)
+        const prods = await DataManager.getProducts()
+        setProducts(prods)
         setLastProcessedBatch(updatedBatch)
         setShowTransactionReceipt(true)
         clearTransactionItems()
@@ -504,7 +523,7 @@ export default function InventoryManagement() {
         setEditingBatchId(null)
         return
       }
-      const batchId = generateId()
+      const batchId = generateObjectId()
       const batchNumber = generateBatchNumber(transactionType)
       const newTransactions: StockTransaction[] = []
       for (const item of transactionItems) {
@@ -554,11 +573,12 @@ export default function InventoryManagement() {
         notes: `${transactionType.charAt(0).toUpperCase() + transactionType.slice(1)} batch transaction`,
       }
       const updatedTransactions = [...stockTransactions, ...newTransactions]
-      saveStockTransactions(updatedTransactions)
+      await saveStockTransactions(updatedTransactions)
 
       const updatedBatches = [...transactionBatches, newBatch]
-      saveTransactionBatches(updatedBatches)
-      setProducts(DataManager.getProducts())
+      await saveTransactionBatches(updatedBatches)
+      const prods = await DataManager.getProducts()
+      setProducts(prods)
       setLastProcessedBatch(newBatch)
       setShowTransactionReceipt(true)
       clearTransactionItems()
@@ -575,7 +595,7 @@ export default function InventoryManagement() {
     }
   }
 
-  const handleAddInventoryItem = () => {
+  const handleAddInventoryItem = async () => {
     if (!itemForm.productId) return
     const product = products.find((p) => p.id === itemForm.productId)
     if (!product) return
@@ -611,11 +631,11 @@ export default function InventoryManagement() {
         createdAt: new Date().toISOString(),
       }
       const updatedTransactions = [...stockTransactions, openingTransaction]
-      saveStockTransactions(updatedTransactions)
+      await saveStockTransactions(updatedTransactions)
     }
 
     const updatedItems = [...inventoryItems, newItem]
-    saveInventoryItems(updatedItems)
+    await saveInventoryItems(updatedItems)
     setItemForm({
       productId: "",
       openingStock: 0,
@@ -625,7 +645,7 @@ export default function InventoryManagement() {
     setShowAddItemDialog(false)
   }
 
-  const updateInventoryFromTransaction = (transaction: StockTransaction) => {
+  const updateInventoryFromTransaction = async (transaction: StockTransaction) => {
     const updatedItems = inventoryItems.map((item) => {
       if (item.productId === transaction.productId) {
         const updatedItem = { ...item }
@@ -648,20 +668,20 @@ export default function InventoryManagement() {
       }
       return item
     })
-    saveInventoryItems(updatedItems)
+    await saveInventoryItems(updatedItems)
   }
 
-  const deleteInventoryItem = (itemId: string) => {
+  const deleteInventoryItem = async (itemId: string) => {
     const updatedItems = inventoryItems.filter((item) => item.id !== itemId)
-    saveInventoryItems(updatedItems)
+    await saveInventoryItems(updatedItems)
     const updatedTransactions = stockTransactions.filter((t) => {
       const item = inventoryItems.find((i) => i.id === itemId)
       return item ? t.productId !== item.productId : true
     })
-    saveStockTransactions(updatedTransactions)
+    await saveStockTransactions(updatedTransactions)
   }
 
-  const deleteBatch = (batchId: string) => {
+  const deleteBatch = async (batchId: string) => {
     const batch = transactionBatches.find((b) => b.id === batchId)
     if (!batch) return
     const batchTransactions = stockTransactions.filter((t) => t.batchId === batchId)
@@ -670,7 +690,7 @@ export default function InventoryManagement() {
         ...transaction,
         quantity: -transaction.quantity,
       }
-      updateInventoryFromTransaction(reverseTransaction)
+      await updateInventoryFromTransaction(reverseTransaction)
       const product = products.find((p) => p.id === transaction.productId)
       if (product) {
         let stockChange = 0
@@ -685,27 +705,28 @@ export default function InventoryManagement() {
             stockChange = -transaction.quantity
             break
         }
-        DataManager.updateProductStock(product.id, product.stock + stockChange)
+        await DataManager.updateProductStock(product.id, product.stock + stockChange)
       }
     }
     const updatedBatches = transactionBatches.filter((b) => b.id !== batchId)
-    saveTransactionBatches(updatedBatches)
+    await saveTransactionBatches(updatedBatches)
 
     const updatedTransactions = stockTransactions.filter((t) => t.batchId !== batchId)
-    saveStockTransactions(updatedTransactions)
-    setProducts(DataManager.getProducts())
+    await saveStockTransactions(updatedTransactions)
+    const prods = await DataManager.getProducts()
+    setProducts(prods)
   }
 
-  const deleteTransaction = (transactionId: string) => {
+  const deleteTransaction = async (transactionId: string) => {
     const transaction = stockTransactions.find((t) => t.id === transactionId)
     if (!transaction) return
     const reverseTransaction = {
       ...transaction,
       quantity: -transaction.quantity,
     }
-    updateInventoryFromTransaction(reverseTransaction)
+    await updateInventoryFromTransaction(reverseTransaction)
     const updatedTransactions = stockTransactions.filter((t) => t.id !== transactionId)
-    saveStockTransactions(updatedTransactions)
+    await saveStockTransactions(updatedTransactions)
   }
   const renderSuperCategories = () => {
     if (superCategories.length === 0) {
@@ -737,7 +758,7 @@ export default function InventoryManagement() {
                 <span className="text-xl sm:text-2xl">{category.icon}</span>
               )}
             </div>
-            <span className="font-medium text-sm text-center px-1 leading-tight">{category.name}</span>
+            <span className="font-medium text-sm text-center px-1 leading-tight">{tName(category)}</span>
           </Button>
         ))}
       </div>
@@ -791,7 +812,7 @@ export default function InventoryManagement() {
                   <span className="text-xl sm:text-2xl">{subCategory.icon}</span>
                 )}
               </div>
-              <span className="font-medium text-sm text-center px-1 leading-tight">{subCategory.name}</span>
+              <span className="font-medium text-sm text-center px-1 leading-tight">{tName(subCategory)}</span>
             </Button>
           ))}
         </div>
@@ -862,7 +883,7 @@ export default function InventoryManagement() {
                       />
                     )}
                     <div className="flex-1 min-w-0">
-                      <h3 className="font-medium text-base text-gray-900 mb-1 line-clamp-2">{product.name}</h3>
+                      <h3 className="font-medium text-base text-gray-900 mb-1 line-clamp-2">{tName(product)}</h3>
                       <div className="text-sm text-gray-500">Unit: {product.unit}</div>
                     </div>
                   </div>
@@ -965,7 +986,7 @@ export default function InventoryManagement() {
     switch (reportForm.type) {
       case "closing_stock":
         title = "Closing Stock Report"
-        reportData = inventoryItems
+        reportData = translatedInventoryItems
           .filter(filterByCategory)
           .map((item) => {
             // Calculate opening stock at start date
@@ -1001,7 +1022,7 @@ export default function InventoryManagement() {
             // Only include items that had transactions in the date range or have stock
             const hasTransactions = stockTransactions.some(
               (t) =>
-                t.productId === inventoryItems.find((i) => i.productName === item.productName)?.productId &&
+                t.productId === translatedInventoryItems.find((i) => i.productName === item.productName)?.productId &&
                 filterTransactionsByDate(t),
             )
             return hasTransactions || item.openingStock > 0 || item.closingStock > 0
@@ -1015,7 +1036,7 @@ export default function InventoryManagement() {
           .filter(filterTransactionsByDate)
           .filter((t) => {
             if (reportForm.categoryFilter !== "all") {
-              const item = inventoryItems.find((item) => item.productId === t.productId)
+              const item = translatedInventoryItems.find((item) => item.productId === t.productId)
               return item && item.category === reportForm.categoryFilter
             }
             return true
@@ -1023,7 +1044,9 @@ export default function InventoryManagement() {
           .map((t) => ({
             date: format(new Date(t.date), "MMM dd, yyyy"),
             batchNumber: t.batchId ? transactionBatches.find((b) => b.id === t.batchId)?.batchNumber || "N/A" : "N/A",
-            productName: t.productName,
+            productName: products.find((p) => p.id === t.productId)
+              ? tName(products.find((p) => p.id === t.productId))
+              : t.productName,
             type: t.type.toUpperCase(),
             quantity: t.quantity,
             reference: t.reference || "-",
@@ -1036,7 +1059,7 @@ export default function InventoryManagement() {
       case "low_stock":
         title = "Low Stock Report"
         // For low stock report, use current stock levels but filter by items that had activity in date range
-        reportData = inventoryItems
+        reportData = translatedInventoryItems
           .filter(filterByCategory)
           .filter((item) => {
             // Check if item had any transactions in the date range
@@ -1053,14 +1076,14 @@ export default function InventoryManagement() {
             reorderLevel: item.reorderLevel,
             shortage: item.reorderLevel - item.closingStock,
             status: item.closingStock < 0 ? "Negative Stock" : item.closingStock === 0 ? "Out of Stock" : "Low Stock",
-            lastUpdated: format(new Date(item.lastUpdated), "MMM dd, yyyy HH:mm"),
+            lastUpdated: safeFormatDate(item.lastUpdated || (item as any).updatedAt || (item as any).createdAt, "MMM dd, yyyy HH:mm"),
           }))
           .sort((a, b) => a.currentStock - b.currentStock)
         break
 
       case "valuation":
         title = "Inventory Valuation Report"
-        reportData = inventoryItems
+        reportData = translatedInventoryItems
           .filter(filterByCategory)
           .map((item) => {
             // Calculate stock at end date for valuation
@@ -1078,7 +1101,7 @@ export default function InventoryManagement() {
             // Only include items that had transactions in the date range or have stock
             const hasTransactions = stockTransactions.some(
               (t) =>
-                t.productId === inventoryItems.find((i) => i.productName === item.productName)?.productId &&
+                t.productId === translatedInventoryItems.find((i) => i.productName === item.productName)?.productId &&
                 filterTransactionsByDate(t),
             )
             return hasTransactions || item.closingStock > 0
@@ -1747,14 +1770,24 @@ export default function InventoryManagement() {
     if (item.closingStock <= item.reorderLevel) return { status: "Low Stock", color: "bg-yellow-100 text-yellow-800" }
     return { status: "In Stock", color: "bg-green-100 text-green-800" }
   }
-  const totalItems = inventoryItems.length
+  const translatedInventoryItems = inventoryItems.map((item) => {
+    const product = products.find((p) => p.id === item.productId)
+    const subCategory = product ? subCategories.find((sc) => sc.id === product.subCategoryId) : null
+    return {
+      ...item,
+      productName: product ? tName(product) : item.productName,
+      category: subCategory ? tName(subCategory) : item.category,
+    }
+  })
+
+  const totalItems = translatedInventoryItems.length
   const totalStockValue = 0
-  const lowStockItems = inventoryItems.filter(
+  const lowStockItems = translatedInventoryItems.filter(
     (item) => item.closingStock <= item.reorderLevel && item.closingStock > 0,
   ).length
-  const outOfStockItems = inventoryItems.filter((item) => item.closingStock === 0).length
-  const negativeStockItems = inventoryItems.filter((item) => item.closingStock < 0).length
-  const uniqueCategories = Array.from(new Set(inventoryItems.map((item) => item.category)))
+  const outOfStockItems = translatedInventoryItems.filter((item) => item.closingStock === 0).length
+  const negativeStockItems = translatedInventoryItems.filter((item) => item.closingStock < 0).length
+  const uniqueCategories = Array.from(new Set(translatedInventoryItems.map((item) => item.category)))
     .filter((category) => category && category !== "Unknown")
     .sort()
 
@@ -1960,9 +1993,9 @@ export default function InventoryManagement() {
                       >
                         <div className="flex-1 w-full sm:w-auto">
                           <div className="flex flex-col sm:flex-row items-start sm:items-center gap-2 sm:gap-3 mb-2">
-                            <div>
-                              <h3 className="font-medium">{item.productName}</h3>
-                              <p className="text-sm text-gray-600">{item.category}</p>
+                            <div className="flex-1 min-w-0">
+                              <h3 className="font-medium break-words">{item.productName}</h3>
+                              <p className="text-sm text-gray-600 break-words">{item.category}</p>
                             </div>
                             <Badge className={`text-xs ${stockStatus.color}`}>{stockStatus.status}</Badge>
                           </div>
@@ -1984,7 +2017,7 @@ export default function InventoryManagement() {
                             </div>
                           </div>
                           <div className="text-xs text-gray-500 mt-1">
-                            Last updated: {format(new Date(item.lastUpdated), "MMM dd, yyyy HH:mm")}
+                            Last updated: {safeFormatDate(item.lastUpdated || (item as any).updatedAt || (item as any).createdAt, "MMM dd, yyyy HH:mm")}
                           </div>
                         </div>
                         <div className="flex items-center gap-2 mt-3 sm:mt-0">
@@ -2032,7 +2065,7 @@ export default function InventoryManagement() {
               <CardContent>
                 <div className="space-y-2 max-h-96 overflow-y-auto">
                   {stockTransactions
-                    .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())
+                    .sort((a, b) => getSafeTime(b.createdAt) - getSafeTime(a.createdAt))
                     .slice(0, 50)
                     .map((transaction) => (
                       <div
@@ -2053,10 +2086,14 @@ export default function InventoryManagement() {
                             >
                               {transaction.type.toUpperCase()}
                             </Badge>
-                            <span className="font-medium">{transaction.productName}</span>
+                            <span className="font-medium">
+                              {products.find((p) => p.id === transaction.productId)
+                                ? tName(products.find((p) => p.id === transaction.productId))
+                                : transaction.productName}
+                            </span>
                           </div>
                           <div className="text-sm text-gray-600">
-                            <span>{format(new Date(transaction.date), "MMM dd, yyyy")}</span>
+                            <span>{safeFormatDate(transaction.date || transaction.createdAt, "MMM dd, yyyy")}</span>
                             <span className="mx-2">•</span>
                             <span>Qty: {Math.abs(transaction.quantity)}</span>
                             {transaction.batchId && (
@@ -2076,7 +2113,7 @@ export default function InventoryManagement() {
                             )}
                           </div>
                           <div className="text-xs text-gray-500">
-                            {format(new Date(transaction.createdAt), "MMM dd, yyyy HH:mm")}
+                            {safeFormatDate(transaction.createdAt, "MMM dd, yyyy HH:mm")}
                           </div>
                         </div>
                         <div className="flex items-center gap-2 mt-3 sm:mt-0">
@@ -2113,7 +2150,7 @@ export default function InventoryManagement() {
               <CardContent>
                 <div className="space-y-2 max-h-96 overflow-y-auto">
                   {transactionBatches
-                    .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())
+                    .sort((a, b) => getSafeTime(b.createdAt) - getSafeTime(a.createdAt))
                     .map((batch) => (
                       <div
                         key={batch.id}
@@ -2136,7 +2173,7 @@ export default function InventoryManagement() {
                             <span className="font-medium">{batch.batchNumber}</span>
                           </div>
                           <div className="text-sm text-gray-600">
-                            <span>{format(new Date(batch.date), "MMM dd, yyyy")}</span>
+                            <span>{safeFormatDate(batch.date || batch.createdAt, "MMM dd, yyyy")}</span>
                             <span className="mx-2">•</span>
                             <span>{batch.totalItems} items</span>
                             <span className="mx-2">•</span>
@@ -2149,10 +2186,13 @@ export default function InventoryManagement() {
                             )}
                           </div>
                           <div className="text-xs text-gray-500 mt-1">
-                            Items: {batch.items.map((item) => item.productName).join(", ")}
+                            Items: {batch.items.map((item) => {
+                              const product = products.find((p) => p.id === item.productId)
+                              return product ? tName(product) : item.productName
+                            }).join(", ")}
                           </div>
                           <div className="text-xs text-gray-500">
-                            {format(new Date(batch.createdAt), "MMM dd, yyyy HH:mm")}
+                            {safeFormatDate(batch.createdAt, "MMM dd, yyyy HH:mm")}
                           </div>
                         </div>
                         <div className="flex items-center gap-2 mt-3 sm:mt-0">
@@ -2408,15 +2448,24 @@ export default function InventoryManagement() {
                     />
                   </div>
                   <Button
-                    onClick={() => {
+                    onClick={async () => {
                       if (confirm("Are you sure you want to clear all inventory data? This action cannot be undone.")) {
-                        localStorage.removeItem(STORAGE_KEYS.INVENTORY_ITEMS)
-                        localStorage.removeItem(STORAGE_KEYS.STOCK_TRANSACTIONS)
-                        localStorage.removeItem(STORAGE_KEYS.TRANSACTION_BATCHES)
-                        setInventoryItems([])
-                        setStockTransactions([])
-                        setTransactionBatches([])
-                        alert("All inventory data has been cleared.")
+                        try {
+                          // Clear from MongoDB using the clearSelectedData method
+                          await DataManager.clearSelectedData([
+                            "inventory_items",
+                            "stock_transactions",
+                            "transaction_batches"
+                          ])
+                          setInventoryItems([])
+                          setStockTransactions([])
+                          setTransactionBatches([])
+                          alert("All inventory data has been cleared.")
+                          loadData() // Reload to refresh the UI
+                        } catch (error) {
+                          console.error("Error clearing data:", error)
+                          alert("Failed to clear data. Please try again.")
+                        }
                       }
                     }}
                     variant="destructive"
@@ -2658,14 +2707,24 @@ export default function InventoryManagement() {
       <Dialog open={showItemDetailsDialog} onOpenChange={setShowItemDetailsDialog}>
         <DialogContent className="max-w-full sm:max-w-lg md:max-w-2xl">
           <DialogHeader>
-            <DialogTitle>Item Details - {selectedItem?.productName}</DialogTitle>
+            <DialogTitle>
+              Item Details - {products.find((p) => p.id === selectedItem?.productId)
+                ? tName(products.find((p) => p.id === selectedItem?.productId))
+                : selectedItem?.productName}
+            </DialogTitle>
           </DialogHeader>
           {selectedItem && (
             <div className="space-y-4">
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <div>
                   <Label className="text-sm font-medium">Category</Label>
-                  <p className="text-sm">{selectedItem.category}</p>
+                  <p className="text-sm">
+                    {(() => {
+                      const product = products.find((p) => p.id === selectedItem.productId)
+                      const subCategory = product ? subCategories.find((sc) => sc.id === product.subCategoryId) : null
+                      return subCategory ? tName(subCategory) : selectedItem.category
+                    })()}
+                  </p>
                 </div>
                 <div>
                   <Label className="text-sm font-medium">Unit</Label>
@@ -2719,7 +2778,7 @@ export default function InventoryManagement() {
                 <div className="mt-2 space-y-2 max-h-40 overflow-y-auto">
                   {stockTransactions
                     .filter((t) => t.productId === selectedItem.productId)
-                    .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())
+                    .sort((a, b) => getSafeTime(b.createdAt) - getSafeTime(a.createdAt))
                     .slice(0, 10)
                     .map((transaction) => (
                       <div
@@ -2743,7 +2802,7 @@ export default function InventoryManagement() {
                             {Math.abs(transaction.quantity)} {selectedItem.unit}
                           </span>
                         </div>
-                        <span className="text-xs text-gray-500">{format(new Date(transaction.date), "MMM dd")}</span>
+                        <span className="text-xs text-gray-500">{safeFormatDate(transaction.date || transaction.createdAt, "MMM dd")}</span>
                       </div>
                     ))}
                 </div>
@@ -2772,7 +2831,7 @@ export default function InventoryManagement() {
                 </div>
                 <div>
                   <Label className="text-sm font-medium">Date</Label>
-                  <p className="text-sm">{format(new Date(selectedBatch.date), "MMM dd, yyyy")}</p>
+                  <p className="text-sm">{safeFormatDate(selectedBatch.date || selectedBatch.createdAt, "MMM dd, yyyy")}</p>
                 </div>
                 <div>
                   <Label className="text-sm font-medium">Total Items</Label>
@@ -2799,7 +2858,11 @@ export default function InventoryManagement() {
                   {selectedBatch.items.map((item, index) => (
                     <div key={index} className="flex justify-between items-center p-2 bg-gray-50 rounded-[9px]">
                       <div>
-                        <span className="text-sm font-medium">{item.productName}</span>
+                        <span className="text-sm font-medium">
+                          {products.find((p) => p.id === item.productId)
+                            ? tName(products.find((p) => p.id === item.productId))
+                            : item.productName}
+                        </span>
                       </div>
                       <div className="text-right">
                         <span className="text-sm">

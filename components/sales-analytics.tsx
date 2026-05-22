@@ -52,9 +52,16 @@ export default function SalesAnalytics({ onBack }: SalesAnalyticsProps) {
   }
 
   useEffect(() => {
-    const { start, end } = getDateRange()
-    const analyticsData = DataManager.getSalesAnalytics({ start, end })
-    setAnalytics(analyticsData)
+    const fetchAnalytics = async () => {
+      const { start, end } = getDateRange()
+      try {
+        const analyticsData = await DataManager.getSalesAnalytics({ start, end })
+        setAnalytics(analyticsData)
+      } catch (error) {
+        console.error("Error fetching analytics:", error)
+      }
+    }
+    fetchAnalytics()
   }, [dateRange, customStartDate, customEndDate])
 
   const formatCurrency = (amount: number) => {

@@ -32,7 +32,7 @@ import { DataManager } from "./data-manager"
 
 interface Sale {
   id: string
-  invoiceNumber: string
+  estimateNumber: string
   date: string
   timestamp: number
   customerId?: string
@@ -90,9 +90,13 @@ export default function SalesDataManagement() {
     applyFilters()
   }, [sales, searchQuery, dateFilter, customStartDate, customEndDate, paymentMethodFilter, customerTypeFilter])
 
-  const loadSalesData = () => {
-    const salesData = DataManager.getSales()
-    setSales(salesData)
+  const loadSalesData = async () => {
+    try {
+      const salesData = await DataManager.getSales()
+      setSales(salesData)
+    } catch (error) {
+      console.error("Error loading sales data:", error)
+    }
   }
 
   const applyFilters = () => {
@@ -103,7 +107,7 @@ export default function SalesDataManagement() {
       const query = searchQuery.toLowerCase()
       filtered = filtered.filter(
         (sale) =>
-          sale.invoiceNumber.toLowerCase().includes(query) ||
+          sale.estimateNumber.toLowerCase().includes(query) ||
           sale.customerName?.toLowerCase().includes(query) ||
           sale.customerPhone?.includes(query) ||
           sale.items.some((item) => item.productName.toLowerCase().includes(query)),
@@ -200,7 +204,7 @@ export default function SalesDataManagement() {
 
       if (exportSelections.salesData) {
         exportData.sales = filteredSales.map((sale) => ({
-          invoiceNumber: sale.invoiceNumber,
+          estimateNumber: sale.estimateNumber,
           date: sale.date,
           timestamp: sale.timestamp,
           customerType: sale.isCashSale ? "Cash Sale" : "Customer",
@@ -220,7 +224,7 @@ export default function SalesDataManagement() {
         filteredSales.forEach((sale) => {
           sale.items.forEach((item) => {
             exportData.saleItems.push({
-              invoiceNumber: sale.invoiceNumber,
+              estimateNumber: sale.estimateNumber,
               saleDate: sale.date,
               productName: item.productName,
               quantity: item.quantity,
@@ -236,20 +240,22 @@ export default function SalesDataManagement() {
       }
 
       if (exportSelections.customerDetails) {
-        const customers = DataManager.getCustomers()
+        const customers = await DataManager.getCustomers()
         exportData.customers = customers
         setExportProgress(60)
       }
 
       if (exportSelections.productDetails) {
-        const products = DataManager.getProducts()
+        const products = await DataManager.getProducts()
         exportData.products = products
         setExportProgress(80)
       }
 
       if (exportSelections.categoryDetails) {
-        const superCategories = DataManager.getSuperCategories()
-        const subCategories = DataManager.getSubCategories()
+        const [superCategories, subCategories] = await Promise.all([
+          DataManager.getSuperCategories(),
+          DataManager.getSubCategories()
+        ])
         exportData.superCategories = superCategories
         exportData.subCategories = subCategories
         setExportProgress(90)
@@ -583,7 +589,7 @@ export default function SalesDataManagement() {
                       />
                       <div className="flex-1">
                         <div className="flex items-center gap-2 mb-1">
-                          <span className="font-medium">{sale.invoiceNumber}</span>
+                          <span className="font-medium">{sale.estimateNumber}</span>
                           <Badge variant={sale.isCashSale ? "secondary" : "default"} className="text-xs">
                             {sale.isCashSale ? "Cash" : "Customer"}
                           </Badge>
@@ -949,7 +955,7 @@ export default function SalesDataManagement() {
       <Dialog open={showSaleDetails} onOpenChange={setShowSaleDetails}>
         <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
           <DialogHeader>
-            <DialogTitle>Sale Details - {selectedSaleDetails?.invoiceNumber}</DialogTitle>
+            <DialogTitle>Sale Details - {selectedSaleDetails?.estimateNumber}</DialogTitle>
           </DialogHeader>
           {selectedSaleDetails && (
             <div className="space-y-4">

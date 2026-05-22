@@ -1,6 +1,8 @@
 "use client"
 
 import { useState, useEffect } from "react"
+import { useLanguage } from "@/contexts/LanguageContext"
+import { useAuth } from "@/contexts/AuthContext"
 import { Plus, Edit, Trash2, Save, X, ArrowLeft, Database, BarChart3, FileText } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -19,6 +21,7 @@ import SalesDataManagement from "./sales-data-management"
 interface SuperCategory {
   id: string
   name: string
+  nameMr?: string
   icon: string
   image?: string
   createdAt: string
@@ -28,6 +31,7 @@ interface SuperCategory {
 interface SubCategory {
   id: string
   name: string
+  nameMr?: string
   icon: string
   image?: string
   superCategoryId: string
@@ -38,6 +42,7 @@ interface SubCategory {
 interface Product {
   id: string
   name: string
+  nameMr?: string
   price: number
   stock: number
   unit: string
@@ -59,6 +64,23 @@ interface Customer {
 }
 
 export default function AdminPanel({ onBack }: { onBack: () => void }) {
+  const { tName } = useLanguage()
+  const { user } = useAuth()
+
+  if (user?.role !== "admin") {
+    return (
+      <div className="min-h-screen bg-slate-900 flex items-center justify-center text-white p-4">
+        <div className="text-center space-y-4 max-w-md bg-slate-850 p-8 rounded-[16px] border border-slate-700 shadow-2xl">
+          <h2 className="text-2xl font-bold text-red-400">Access Denied</h2>
+          <p className="text-slate-400">You do not have permissions to access the Admin Panel.</p>
+          <Button onClick={onBack} className="bg-yellow-400 hover:bg-yellow-500 text-slate-950 rounded-[9px] font-bold">
+            Back to POS Terminal
+          </Button>
+        </div>
+      </div>
+    )
+  }
+
   const [activeTab, setActiveTab] = useState<
     "super" | "sub" | "products" | "customers" | "data" | "sales" | "analytics"
   >("super")
@@ -76,6 +98,7 @@ export default function AdminPanel({ onBack }: { onBack: () => void }) {
   const [editingCustomer, setEditingCustomer] = useState<Customer | null>(null)
   const [productForm, setProductForm] = useState({
     name: "",
+    nameMr: "",
     price: 0,
     stock: 0,
     unit: "",
@@ -83,8 +106,8 @@ export default function AdminPanel({ onBack }: { onBack: () => void }) {
     subCategoryId: "",
     hamaliValue: 0,
   })
-  const [superForm, setSuperForm] = useState({ name: "", icon: "", image: "" })
-  const [subForm, setSubForm] = useState({ name: "", icon: "", image: "", superCategoryId: "" })
+  const [superForm, setSuperForm] = useState({ name: "", nameMr: "", icon: "", image: "" })
+  const [subForm, setSubForm] = useState({ name: "", nameMr: "", icon: "", image: "", superCategoryId: "" })
   const [customerForm, setCustomerForm] = useState({
     name: "",
     email: "",
@@ -92,15 +115,25 @@ export default function AdminPanel({ onBack }: { onBack: () => void }) {
     address: "",
   })
   const [errors, setErrors] = useState<string[]>([])
+  const [filterSuperCategory, setFilterSuperCategory] = useState<string>("all")
+  const [filterSubCategory, setFilterSubCategory] = useState<string>("all")
+
   useEffect(() => {
     loadData()
   }, [])
 
-  const loadData = () => {
-    setSuperCategories(DataManager.getSuperCategories())
-    setSubCategories(DataManager.getSubCategories())
-    setProducts(DataManager.getProducts())
-    setCustomers(DataManager.getCustomers())
+  const loadData = async () => {
+    const [superCats, subCats, prods, custs] = await Promise.all([
+      DataManager.getSuperCategories(),
+      DataManager.getSubCategories(),
+      DataManager.getProducts(),
+      DataManager.getCustomers(),
+    ])
+
+    setSuperCategories(superCats)
+    setSubCategories(subCats)
+    setProducts(prods)
+    setCustomers(custs)
   }
   const handleSaveSuperCategory = async () => {
     const validationErrors = DataManager.validateSuperCategory(superForm)
@@ -136,7 +169,7 @@ export default function AdminPanel({ onBack }: { onBack: () => void }) {
   }
 
   const resetSuperForm = () => {
-    setSuperForm({ name: "", icon: "", image: "" })
+    setSuperForm({ name: "", nameMr: "", icon: "", image: "" })
     setEditingSuperCategory(null)
     setShowSuperDialog(false)
   }
@@ -174,7 +207,7 @@ export default function AdminPanel({ onBack }: { onBack: () => void }) {
   }
 
   const resetSubForm = () => {
-    setSubForm({ name: "", icon: "", image: "", superCategoryId: "" })
+    setSubForm({ name: "", nameMr: "", icon: "", image: "", superCategoryId: "" })
     setEditingSubCategory(null)
     setShowSubDialog(false)
   }
@@ -214,6 +247,7 @@ export default function AdminPanel({ onBack }: { onBack: () => void }) {
   const resetProductForm = () => {
     setProductForm({
       name: "",
+      nameMr: "",
       price: 0,
       stock: 0,
       unit: "",
@@ -229,6 +263,7 @@ export default function AdminPanel({ onBack }: { onBack: () => void }) {
     setEditingProduct(product)
     setProductForm({
       name: product.name,
+      nameMr: product.nameMr || "",
       price: product.price,
       stock: product.stock,
       unit: product.unit,
@@ -280,7 +315,7 @@ export default function AdminPanel({ onBack }: { onBack: () => void }) {
 
   const openEditSuperCategory = (category: SuperCategory) => {
     setEditingSuperCategory(category)
-    setSuperForm({ name: category.name, icon: category.icon, image: category.image || "" })
+    setSuperForm({ name: category.name, nameMr: category.nameMr || "", icon: category.icon, image: category.image || "" })
     setShowSuperDialog(true)
     setErrors([])
   }
@@ -289,6 +324,7 @@ export default function AdminPanel({ onBack }: { onBack: () => void }) {
     setEditingSubCategory(category)
     setSubForm({
       name: category.name,
+      nameMr: category.nameMr || "",
       icon: category.icon,
       image: category.image || "",
       superCategoryId: category.superCategoryId,
@@ -308,7 +344,21 @@ export default function AdminPanel({ onBack }: { onBack: () => void }) {
     setShowCustomerDialog(true)
     setErrors([])
   }
-  if (activeTab === "analytics") {
+  const availableSubCategories = filterSuperCategory === "all"
+    ? subCategories
+    : subCategories.filter(s => s.superCategoryId === filterSuperCategory)
+
+  const filteredProducts = products.filter(product => {
+    const subCategory = subCategories.find(s => s.id === product.subCategoryId)
+    if (!subCategory) return filterSuperCategory === "all" && filterSubCategory === "all"
+
+    if (filterSuperCategory !== "all" && subCategory.superCategoryId !== filterSuperCategory) return false
+    if (filterSubCategory !== "all" && product.subCategoryId !== filterSubCategory) return false
+
+    return true
+  })
+
+  if (activeTab === ("analytics" as string)) {
     return <SalesAnalytics onBack={() => setActiveTab("super")} />
   }
 
@@ -445,7 +495,7 @@ export default function AdminPanel({ onBack }: { onBack: () => void }) {
                             )}
                           </div>
                           <div>
-                            <span className="font-medium">{category.name}</span>
+                            <span className="font-medium">{tName(category)}</span>
                           </div>
                         </div>
                         <div className="flex gap-2">
@@ -513,7 +563,7 @@ export default function AdminPanel({ onBack }: { onBack: () => void }) {
                               )}
                             </div>
                             <div>
-                              <span className="font-medium">{category.name}</span>
+                              <span className="font-medium">{tName(category)}</span>
                             </div>
                           </div>
                           <div className="flex gap-2">
@@ -535,7 +585,7 @@ export default function AdminPanel({ onBack }: { onBack: () => void }) {
                             </Button>
                           </div>
                         </div>
-                        <p className="text-sm text-gray-500">Parent: {superCategory?.name || "Unknown"}</p>
+                        <p className="text-sm text-gray-500">Parent: {tName(superCategory) || "Unknown"}</p>
                       </div>
                     </CardContent>
                   </Card>
@@ -548,26 +598,55 @@ export default function AdminPanel({ onBack }: { onBack: () => void }) {
         {/* Products Tab */}
         {activeTab === "products" && (
           <div className="space-y-6">
-            <div className="flex justify-between items-center">
+            <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
               <h2 className="text-xl font-bold">Products</h2>
-              <Button
-                onClick={() => {
-                  setShowProductDialog(true)
-                  setErrors([])
-                }}
-                className="bg-yellow-400 hover:bg-yellow-500 text-black rounded-[9px]"
-              >
-                <Plus className="w-4 h-4 mr-2" />
-                Add Product
-              </Button>
+              <div className="flex flex-col sm:flex-row items-center gap-4 w-full md:w-auto">
+                <Select value={filterSuperCategory} onValueChange={(val) => {
+                  setFilterSuperCategory(val)
+                  setFilterSubCategory("all")
+                }}>
+                  <SelectTrigger className="w-full sm:w-[180px] rounded-[9px]">
+                    <SelectValue placeholder="All Super Categories" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="all">All Super Categories</SelectItem>
+                    {superCategories.map(c => (
+                      <SelectItem key={c.id} value={c.id}>{tName(c)}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+
+                <Select value={filterSubCategory} onValueChange={setFilterSubCategory}>
+                  <SelectTrigger className="w-full sm:w-[180px] rounded-[9px]">
+                    <SelectValue placeholder="All Sub Categories" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="all">All Sub Categories</SelectItem>
+                    {availableSubCategories.map(c => (
+                      <SelectItem key={c.id} value={c.id}>{tName(c)}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+
+                <Button
+                  onClick={() => {
+                    setShowProductDialog(true)
+                    setErrors([])
+                  }}
+                  className="bg-yellow-400 hover:bg-yellow-500 text-black rounded-[9px] w-full sm:w-auto"
+                >
+                  <Plus className="w-4 h-4 mr-2" />
+                  Add Product
+                </Button>
+              </div>
             </div>
 
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-              {products.map((product) => {
+              {filteredProducts.map((product) => {
                 const subCategory = subCategories.find((s) => s.id === product.subCategoryId)
                 return (
-                  <Card key={product.id} className="rounded-[11px]">
-                    <CardContent className="p-4">
+                  <Card key={product.id} className="rounded-[11px] overflow-hidden">
+                    <CardContent className="p-4 overflow-hidden">
                       <div className="space-y-2">
                         <div className="flex items-start justify-between">
                           <div className="flex-1">
@@ -579,8 +658,8 @@ export default function AdminPanel({ onBack }: { onBack: () => void }) {
                                   className="w-12 h-12 object-cover rounded-[9px] border-2 border-gray-200"
                                 />
                               )}
-                              <div>
-                                <span className="font-medium">{product.name}</span>
+                              <div className="flex-1 min-w-0">
+                                <span className="font-medium break-words">{tName(product)}</span>
                               </div>
                             </div>
                             <div className="text-sm text-gray-600">
@@ -588,7 +667,7 @@ export default function AdminPanel({ onBack }: { onBack: () => void }) {
                               <p className={product.stock <= 10 ? "text-red-600 font-medium" : ""}>
                                 Stock: {product.stock} {product.unit}
                               </p>
-                              <p>Category: {subCategory?.name || "Unknown"}</p>
+                              <p>Category: {tName(subCategory) || "Unknown"}</p>
                             </div>
                           </div>
                           <div className="flex gap-2">
@@ -699,6 +778,15 @@ export default function AdminPanel({ onBack }: { onBack: () => void }) {
               />
             </div>
             <div>
+              <Label htmlFor="super-name-mr">Name (Marathi) - Optional</Label>
+              <Input
+                id="super-name-mr"
+                value={superForm.nameMr || ''}
+                onChange={(e) => setSuperForm({ ...superForm, nameMr: e.target.value })}
+                className="rounded-[9px]"
+              />
+            </div>
+            <div>
               <Label htmlFor="super-icon">Icon (Emoji)</Label>
               <Input
                 id="super-icon"
@@ -749,6 +837,15 @@ export default function AdminPanel({ onBack }: { onBack: () => void }) {
               />
             </div>
             <div>
+              <Label htmlFor="sub-name-mr">Name (Marathi) - Optional</Label>
+              <Input
+                id="sub-name-mr"
+                value={subForm.nameMr || ''}
+                onChange={(e) => setSubForm({ ...subForm, nameMr: e.target.value })}
+                className="rounded-[9px]"
+              />
+            </div>
+            <div>
               <Label htmlFor="sub-icon">Icon (Emoji)</Label>
               <Input
                 id="sub-icon"
@@ -770,7 +867,7 @@ export default function AdminPanel({ onBack }: { onBack: () => void }) {
                 <SelectContent>
                   {superCategories.map((category) => (
                     <SelectItem key={category.id} value={category.id}>
-                      {category.icon} {category.name}
+                      {category.icon} {tName(category)}
                     </SelectItem>
                   ))}
                 </SelectContent>
@@ -813,6 +910,15 @@ export default function AdminPanel({ onBack }: { onBack: () => void }) {
                 id="product-name"
                 value={productForm.name}
                 onChange={(e) => setProductForm({ ...productForm, name: e.target.value })}
+                className="rounded-[9px]"
+              />
+            </div>
+            <div>
+              <Label htmlFor="product-name-mr">Name (Marathi) - Optional</Label>
+              <Input
+                id="product-name-mr"
+                value={productForm.nameMr || ''}
+                onChange={(e) => setProductForm({ ...productForm, nameMr: e.target.value })}
                 className="rounded-[9px]"
               />
             </div>
@@ -876,7 +982,7 @@ export default function AdminPanel({ onBack }: { onBack: () => void }) {
                 <SelectContent>
                   {subCategories.map((category) => (
                     <SelectItem key={category.id} value={category.id}>
-                      {category.icon} {category.name}
+                      {category.icon} {tName(category)}
                     </SelectItem>
                   ))}
                 </SelectContent>

@@ -32,10 +32,14 @@ import PurchaseOrderModule from "./purchase-order-module"
 import { DataManager } from "./data-manager"
 import { format } from "date-fns"
 import { Badge } from "@/components/ui/badge"
+import { useLanguage } from '@/contexts/LanguageContext'
+import { useAuth } from '@/contexts/AuthContext'
+import { LogOut } from 'lucide-react'
 
 interface SuperCategory {
   id: string
   name: string
+  nameMr?: string
   icon: string
   image?: string
   createdAt: string
@@ -45,6 +49,7 @@ interface SuperCategory {
 interface SubCategory {
   id: string
   name: string
+  nameMr?: string
   icon: string
   image?: string
   superCategoryId: string
@@ -55,6 +60,7 @@ interface SubCategory {
 interface Product {
   id: string
   name: string
+  nameMr?: string
   price: number
   stock: number
   unit: string
@@ -128,25 +134,16 @@ interface Sale {
 }
 
 const storeInfo = {
-  name: "SNS",
+  name: "WholesalePoS",
   address: "Jodbhavi Peth, Solapur",
   phone: "9420490692",
   contact: "9405842623",
 }
-const getEstimateCounter = () => {
-  const stored = localStorage.getItem("estimateCounter")
-  return stored ? Number.parseInt(stored) : 1
-}
-
-const setEstimateCounter = (counter: number) => {
-  localStorage.setItem("estimateCounter", counter.toString())
-}
-const generateEstimateNumber = (date: string) => {
-  const counter = getEstimateCounter()
+const generateEstimateNumber = async (date: string) => {
+  const counter = await DataManager.getNextEstimateNumber()
   const dateObj = new Date(date)
   const dateStr = dateObj.toISOString().split("T")[0].replace(/-/g, "")
   const estimateNumber = `EST/${dateStr}/${counter.toString().padStart(4, "0")}`
-  setEstimateCounter(counter + 1)
   return estimateNumber
 }
 
@@ -158,9 +155,12 @@ const formatCurrency = (amount: number) => {
 }
 
 export default function POSSystem() {
+  const { t, language, setLanguage, tName } = useLanguage()
+  const { user, logout } = useAuth()
   const [showAdmin, setShowAdmin] = useState(false)
   const [activeMainTab, setActiveMainTab] = useState<"pos" | "order" | "godown">("pos")
-  const [currentView, setCurrentView] = useState<"super" | "sub" | "products">("super")
+  const [currentView, setCurrentView] = useState<"super" | "sub" | "products" | "all_products">("super")
+  const [productSearchQuery, setProductSearchQuery] = useState("")
   const [selectedSuperCategory, setSelectedSuperCategory] = useState<string>("")
   const [selectedSubCategory, setSelectedSubCategory] = useState<string>("")
   const [selectedCustomer, setSelectedCustomer] = useState<string>("")
@@ -189,6 +189,11 @@ export default function POSSystem() {
   const [showCashTransactions, setShowCashTransactions] = useState(false)
   const [showMobileCart, setShowMobileCart] = useState(false)
   const [isMobile, setIsMobile] = useState(false)
+
+  // Enhanced responsive hook
+  const [isTablet, setIsTablet] = useState(false)
+  const [isLaptop, setIsLaptop] = useState(false)
+  const [isDesktop, setIsDesktop] = useState(false)
   const [superCategories, setSuperCategories] = useState<SuperCategory[]>([])
   const [subCategories, setSubCategories] = useState<SubCategory[]>([])
   const [products, setProducts] = useState<Product[]>([])
@@ -203,7 +208,10 @@ export default function POSSystem() {
   useEffect(() => {
     const checkScreenSize = () => {
       const width = window.innerWidth
-      setIsMobile(width < 768)
+      setIsMobile(width < 640) // Mobile: < 640px
+      setIsTablet(width >= 640 && width < 1024) // Tablet: 640px - 1024px
+      setIsLaptop(width >= 1024 && width < 1280) // Laptop: 1024px - 1280px
+      setIsDesktop(width >= 1280) // Desktop: >= 1280px
     }
 
     checkScreenSize()
@@ -240,8 +248,8 @@ export default function POSSystem() {
         total: updatedTotal,
       }
 
-      const sales = DataManager.getSales()
-      const saleIndex = sales.findIndex((sale) => sale.estimateNumber === editableEstimate.estimateNumber)
+      const sales = await DataManager.getSales()
+      const saleIndex = sales.findIndex((sale: any) => sale.estimateNumber === editableEstimate.estimateNumber)
 
       function generateUUID() {
         // Simple RFC4122 version 4 compliant UUID generator
@@ -256,7 +264,7 @@ export default function POSSystem() {
         const originalSale = sales[saleIndex]
 
         const updatedSaleItems = estimateItems.map((item) => {
-          const originalItem = originalSale.items.find((saleItem) => saleItem.productId === item.id)
+          const originalItem = originalSale.items.find((saleItem: any) => saleItem.productId === item.id)
           return {
             id: originalItem?.id || generateUUID(),
             productId: item.id,
@@ -315,7 +323,8 @@ export default function POSSystem() {
           }
         }
 
-        setProducts(DataManager.getProducts())
+        const prods = await DataManager.getProducts()
+        setProducts(prods)
       }
 
       setCurrentEstimate(updatedEstimate)
@@ -367,7 +376,7 @@ export default function POSSystem() {
       const lastUsedRate = getLastUsedRate(product.id) || product.price
       const newItem: OrderItem = {
         id: product.id,
-        name: product.name,
+        name: tName(product),
         quantity: 1,
         unitPrice: lastUsedRate,
         lineTotal: lastUsedRate,
@@ -381,7 +390,8 @@ export default function POSSystem() {
   }
 
   const filteredProductsForEstimate = products.filter((product) =>
-    product.name.toLowerCase().includes(productSearchForEstimate.toLowerCase()),
+    product.name.toLowerCase().includes(productSearchForEstimate.toLowerCase()) ||
+    (product.nameMr && product.nameMr.toLowerCase().includes(productSearchForEstimate.toLowerCase())),
   )
 
   const handlePrint = () => {
@@ -782,29 +792,21 @@ table tbody tr.total-row td {
       }
     }
   }, [products, dataLoaded])
-  useEffect(() => {
-    const handleStorageChange = (e: StorageEvent) => {
-      if (e.key === "superCategories") {
-        setSuperCategories(DataManager.getSuperCategories())
-      } else if (e.key === "subCategories") {
-        setSubCategories(DataManager.getSubCategories())
-      } else if (e.key === "products") {
-        setProducts(DataManager.getProducts())
-      } else if (e.key === "customers") {
-        setCustomers(DataManager.getCustomers())
-      }
-    }
-
-    window.addEventListener("storage", handleStorageChange)
-    return () => window.removeEventListener("storage", handleStorageChange)
-  }, [])
-  const handleAdminReturn = useCallback(() => {
+  // Storage event listeners removed - using MongoDB now
+  const handleAdminReturn = useCallback(async () => {
     setShowAdmin(false)
 
-    setSuperCategories(DataManager.getSuperCategories())
-    setSubCategories(DataManager.getSubCategories())
-    setProducts(DataManager.getProducts())
-    setCustomers(DataManager.getCustomers())
+    const [superCats, subCats, prods, custs] = await Promise.all([
+      DataManager.getSuperCategories(),
+      DataManager.getSubCategories(),
+      DataManager.getProducts(),
+      DataManager.getCustomers(),
+    ])
+
+    setSuperCategories(superCats)
+    setSubCategories(subCats)
+    setProducts(prods)
+    setCustomers(custs)
   }, [])
 
   const filteredCustomers = useMemo(() => {
@@ -875,7 +877,7 @@ table tbody tr.total-row td {
       const lastUsedRate = getLastUsedRate(product.id) || product.price
       const newItem: OrderItem = {
         id: product.id,
-        name: product.name,
+        name: tName(product),
         quantity: 1,
         unitPrice: lastUsedRate,
         lineTotal: lastUsedRate,
@@ -939,17 +941,30 @@ table tbody tr.total-row td {
     if (!isCashSale && !selectedCustomer) return
 
     try {
-      const estimateNumber = generateEstimateNumber(estimateDate)
+      const estimateNumber = await generateEstimateNumber(estimateDate)
 
       await DataManager.recordSale({
         estimateNumber: estimateNumber,
+        date: estimateDate,
         customerId: isCashSale ? undefined : selectedCustomer,
         isCashSale,
-        items: orderItems.map((item) => ({
-          productId: item.id,
-          quantity: item.quantity,
-          unitPrice: item.unitPrice,
-        })),
+        items: orderItems.map((item) => {
+          const product = products.find((p) => p.id === item.id)
+          const subCat = product ? subCategories.find((sc) => sc.id === product.subCategoryId) : null
+          const superCat = subCat ? superCategories.find((sc) => sc.id === subCat.superCategoryId) : null
+          return {
+            productId: item.id,
+            productName: item.name,
+            quantity: item.quantity,
+            unitPrice: item.unitPrice,
+            lineTotal: item.quantity * item.unitPrice,
+            unit: item.unit,
+            subCategoryId: product?.subCategoryId,
+            subCategoryName: subCat ? tName(subCat) : undefined,
+            superCategoryId: superCat?.id,
+            superCategoryName: superCat ? tName(superCat) : undefined,
+          }
+        }),
         paymentMethod,
         timestamp: Date.now(),
         customerName: isCashSale ? "CASH CUSTOMER" : selectedCustomerData?.name,
@@ -981,26 +996,40 @@ table tbody tr.total-row td {
       setEstimateDate(new Date().toISOString().split("T")[0])
       setHamaliCharges(0)
       setIncludeHamali(false)
-      setProducts(DataManager.getProducts())
+      const prods = await DataManager.getProducts()
+      setProducts(prods)
     } catch (error) {
       console.error("Error recording sale:", error)
       alert("Error processing sale. Please try again.")
     }
   }
 
-  const loadCustomerTransactions = (customerId: string) => {
-    const sales = DataManager.getSalesByCustomer(customerId)
+  const loadCustomerTransactions = async (customerId: string) => {
+    const sales = await DataManager.getSalesByCustomer(customerId)
     setCustomerTransactions(sales)
     setShowTransactionHistory(true)
   }
 
-  const loadAllTransactions = () => {
-    const sales = DataManager.getSales()
+  const loadAllTransactions = async () => {
+    const sales = await DataManager.getSales()
     setAllTransactions(sales)
     setShowCashTransactions(true)
   }
 
   if (showAdmin) {
+    if (user?.role !== "admin") {
+      return (
+        <div className="min-h-screen bg-slate-900 flex items-center justify-center text-white p-4">
+          <div className="text-center space-y-4 max-w-md bg-slate-850 p-8 rounded-[16px] border border-slate-700 shadow-2xl">
+            <h2 className="text-2xl font-bold text-red-400">Access Denied</h2>
+            <p className="text-slate-400">You do not have permissions to access the Admin Panel.</p>
+            <Button onClick={() => setShowAdmin(false)} className="bg-yellow-400 hover:bg-yellow-500 text-slate-950 rounded-[9px] font-bold">
+              Back to POS Terminal
+            </Button>
+          </div>
+        </div>
+      )
+    }
     return <AdminPanel onBack={handleAdminReturn} />
   }
 
@@ -1016,12 +1045,24 @@ table tbody tr.total-row td {
   }
 
   const renderSuperCategories = () => (
-    <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-2 sm:gap-3 md:gap-4 p-2 sm:p-4">
-      {superCategories.map((category) => (
+    <div className="space-y-4">
+      <div className="px-2 sm:px-3 md:px-4 lg:px-6 pt-4">
+        <Button 
+          onClick={() => {
+            setCurrentView("all_products")
+            setProductSearchQuery("")
+          }} 
+          className="w-full sm:w-auto bg-yellow-400 hover:bg-yellow-500 text-black rounded-[9px] font-medium"
+        >
+          {t('viewAllProducts')}
+        </Button>
+      </div>
+      <div className="grid grid-cols-2 xs:grid-cols-3 sm:grid-cols-4 md:grid-cols-5 lg:grid-cols-6 xl:grid-cols-7 2xl:grid-cols-8 gap-3 sm:gap-4 p-2 sm:p-3 md:p-4 lg:p-6">
+        {superCategories.map((category) => (
         <Button
           key={category.id}
           onClick={() => handleSuperCategorySelect(category.id)}
-          className="h-16 sm:h-20 md:h-24 lg:h-28 w-full bg-white border-2 border-gray-200 hover:border-yellow-400 hover:bg-yellow-50 text-black rounded-[12px] sm:rounded-[15px] md:rounded-[20px] flex flex-col items-center justify-center gap-1 sm:gap-2 transition-colors p-2 sm:p-3"
+          className="h-20 sm:h-24 w-full bg-white border-2 border-gray-200 hover:border-yellow-400 hover:bg-yellow-50 active:bg-yellow-100 text-black rounded-[12px] sm:rounded-[15px] md:rounded-[18px] lg:rounded-[20px] flex flex-col items-center justify-center gap-1 sm:gap-2 transition-all duration-200 p-2 sm:p-3 touch-manipulation overflow-hidden"
           variant="outline"
         >
           <div className="relative flex-shrink-0">
@@ -1030,19 +1071,20 @@ table tbody tr.total-row td {
                 <img
                   src={category.image || "/placeholder.svg"}
                   alt={category.name}
-                  className="w-6 h-6 sm:w-8 sm:h-8 md:w-10 md:h-10 lg:w-12 lg:h-12 object-cover rounded-[6px] sm:rounded-[8px] md:rounded-[10px] border border-gray-200"
+                  className="w-8 h-8 sm:w-10 sm:h-10 object-cover rounded-[6px] sm:rounded-[8px] md:rounded-[10px] border border-gray-200"
                 />
-                <span className="absolute -bottom-1 -right-1 text-xs sm:text-sm md:text-base">{category.icon}</span>
+                <span className="absolute -bottom-1 -right-1 text-xs sm:text-sm">{category.icon}</span>
               </div>
             ) : (
               <span className="text-sm sm:text-lg md:text-xl lg:text-2xl">{category.icon}</span>
             )}
           </div>
-          <span className="font-medium text-[10px] sm:text-xs md:text-sm text-center leading-tight break-words hyphens-auto max-w-full">
-            {category.name}
+          <span className="font-medium text-xs sm:text-sm text-center leading-tight break-words hyphens-auto w-full px-1">
+            {tName(category)}
           </span>
         </Button>
       ))}
+      </div>
     </div>
   )
 
@@ -1055,14 +1097,14 @@ table tbody tr.total-row td {
           variant="outline"
           className="rounded-[9px] border-gray-300 bg-transparent text-sm"
         >
-          ← Back to Categories
+          {t('backToCategories')}
         </Button>
-        <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-2 sm:gap-3 md:gap-4">
+        <div className="grid grid-cols-2 xs:grid-cols-3 sm:grid-cols-4 md:grid-cols-5 lg:grid-cols-6 xl:grid-cols-7 2xl:grid-cols-8 gap-3 sm:gap-4">
           {filteredSubCategories.map((subCategory) => (
             <Button
               key={subCategory.id}
               onClick={() => handleSubCategorySelect(subCategory.id)}
-              className="h-14 sm:h-16 md:h-20 lg:h-24 w-full bg-white border-2 border-gray-200 hover:border-yellow-400 hover:bg-yellow-50 text-black rounded-[10px] sm:rounded-[12px] md:rounded-[15px] flex flex-col items-center justify-center gap-1 sm:gap-2 transition-colors p-2 sm:p-3"
+              className="h-14 sm:h-16 md:h-18 lg:h-20 xl:h-24 w-full bg-white border-2 border-gray-200 hover:border-yellow-400 hover:bg-yellow-50 active:bg-yellow-100 text-black rounded-[10px] sm:rounded-[12px] md:rounded-[14px] lg:rounded-[15px] flex flex-col items-center justify-center gap-1 sm:gap-2 transition-all duration-200 p-2 sm:p-3 touch-manipulation overflow-hidden"
               variant="outline"
             >
               <div className="relative flex-shrink-0">
@@ -1073,7 +1115,7 @@ table tbody tr.total-row td {
                       alt={subCategory.name}
                       className="w-5 h-5 sm:w-6 sm:h-6 md:w-8 md:h-8 lg:w-10 lg:h-10 object-cover rounded-[5px] sm:rounded-[6px] md:rounded-[8px] border border-gray-200"
                     />
-                    <span className="absolute -bottom-1 -right-1 text-[10px] sm:text-xs md:text-sm">
+                    <span className="absolute -bottom-1 -right-1 text-xs sm:text-sm">
                       {subCategory.icon}
                     </span>
                   </div>
@@ -1081,8 +1123,8 @@ table tbody tr.total-row td {
                   <span className="text-xs sm:text-sm md:text-lg lg:text-xl">{subCategory.icon}</span>
                 )}
               </div>
-              <span className="font-medium text-[9px] sm:text-[10px] md:text-xs text-center leading-tight break-words hyphens-auto max-w-full">
-                {subCategory.name}
+              <span className="font-medium text-[9px] sm:text-[10px] md:text-xs text-center leading-tight break-words hyphens-auto w-full px-1">
+                {tName(subCategory)}
               </span>
             </Button>
           ))}
@@ -1092,29 +1134,65 @@ table tbody tr.total-row td {
   }
 
   const renderProducts = () => {
-    const filteredProducts = products.filter((prod) => prod.subCategoryId === selectedSubCategory)
+    let filteredProducts = currentView === "all_products"
+      ? products
+      : products.filter((prod) => prod.subCategoryId === selectedSubCategory)
+      
+    if (productSearchQuery.trim()) {
+      filteredProducts = filteredProducts.filter(
+        (p) =>
+          p.name.toLowerCase().includes(productSearchQuery.toLowerCase()) ||
+          (p.nameMr && p.nameMr.toLowerCase().includes(productSearchQuery.toLowerCase())),
+      )
+    }
+
     return (
       <div className="space-y-3 sm:space-y-4 p-2 sm:p-4">
-        <div className="flex flex-wrap gap-2">
-          <Button
-            onClick={handleBackToSub}
-            variant="outline"
-            className="rounded-[9px] border-gray-300 text-xs sm:text-sm bg-transparent"
-          >
-            ← Back to Subcategories
-          </Button>
-          <Button
-            onClick={handleBackToSuper}
-            variant="outline"
-            className="rounded-[9px] border-gray-300 text-xs sm:text-sm bg-transparent"
-          >
-            ← Back to Categories
-          </Button>
+        <div className="flex flex-col sm:flex-row flex-wrap gap-2 justify-between items-start sm:items-center">
+          <div className="flex flex-wrap gap-2">
+            {currentView === "products" ? (
+              <>
+                <Button
+                  onClick={handleBackToSub}
+                  variant="outline"
+                  className="rounded-[9px] border-gray-300 text-xs sm:text-sm bg-transparent"
+                >
+                  {t('backToSubcategories')}
+                </Button>
+                <Button
+                  onClick={handleBackToSuper}
+                  variant="outline"
+                  className="rounded-[9px] border-gray-300 text-xs sm:text-sm bg-transparent"
+                >
+                  {t('backToCategories')}
+                </Button>
+              </>
+            ) : (
+              <Button
+                onClick={handleBackToSuper}
+                variant="outline"
+                className="rounded-[9px] border-gray-300 text-xs sm:text-sm bg-transparent"
+              >
+                {t('backToCategories')}
+              </Button>
+            )}
+          </div>
+          {currentView === "all_products" && (
+            <div className="relative w-full sm:w-64">
+              <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-4 h-4" />
+              <Input
+                placeholder={t('searchProducts')}
+                value={productSearchQuery}
+                onChange={(e) => setProductSearchQuery(e.target.value)}
+                className="pl-9 rounded-[9px] h-10 w-full bg-white border-gray-300"
+              />
+            </div>
+          )}
         </div>
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-2 sm:gap-3 md:gap-4">
+        <div className="grid grid-cols-1 xs:grid-cols-2 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 2xl:grid-cols-6 gap-3 sm:gap-4">
           {filteredProducts.map((product) => (
-            <Card key={product.id} className="rounded-[11px] border-gray-200">
-              <CardContent className="p-3 sm:p-4">
+            <Card key={product.id} className="rounded-[11px] border-gray-200 overflow-hidden">
+              <CardContent className="p-3 sm:p-4 overflow-hidden">
                 <div className="space-y-2 sm:space-y-3">
                   <div className="flex items-start gap-2 sm:gap-3">
                     {product.image && (
@@ -1124,9 +1202,9 @@ table tbody tr.total-row td {
                         className="w-10 h-10 sm:w-12 sm:h-12 md:w-14 md:h-14 object-cover rounded-[8px] sm:rounded-[9px] border border-gray-200 flex-shrink-0"
                       />
                     )}
-                    <div className="flex-1 min-w-0">
-                      <h3 className="font-medium text-xs sm:text-sm md:text-base leading-tight break-words hyphens-auto">
-                        {product.name}
+                    <div className="flex-1 min-w-0 overflow-hidden">
+                      <h3 className="font-medium text-xs sm:text-sm leading-tight break-words hyphens-auto">
+                        {tName(product)}
                       </h3>
                       <div className="flex justify-between items-center mt-1 sm:mt-2">
                         <span className="text-sm sm:text-base md:text-lg font-bold">
@@ -1135,17 +1213,17 @@ table tbody tr.total-row td {
                       </div>
                       {product.hamaliValue > 0 && (
                         <div className="text-[10px] sm:text-xs text-gray-500 break-words">
-                          Hamali: ₹{product.hamaliValue.toFixed(2)}/{product.unit}
+                          {t('hamaliValue')} ₹{product.hamaliValue.toFixed(2)}/{product.unit}
                         </div>
                       )}
                     </div>
                   </div>
                   <Button
                     onClick={() => addToOrder(product)}
-                    className="w-full bg-yellow-400 hover:bg-yellow-500 text-black rounded-[9px] font-medium text-xs sm:text-sm md:text-base py-2"
+                    className="w-full bg-yellow-400 hover:bg-yellow-500 active:bg-yellow-600 text-black rounded-[9px] font-medium text-sm sm:text-base py-2.5 xs:py-3 min-h-[44px] touch-manipulation"
                   >
-                    <Plus className="w-3 h-3 sm:w-4 sm:h-4 mr-1 sm:mr-2" />
-                    Add to Order
+                    <Plus className="w-4 h-4 sm:w-5 sm:h-5 sm:w-5 sm:h-5 mr-1 xs:mr-2" />
+                    {t('addToOrder')}
                   </Button>
                 </div>
               </CardContent>
@@ -1157,24 +1235,24 @@ table tbody tr.total-row td {
   }
   const MobileCartSheet = () => (
     <Sheet open={showMobileCart} onOpenChange={setShowMobileCart}>
-      <SheetContent side="right" className="w-full sm:w-96 p-0">
+      <SheetContent side="right" className="w-full xs:w-80 sm:w-96 md:w-[28rem] p-0 overflow-y-auto">
         <div className="flex flex-col h-full">
-          <div className="p-4 border-b border-gray-200">
-            <div className="flex items-center gap-2">
-              <ShoppingCart className="w-5 h-5" />
-              <h2 className="text-lg font-bold">Order Summary</h2>
+          <div className="p-3 xs:p-4 sm:p-5 border-b border-gray-200 sticky top-0 bg-white z-10">
+            <div className="flex items-center gap-2 xs:gap-3">
+              <ShoppingCart className="w-5 h-5 sm:w-6 sm:h-6" />
+              <h2 className="text-base sm:text-xl font-bold">{t('orderSummary')}</h2>
             </div>
           </div>
 
           {orderItems.length === 0 ? (
             <div className="flex-1 flex items-center justify-center">
-              <p className="text-gray-500 text-sm">No items in cart</p>
+              <p className="text-gray-500 text-sm">{t('noItemsInCart')}</p>
             </div>
           ) : (
-            <div className="flex-1 overflow-y-auto p-4 space-y-3">
+            <div className="flex-1 overflow-y-auto p-3 xs:p-4 sm:p-5 space-y-2 xs:space-y-3">
               {orderItems.map((item) => (
-                <Card key={item.id} className="rounded-[9px] border-gray-200">
-                  <CardContent className="p-3">
+                <Card key={item.id} className="rounded-[9px] border-gray-200 overflow-hidden">
+                  <CardContent className="p-3 xs:p-4 overflow-hidden">
                     <div className="space-y-2">
                       <div className="font-medium text-sm break-words hyphens-auto leading-tight">{item.name}</div>
 
@@ -1183,30 +1261,30 @@ table tbody tr.total-row td {
                           size="sm"
                           variant="outline"
                           onClick={() => updateQuantity(item.id, item.quantity - 1)}
-                          className="w-8 h-8 p-0 rounded-[9px] flex-shrink-0"
+                          className="w-10 h-10 xs:w-11 xs:h-11 p-0 rounded-[9px] flex-shrink-0 touch-manipulation"
                         >
-                          <Minus className="w-3 h-3" />
+                          <Minus className="w-4 h-4 sm:w-5 sm:h-5" />
                         </Button>
                         <Input
                           type="number"
                           value={item.quantity}
                           onChange={(e) => updateQuantity(item.id, Number.parseInt(e.target.value) || 0)}
-                          className="w-16 h-8 text-center rounded-[9px] text-sm"
+                          className="w-18 xs:w-20 h-10 xs:h-11 text-center rounded-[9px] text-sm xs:text-base touch-manipulation"
                           min="1"
                         />
                         <Button
                           size="sm"
                           variant="outline"
                           onClick={() => updateQuantity(item.id, item.quantity + 1)}
-                          className="w-8 h-8 p-0 rounded-[9px] flex-shrink-0"
+                          className="w-10 h-10 xs:w-11 xs:h-11 p-0 rounded-[9px] flex-shrink-0 touch-manipulation"
                         >
-                          <Plus className="w-3 h-3" />
+                          <Plus className="w-4 h-4 sm:w-5 sm:h-5" />
                         </Button>
                         <span className="text-xs text-gray-500 flex-shrink-0">{item.unit}</span>
                       </div>
 
                       <div className="flex items-center gap-2">
-                        <span className="text-xs text-gray-500 flex-shrink-0">Rate:</span>
+                        <span className="text-xs text-gray-500 flex-shrink-0">{t('rate')}</span>
                         <Input
                           type="number"
                           value={item.unitPrice}
@@ -1237,7 +1315,7 @@ table tbody tr.total-row td {
           )}
 
           {/* Mobile Cart Footer */}
-          <div className="border-t border-gray-200 p-4 space-y-4">
+          <div className="border-t border-gray-200 p-3 xs:p-4 sm:p-5 space-y-3 xs:space-y-4 bg-white sticky bottom-0">
             {/* Hamali Charges */}
             <div className="space-y-3">
               <div className="flex items-center space-x-2">
@@ -1247,13 +1325,13 @@ table tbody tr.total-row td {
                   onCheckedChange={(checked) => setIncludeHamali(checked as boolean)}
                 />
                 <Label htmlFor="include-hamali-mobile" className="text-sm font-medium">
-                  Include Hamali/Freight
+                  {t('includeHamali')}
                 </Label>
               </div>
               {includeHamali && (
                 <Input
                   type="number"
-                  placeholder="Hamali charges"
+                  placeholder={t('overrideHamali')}
                   value={hamaliCharges}
                   onChange={(e) => setHamaliCharges(Number.parseFloat(e.target.value) || 0)}
                   className="rounded-[9px]"
@@ -1266,17 +1344,17 @@ table tbody tr.total-row td {
             {/* Totals */}
             <div className="space-y-2">
               <div className="flex justify-between text-lg">
-                <span className="font-medium">Subtotal:</span>
+                <span className="font-medium">{t('subtotal')}</span>
                 <span className="font-bold">₹{subtotal.toFixed(2)}</span>
               </div>
               {includeHamali && hamaliCharges > 0 && (
                 <div className="flex justify-between text-sm">
-                  <span className="text-gray-600">Hamali/Freight:</span>
+                  <span className="text-gray-600">{t('hamaliFreight')}</span>
                   <span className="font-medium">₹{hamaliCharges.toFixed(2)}</span>
                 </div>
               )}
               <div className="flex justify-between text-xl border-t pt-2">
-                <span className="font-bold">Total:</span>
+                <span className="font-bold">{t('total')}</span>
                 <span className="font-bold">₹{total.toFixed(2)}</span>
               </div>
             </div>
@@ -1289,15 +1367,15 @@ table tbody tr.total-row td {
                 className="w-full rounded-[9px] border-gray-300 bg-transparent"
                 disabled={orderItems.length === 0}
               >
-                Clear Cart
+                {t('clearCart')}
               </Button>
               <Button
                 onClick={confirmOrder}
-                className="w-full bg-yellow-400 hover:bg-yellow-500 text-black rounded-[9px] font-medium"
+                className="w-full bg-yellow-400 hover:bg-yellow-500 active:bg-yellow-600 text-black rounded-[9px] font-medium min-h-[48px] text-base touch-manipulation"
                 disabled={orderItems.length === 0 || (!isCashSale && !selectedCustomer)}
               >
-                <FileText className="w-4 h-4 mr-2" />
-                Generate Estimate
+                <FileText className="w-5 h-5 sm:w-6 sm:h-6 mr-2" />
+                {t('generateEstimate')}
               </Button>
             </div>
           </div>
@@ -1322,33 +1400,54 @@ table tbody tr.total-row td {
 
       <div className="relative z-10">
         {/* Main Header */}
-        <header className="bg-white border-b border-gray-200 p-2 sm:p-3 md:p-4 lg:p-6">
-          <div className="flex flex-col gap-3 sm:gap-4">
+        <header className="bg-white border-b border-gray-200 p-4 sm:p-6 sticky top-0 z-20 shadow-sm">
+          <div className="flex flex-col gap-2 xs:gap-3 sm:gap-4">
             {/* Top Header Row */}
-            <div className="flex items-center justify-between">
-              <div className="flex items-center gap-2 sm:gap-4">
-                <h1 className="text-base sm:text-lg md:text-xl lg:text-2xl font-bold text-black">SNS</h1>
-                <Button
-                  onClick={() => setShowAdmin(true)}
-                  variant="outline"
-                  className="rounded-[9px] border-gray-300 text-xs sm:text-sm"
-                  size="sm"
-                >
-                  <Settings className="w-3 h-3 sm:w-4 sm:h-4 mr-1 sm:mr-2" />
-                  <span className="hidden sm:inline">Admin</span>
-                </Button>
+            <div className="flex items-center justify-between flex-wrap gap-2">
+              <div className="flex items-center gap-2 xs:gap-3 sm:gap-4">
+                <h1 className="text-xl sm:text-2xl font-bold text-black">{t('appTitle')}</h1>
+                <div className="flex items-center gap-2">
+                  <Button
+                    onClick={() => setLanguage(language === 'en' ? 'mr' : 'en')}
+                    variant="outline"
+                    className="rounded-[9px] border-gray-300 text-xs xs:text-sm font-medium min-h-[44px] touch-manipulation"
+                    size="sm"
+                  >
+                    {language === 'en' ? 'मराठी' : 'EN'}
+                  </Button>
+                  {user?.role === 'admin' && (
+                    <Button
+                      onClick={() => setShowAdmin(true)}
+                      variant="outline"
+                      className="rounded-[9px] border-gray-300 text-xs xs:text-sm sm:text-base min-h-[44px] touch-manipulation"
+                      size="sm"
+                    >
+                      <Settings className="w-4 h-4 sm:w-5 sm:h-5 sm:w-5 sm:h-5 mr-1 xs:mr-2" />
+                      <span className="hidden xs:inline">{t('admin')}</span>
+                    </Button>
+                  )}
+                  <Button
+                    onClick={logout}
+                    variant="outline"
+                    className="rounded-[9px] border-red-200 text-red-600 hover:text-red-700 hover:bg-red-50 text-xs xs:text-sm font-medium min-h-[44px] touch-manipulation flex items-center gap-1.5"
+                    size="sm"
+                  >
+                    <LogOut className="w-4 h-4" />
+                    <span className="hidden xs:inline">{t('logout')}</span>
+                  </Button>
+                </div>
               </div>
 
-              {/* Mobile Cart Button */}
-              {isMobile && (
+              {/* Mobile/Tablet Cart Button */}
+              {(isMobile || isTablet) && (
                 <Button
                   onClick={() => setShowMobileCart(true)}
-                  className="bg-yellow-400 hover:bg-yellow-500 text-black rounded-[9px] relative"
+                  className="bg-yellow-400 hover:bg-yellow-500 active:bg-yellow-600 text-black rounded-[9px] relative min-h-[44px] touch-manipulation"
                   size="sm"
                 >
-                  <ShoppingCart className="w-4 h-4" />
+                  <ShoppingCart className="w-5 h-5 sm:w-6 sm:h-6" />
                   {orderItems.length > 0 && (
-                    <Badge className="absolute -top-2 -right-2 bg-red-500 text-white text-xs min-w-[20px] h-5 flex items-center justify-center rounded-full">
+                    <Badge className="absolute -top-2 -right-2 bg-red-500 text-white text-xs min-w-[22px] h-6 flex items-center justify-center rounded-full px-1.5">
                       {orderItems.length}
                     </Badge>
                   )}
@@ -1358,26 +1457,25 @@ table tbody tr.total-row td {
 
             {/* Main Tabs */}
             <Tabs value={activeMainTab} onValueChange={(value: any) => setActiveMainTab(value)} className="w-full">
-              <TabsList className="grid w-full grid-cols-3">
-                <TabsTrigger value="pos" className="text-xs sm:text-sm">
-                  POS
+              <TabsList className="grid w-full grid-cols-3 h-auto min-h-[44px] gap-1 xs:gap-2">
+                <TabsTrigger value="pos" className="text-sm sm:text-base py-2 touch-manipulation">
+                  {t('pos')}
                 </TabsTrigger>
-                <TabsTrigger value="order" className="text-xs sm:text-sm">
-                  ORDER
+                <TabsTrigger value="order" className="text-sm sm:text-base py-2 touch-manipulation">
+                  {t('order')}
                 </TabsTrigger>
-                <TabsTrigger value="godown" className="text-xs sm:text-sm">
-                  GODOWN ENTRY
+                <TabsTrigger value="godown" className="text-sm sm:text-base py-2 touch-manipulation">
+                  <span className="hidden xs:inline">{t('godownEntry')}</span>
+                  <span className="xs:hidden">{t('godown')}</span>
                 </TabsTrigger>
               </TabsList>
 
               <TabsContent value="pos" className="mt-4">
-                <div
-                  className={`flex flex-col ${!isMobile ? "lg:flex-row" : ""} ${!isMobile ? "h-[calc(100vh-200px)]" : ""}`}
-                >
+                <div className="flex flex-col lg:flex-row h-auto lg:h-[calc(100vh-200px)]">
                   {/* POS Content */}
                   <div className="flex-1 flex flex-col">
                     {/* Customer Selection */}
-                    <div className="flex flex-col gap-3 sm:gap-4 w-full mb-4 px-2 sm:px-4">
+                    <div className="flex flex-col gap-2 xs:gap-3 sm:gap-4 w-full mb-3 xs:mb-4 px-2 xs:px-3 sm:px-4 md:px-6">
                       <div className="flex items-center space-x-2">
                         <Checkbox
                           id="cash-sale"
@@ -1391,7 +1489,7 @@ table tbody tr.total-row td {
                           }}
                         />
                         <label htmlFor="cash-sale" className="text-sm font-medium">
-                          Cash Sale
+                          {t('cashSale')}
                         </label>
                       </div>
 
@@ -1400,10 +1498,10 @@ table tbody tr.total-row td {
                           <div className="relative flex-1">
                             <User className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-4 h-4" />
                             <Input
-                              placeholder="Search customers..."
+                              placeholder={t('searchCustomers')}
                               value={customerSearch}
                               onChange={(e) => setCustomerSearch(e.target.value)}
-                              className="pl-10 w-full rounded-[9px] text-sm"
+                              className="pl-10 w-full rounded-[9px] text-sm min-h-[44px] touch-manipulation"
                             />
                             {customerSearch && filteredCustomers.length > 0 && (
                               <div className="absolute top-full left-0 right-0 bg-white border border-gray-200 rounded-[9px] mt-1 max-h-40 overflow-y-auto z-20 shadow-lg">
@@ -1425,10 +1523,10 @@ table tbody tr.total-row td {
                           </div>
                           <Button
                             onClick={() => setShowAddCustomer(true)}
-                            className="bg-yellow-400 hover:bg-yellow-500 text-black rounded-[9px] flex-shrink-0"
+                            className="bg-yellow-400 hover:bg-yellow-500 active:bg-yellow-600 text-black rounded-[9px] flex-shrink-0 min-h-[44px] min-w-[44px] touch-manipulation"
                             size="sm"
                           >
-                            <UserPlus className="w-4 h-4" />
+                            <UserPlus className="w-5 h-5 sm:w-6 sm:h-6" />
                           </Button>
                         </div>
                       )}
@@ -1437,7 +1535,7 @@ table tbody tr.total-row td {
                         <Card className="rounded-[11px] border-gray-200">
                           <CardContent className="p-3">
                             <div className="flex items-center justify-between">
-                              <div className="flex-1 min-w-0">
+                              <div className="flex-1 min-w-0 overflow-hidden">
                                 <div className="text-sm font-medium break-words">{selectedCustomerData.name}</div>
                                 <div className="text-xs text-gray-500 break-words">{selectedCustomerData.phone}</div>
                               </div>
@@ -1480,26 +1578,25 @@ table tbody tr.total-row td {
                     <main className="flex-1 overflow-y-auto">
                       {currentView === "super" && renderSuperCategories()}
                       {currentView === "sub" && renderSubCategories()}
-                      {currentView === "products" && renderProducts()}
+                      {(currentView === "products" || currentView === "all_products") && renderProducts()}
                     </main>
                   </div>
 
-                  {/* Desktop Order Summary Panel */}
-                  {!isMobile && (
-                    <div className="w-full lg:w-96 bg-gray-50 border-t lg:border-t-0 lg:border-l border-gray-200 flex flex-col">
-                      <div className="p-4 lg:p-6 border-b border-gray-200">
-                        <div className="flex items-center gap-2 mb-4">
-                          <ShoppingCart className="w-5 h-5" />
-                          <h2 className="text-lg font-bold">Order Summary</h2>
+                  {/* Desktop/Tablet Order Summary Panel */}
+                  <div className="hidden lg:flex w-full lg:w-96 xl:w-[28rem] bg-gray-50 border-t lg:border-t-0 lg:border-l border-gray-200 flex-col">
+                    <div className="p-4 sm:p-6 border-b border-gray-200 sticky top-0 bg-gray-50 z-10">
+                      <div className="flex items-center gap-2 mb-4">
+                        <ShoppingCart className="w-5 h-5 sm:w-6 sm:h-6" />
+                          <h2 className="text-lg font-bold">{t('orderSummary')}</h2>
                         </div>
 
                         {orderItems.length === 0 ? (
-                          <p className="text-gray-500 text-sm">No items in cart</p>
+                          <p className="text-gray-500 text-sm">{t('noItemsInCart')}</p>
                         ) : (
                           <div className="space-y-3 max-h-48 lg:max-h-96 overflow-y-auto">
                             {orderItems.map((item) => (
-                              <Card key={item.id} className="rounded-[9px] border-gray-200">
-                                <CardContent className="p-3">
+                              <Card key={item.id} className="rounded-[9px] border-gray-200 overflow-hidden">
+                                <CardContent className="p-3 overflow-hidden">
                                   <div className="space-y-2">
                                     <div className="font-medium text-sm break-words hyphens-auto leading-tight">
                                       {item.name}
@@ -1533,7 +1630,7 @@ table tbody tr.total-row td {
                                     </div>
 
                                     <div className="flex items-center gap-2">
-                                      <span className="text-xs text-gray-500 flex-shrink-0">Rate:</span>
+                                      <span className="text-xs text-gray-500 flex-shrink-0">{t('rate')}</span>
                                       <Input
                                         type="number"
                                         value={item.unitPrice}
@@ -1576,17 +1673,17 @@ table tbody tr.total-row td {
                               onCheckedChange={(checked) => setIncludeHamali(checked as boolean)}
                             />
                             <Label htmlFor="include-hamali" className="text-sm font-medium">
-                              Include Hamali/Freight Charges
+                              {t('includeHamali')}
                             </Label>
                           </div>
                           {includeHamali && (
                             <div className="space-y-2">
                               <div className="text-sm text-gray-600">
-                                Auto-calculated: ₹{calculateHamaliCharges().toFixed(2)}
+                                {t('autoCalculated')} ₹{calculateHamaliCharges().toFixed(2)}
                               </div>
                               <Input
                                 type="number"
-                                placeholder="Override hamali charges"
+                                placeholder={t('overrideHamali')}
                                 value={hamaliCharges}
                                 onChange={(e) => setHamaliCharges(Number.parseFloat(e.target.value) || 0)}
                                 className="rounded-[9px]"
@@ -1602,9 +1699,9 @@ table tbody tr.total-row td {
                       <div className="p-4 lg:p-6 border-b border-gray-200">
                         <div className="space-y-3">
                           <div>
-                            <Label className="text-sm font-medium">Reference (Optional)</Label>
+                            <Label className="text-sm font-medium">{t('referenceOptional')}</Label>
                             <Input
-                              placeholder="Reference number or note"
+                              placeholder={t('poNumber')}
                               value={estimateReference}
                               onChange={(e) => setEstimateReference(e.target.value)}
                               className="rounded-[9px]"
@@ -1626,17 +1723,17 @@ table tbody tr.total-row td {
                       <div className="p-4 lg:p-6 border-b border-gray-200">
                         <div className="space-y-2">
                           <div className="flex justify-between text-lg">
-                            <span className="font-medium">Subtotal:</span>
+                            <span className="font-medium">{t('subtotal')}</span>
                             <span className="font-bold">₹{subtotal.toFixed(2)}</span>
                           </div>
                           {includeHamali && hamaliCharges > 0 && (
                             <div className="flex justify-between text-sm">
-                              <span className="text-gray-600">Hamali/Freight:</span>
+                              <span className="text-gray-600">{t('hamaliFreight')}</span>
                               <span className="font-medium">₹{hamaliCharges.toFixed(2)}</span>
                             </div>
                           )}
                           <div className="flex justify-between text-xl border-t pt-2">
-                            <span className="font-bold">Total:</span>
+                            <span className="font-bold">{t('total')}</span>
                             <span className="font-bold">₹{total.toFixed(2)}</span>
                           </div>
                         </div>
@@ -1650,7 +1747,7 @@ table tbody tr.total-row td {
                           className="w-full rounded-[9px] border-gray-300 bg-transparent"
                           disabled={orderItems.length === 0}
                         >
-                          Clear Cart
+                          {t('clearCart')}
                         </Button>
                         <Button
                           onClick={confirmOrder}
@@ -1658,11 +1755,10 @@ table tbody tr.total-row td {
                           disabled={orderItems.length === 0 || (!isCashSale && !selectedCustomer)}
                         >
                           <FileText className="w-4 h-4 mr-2" />
-                          Generate Estimate
+                          {t('generateEstimate')}
                         </Button>
                       </div>
                     </div>
-                  )}
                 </div>
               </TabsContent>
 

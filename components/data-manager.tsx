@@ -1,15 +1,19 @@
-interface SuperCategory {
+export interface SuperCategory {
   id: string
+  _id?: string
   name: string
+  nameMr?: string
   icon: string
   image?: string
   createdAt: string
   updatedAt: string
 }
 
-interface SubCategory {
+export interface SubCategory {
   id: string
+  _id?: string
   name: string
+  nameMr?: string
   icon: string
   image?: string
   superCategoryId: string
@@ -17,9 +21,11 @@ interface SubCategory {
   updatedAt: string
 }
 
-interface Product {
+export interface Product {
   id: string
+  _id?: string
   name: string
+  nameMr?: string
   price: number
   stock: number
   unit: string
@@ -30,8 +36,9 @@ interface Product {
   updatedAt: string
 }
 
-interface Customer {
+export interface Customer {
   id: string
+  _id?: string
   name: string
   email: string
   phone: string
@@ -40,8 +47,20 @@ interface Customer {
   updatedAt: string
 }
 
-interface SaleItem {
+export interface Supplier {
   id: string
+  _id?: string
+  name: string
+  email: string
+  phone: string
+  address: string
+  createdAt: string
+  updatedAt: string
+}
+
+export interface SaleItem {
+  id: string
+  _id?: string
   productId: string
   productName: string
   quantity: number
@@ -54,8 +73,9 @@ interface SaleItem {
   superCategoryName: string
 }
 
-interface Sale {
+export interface Sale {
   id: string
+  _id?: string
   estimateNumber: string
   date: string
   timestamp: number
@@ -73,7 +93,86 @@ interface Sale {
   updatedAt: string
 }
 
-interface SalesAnalytics {
+export interface PurchaseOrderItem {
+  id: string
+  _id?: string
+  productId?: string
+  name: string
+  quantity: number
+  unit: string
+}
+
+export interface PurchaseOrder {
+  id: string
+  _id?: string
+  orderNumber: string
+  date: string
+  supplierId?: string
+  supplierName?: string
+  supplierPhone?: string
+  isCashPurchase: boolean
+  items: PurchaseOrderItem[]
+  subtotal: number
+  total: number
+  status: "pending" | "completed" | "cancelled"
+  reference?: string
+  notes?: string
+  createdAt: string
+  updatedAt: string
+}
+
+export interface InventoryItem {
+  id: string
+  _id?: string
+  productId: string
+  productName: string
+  category: string
+  unit: string
+  openingStock: number
+  purchases: number
+  sales: number
+  adjustments: number
+  closingStock: number
+  reorderLevel: number
+  lastUpdated: string
+  notes?: string
+}
+
+export interface StockTransaction {
+  id: string
+  _id?: string
+  transactionNumber: string
+  productId: string
+  productName: string
+  type: "opening" | "purchase" | "sale" | "adjustment"
+  quantity: number
+  date: string
+  reference?: string
+  notes?: string
+  createdAt: string
+  batchId?: string
+}
+
+export interface TransactionBatch {
+  id: string
+  _id?: string
+  batchNumber: string
+  type: "purchase" | "sale" | "adjustment"
+  date: string
+  reference?: string
+  items: Array<{
+    productId: string
+    productName: string
+    quantity: number
+    unit: string
+  }>
+  totalItems: number
+  totalQuantity: number
+  createdAt: string
+  notes?: string
+}
+
+export interface SalesAnalytics {
   totalSales: number
   totalRevenue: number
   averageOrderValue: number
@@ -111,521 +210,336 @@ interface SalesAnalytics {
     totalSales: number
     totalRevenue: number
   }>
-}
-const defaultData = {
-  superCategories: [
-    {
-      id: "groceries",
-      name: "Groceries & Staples",
-      icon: "🌾",
-      createdAt: new Date().toISOString(),
-      updatedAt: new Date().toISOString(),
-    },
-    {
-      id: "beverages",
-      name: "Beverages",
-      icon: "🥤",
-      createdAt: new Date().toISOString(),
-      updatedAt: new Date().toISOString(),
-    },
-    {
-      id: "snacks",
-      name: "Snacks & Confectionery",
-      icon: "🍪",
-      createdAt: new Date().toISOString(),
-      updatedAt: new Date().toISOString(),
-    },
-    {
-      id: "personal-care",
-      name: "Personal Care",
-      icon: "🧴",
-      createdAt: new Date().toISOString(),
-      updatedAt: new Date().toISOString(),
-    },
-    {
-      id: "household",
-      name: "Household Items",
-      icon: "🧽",
-      createdAt: new Date().toISOString(),
-      updatedAt: new Date().toISOString(),
-    },
-    {
-      id: "dairy",
-      name: "Dairy & Frozen",
-      icon: "🥛",
-      createdAt: new Date().toISOString(),
-      updatedAt: new Date().toISOString(),
-    },
-  ],
-  subCategories: [
-    {
-      id: "rice-grains",
-      name: "Rice & Grains",
-      icon: "🍚",
-      superCategoryId: "groceries",
-      createdAt: new Date().toISOString(),
-      updatedAt: new Date().toISOString(),
-    },
-    {
-      id: "pulses-lentils",
-      name: "Pulses & Lentils",
-      icon: "🫘",
-      superCategoryId: "groceries",
-      createdAt: new Date().toISOString(),
-      updatedAt: new Date().toISOString(),
-    },
-    {
-      id: "spices",
-      name: "Spices & Masalas",
-      icon: "🌶️",
-      superCategoryId: "groceries",
-      createdAt: new Date().toISOString(),
-      updatedAt: new Date().toISOString(),
-    },
-    {
-      id: "tea-coffee",
-      name: "Tea & Coffee",
-      icon: "☕",
-      superCategoryId: "beverages",
-      createdAt: new Date().toISOString(),
-      updatedAt: new Date().toISOString(),
-    },
-    {
-      id: "biscuits",
-      name: "Biscuits & Cookies",
-      icon: "🍪",
-      superCategoryId: "snacks",
-      createdAt: new Date().toISOString(),
-      updatedAt: new Date().toISOString(),
-    },
-  ],
-  products: [
-    {
-      id: "basmati-rice",
-      name: "Basmati Rice 5kg",
-      price: 450.0,
-      stock: 100,
-      unit: "bag",
-      subCategoryId: "rice-grains",
-      hamaliValue: 5.0,
-      createdAt: new Date().toISOString(),
-      updatedAt: new Date().toISOString(),
-    },
-    {
-      id: "toor-dal",
-      name: "Toor Dal 1kg",
-      price: 120.0,
-      stock: 200,
-      unit: "kg",
-      subCategoryId: "pulses-lentils",
-      hamaliValue: 2.0,
-      createdAt: new Date().toISOString(),
-      updatedAt: new Date().toISOString(),
-    },
-    {
-      id: "turmeric",
-      name: "Turmeric Powder 500g",
-      price: 80.0,
-      stock: 100,
-      unit: "pack",
-      subCategoryId: "spices",
-      hamaliValue: 1.0,
-      createdAt: new Date().toISOString(),
-      updatedAt: new Date().toISOString(),
-    },
-    {
-      id: "tea-leaves",
-      name: "Premium Tea 1kg",
-      price: 320.0,
-      stock: 50,
-      unit: "pack",
-      subCategoryId: "tea-coffee",
-      hamaliValue: 3.0,
-      createdAt: new Date().toISOString(),
-      updatedAt: new Date().toISOString(),
-    },
-    {
-      id: "parle-g",
-      name: "Parle-G Biscuits 1kg",
-      price: 80.0,
-      stock: 200,
-      unit: "pack",
-      subCategoryId: "biscuits",
-      hamaliValue: 1.5,
-      createdAt: new Date().toISOString(),
-      updatedAt: new Date().toISOString(),
-    },
-  ],
-  customers: [
-    {
-      id: "cust1",
-      name: "Sharma General Store",
-      email: "sharma@gmail.com",
-      phone: "+91-98765-43210",
-      address: "123 Main Market, Delhi",
-      createdAt: new Date().toISOString(),
-      updatedAt: new Date().toISOString(),
-    },
-    {
-      id: "cust2",
-      name: "Patel Wholesale Traders",
-      email: "patel.traders@gmail.com",
-      phone: "+91-87654-32109",
-      address: "456 Commercial Street, Mumbai",
-      createdAt: new Date().toISOString(),
-      updatedAt: new Date().toISOString(),
-    },
-  ],
+  paymentMethodBreakdown: Array<{
+    method: string
+    count: number
+    total: number
+  }>
+  hourlyTrends: Array<{
+    hour: number
+    count: number
+    total: number
+  }>
 }
 
 export class DataManager {
-  private static generateId(): string {
-    return Date.now().toString() + Math.random().toString(36).substr(2, 9)
+  // Validation
+  static validateSuperCategory(data: any): string[] {
+    const errors: string[] = []
+    if (!data.name?.trim()) errors.push("Name is required")
+    if (!data.icon?.trim() && !data.image) errors.push("Icon or Image is required")
+    return errors
   }
 
-  private static getCurrentTimestamp(): string {
-    return new Date().toISOString()
+  static validateSubCategory(data: any): string[] {
+    const errors: string[] = []
+    if (!data.name?.trim()) errors.push("Name is required")
+    if (!data.superCategoryId) errors.push("Super Category is required")
+    return errors
   }
-  private static setItem<T>(key: string, data: T[]): void {
-    try {
-      localStorage.setItem(key, JSON.stringify(data))
 
-      window.dispatchEvent(
-        new StorageEvent("storage", {
-          key,
-          newValue: JSON.stringify(data),
-          storageArea: localStorage,
-        }),
-      )
-    } catch (error) {
-      console.error(`Error saving ${key}:`, error)
-      throw new Error(`Failed to save ${key}`)
+  static validateProduct(data: any): string[] {
+    const errors: string[] = []
+    if (!data.name?.trim()) errors.push("Product name is required")
+    if (data.price === undefined || data.price < 0) errors.push("Valid price is required")
+    if (data.stock === undefined || data.stock < 0) errors.push("Valid stock is required")
+    if (!data.unit?.trim()) errors.push("Unit is required")
+    if (!data.subCategoryId) errors.push("Sub Category is required")
+    return errors
+  }
+
+  static validateCustomer(data: any): string[] {
+    const errors: string[] = []
+    if (!data.name?.trim()) errors.push("Customer name is required")
+    if (!data.phone?.trim()) errors.push("Phone number is required")
+    return errors
+  }
+
+  private static async apiRequest(path: string, method = "GET", body?: any) {
+    const options: RequestInit = {
+      method,
+      headers: {
+        "Content-Type": "application/json",
+      },
     }
-  }
-
-  private static getItem<T>(key: string, defaultData: T[]): T[] {
-    try {
-      const stored = localStorage.getItem(key)
-      if (stored) {
-        const parsed = JSON.parse(stored)
-
-        if (Array.isArray(parsed)) {
-          return parsed
-        }
-      }
-
-      this.setItem(key, defaultData)
-      return defaultData
-    } catch (error) {
-      console.error(`Error loading ${key}:`, error)
-
-      this.setItem(key, defaultData)
-      return defaultData
+    if (body) {
+      options.body = JSON.stringify(body)
     }
+
+    const response = await fetch(path, options)
+    if (!response.ok) {
+      const error = await response.json()
+      throw new Error(error.error || "Failed to fetch data")
+    }
+    return response.json()
   }
-  static getSuperCategories(): SuperCategory[] {
-    return this.getItem<SuperCategory>("superCategories", defaultData.superCategories)
+
+  private static mapId<T>(item: any): T {
+    if (!item) return item
+    return { ...item, id: item._id || item.id } as T
+  }
+
+  private static mapIds<T>(items: any[]): T[] {
+    if (!Array.isArray(items)) return []
+    return items.map((item) => this.mapId<T>(item))
+  }
+
+  // Super Categories
+  static async getSuperCategories(): Promise<SuperCategory[]> {
+    const data = await this.apiRequest("/api/super-categories")
+    return this.mapIds<SuperCategory>(data)
   }
 
   static async addSuperCategory(data: Omit<SuperCategory, "id" | "createdAt" | "updatedAt">): Promise<SuperCategory> {
-    const categories = this.getSuperCategories()
-    const newCategory: SuperCategory = {
-      ...data,
-      id: this.generateId(),
-      createdAt: this.getCurrentTimestamp(),
-      updatedAt: this.getCurrentTimestamp(),
-    }
-
-    const updated = [...categories, newCategory]
-    this.setItem("superCategories", updated)
-    return newCategory
+    const result = await this.apiRequest("/api/super-categories", "POST", data)
+    return this.mapId<SuperCategory>(result)
   }
 
-  static async updateSuperCategory(
-    id: string,
-    data: Partial<Omit<SuperCategory, "id" | "createdAt">>,
-  ): Promise<SuperCategory | null> {
-    const categories = this.getSuperCategories()
-    const index = categories.findIndex((cat) => cat.id === id)
-
-    if (index === -1) return null
-
-    const updated = categories.map((cat) =>
-      cat.id === id ? { ...cat, ...data, updatedAt: this.getCurrentTimestamp() } : cat,
-    )
-
-    this.setItem("superCategories", updated)
-    return updated[index]
+  static async updateSuperCategory(id: string, data: Partial<Omit<SuperCategory, "id" | "createdAt">>): Promise<SuperCategory | null> {
+    const result = await this.apiRequest(`/api/super-categories/${id}`, "PUT", data)
+    return this.mapId<SuperCategory>(result)
   }
 
   static async deleteSuperCategory(id: string): Promise<boolean> {
-    const categories = this.getSuperCategories()
-    const filtered = categories.filter((cat) => cat.id !== id)
-
-    if (filtered.length === categories.length) return false
-
-    this.setItem("superCategories", filtered)
-    const subCategories = this.getSubCategories()
-    const filteredSubs = subCategories.filter((sub) => sub.superCategoryId !== id)
-    this.setItem("subCategories", filteredSubs)
-
-    const products = this.getProducts()
-    const subIds = subCategories.filter((sub) => sub.superCategoryId === id).map((sub) => sub.id)
-    const filteredProducts = products.filter((prod) => !subIds.includes(prod.subCategoryId))
-    this.setItem("products", filteredProducts)
-
+    await this.apiRequest(`/api/super-categories/${id}`, "DELETE")
     return true
   }
-  static getSubCategories(): SubCategory[] {
-    return this.getItem<SubCategory>("subCategories", defaultData.subCategories)
+
+  // Sub Categories
+  static async getSubCategories(): Promise<SubCategory[]> {
+    const data = await this.apiRequest("/api/sub-categories")
+    return this.mapIds<SubCategory>(data)
   }
 
   static async addSubCategory(data: Omit<SubCategory, "id" | "createdAt" | "updatedAt">): Promise<SubCategory> {
-    const categories = this.getSubCategories()
-    const newCategory: SubCategory = {
-      ...data,
-      id: this.generateId(),
-      createdAt: this.getCurrentTimestamp(),
-      updatedAt: this.getCurrentTimestamp(),
-    }
-
-    const updated = [...categories, newCategory]
-    this.setItem("subCategories", updated)
-    return newCategory
+    const result = await this.apiRequest("/api/sub-categories", "POST", data)
+    return this.mapId<SubCategory>(result)
   }
 
-  static async updateSubCategory(
-    id: string,
-    data: Partial<Omit<SubCategory, "id" | "createdAt">>,
-  ): Promise<SubCategory | null> {
-    const categories = this.getSubCategories()
-    const index = categories.findIndex((cat) => cat.id === id)
-
-    if (index === -1) return null
-
-    const updated = categories.map((cat) =>
-      cat.id === id ? { ...cat, ...data, updatedAt: this.getCurrentTimestamp() } : cat,
-    )
-
-    this.setItem("subCategories", updated)
-    return updated[index]
+  static async updateSubCategory(id: string, data: Partial<Omit<SubCategory, "id" | "createdAt">>): Promise<SubCategory | null> {
+    const result = await this.apiRequest(`/api/sub-categories/${id}`, "PUT", data)
+    return this.mapId<SubCategory>(result)
   }
 
   static async deleteSubCategory(id: string): Promise<boolean> {
-    const categories = this.getSubCategories()
-    const filtered = categories.filter((cat) => cat.id !== id)
-
-    if (filtered.length === categories.length) return false
-
-    this.setItem("subCategories", filtered)
-    const products = this.getProducts()
-    const filteredProducts = products.filter((prod) => prod.subCategoryId !== id)
-    this.setItem("products", filteredProducts)
-
+    await this.apiRequest(`/api/sub-categories/${id}`, "DELETE")
     return true
   }
-  static getProducts(): Product[] {
-    return this.getItem<Product>("products", defaultData.products)
+
+  // Products
+  static async getProducts(): Promise<Product[]> {
+    const data = await this.apiRequest("/api/products")
+    return this.mapIds<Product>(data)
   }
 
   static async addProduct(data: Omit<Product, "id" | "createdAt" | "updatedAt">): Promise<Product> {
-    const products = this.getProducts()
-    const newProduct: Product = {
-      ...data,
-      id: this.generateId(),
-      createdAt: this.getCurrentTimestamp(),
-      updatedAt: this.getCurrentTimestamp(),
-    }
-
-    const updated = [...products, newProduct]
-    this.setItem("products", updated)
-    return newProduct
+    const result = await this.apiRequest("/api/products", "POST", data)
+    return this.mapId<Product>(result)
   }
 
   static async updateProduct(id: string, data: Partial<Omit<Product, "id" | "createdAt">>): Promise<Product | null> {
-    const products = this.getProducts()
-    const index = products.findIndex((prod) => prod.id === id)
-
-    if (index === -1) return null
-
-    const updated = products.map((prod) =>
-      prod.id === id ? { ...prod, ...data, updatedAt: this.getCurrentTimestamp() } : prod,
-    )
-
-    this.setItem("products", updated)
-    return updated[index]
+    const result = await this.apiRequest(`/api/products/${id}`, "PUT", data)
+    return this.mapId<Product>(result)
   }
 
   static async deleteProduct(id: string): Promise<boolean> {
-    const products = this.getProducts()
-    const filtered = products.filter((prod) => prod.id !== id)
-
-    if (filtered.length === products.length) return false
-
-    this.setItem("products", filtered)
+    await this.apiRequest(`/api/products/${id}`, "DELETE")
     return true
   }
 
   static async updateProductStock(id: string, newStock: number): Promise<Product | null> {
-    return this.updateProduct(id, { stock: newStock })
+    const result = await this.apiRequest(`/api/products/${id}`, "PATCH", { stock: newStock })
+    return this.mapId<Product>(result)
   }
-  static getCustomers(): Customer[] {
-    return this.getItem<Customer>("customers", defaultData.customers)
+
+  static async searchProducts(query: string): Promise<Product[]> {
+    const products = await this.getProducts()
+    const lowercaseQuery = query.toLowerCase()
+    return products.filter(
+      (product) =>
+        product.name.toLowerCase().includes(lowercaseQuery) || product.unit.toLowerCase().includes(lowercaseQuery),
+    )
+  }
+
+  // Customers
+  static async getCustomers(): Promise<Customer[]> {
+    const data = await this.apiRequest("/api/customers")
+    return this.mapIds<Customer>(data)
   }
 
   static async addCustomer(data: Omit<Customer, "id" | "createdAt" | "updatedAt">): Promise<Customer> {
-    const customers = this.getCustomers()
-    const newCustomer: Customer = {
-      ...data,
-      id: this.generateId(),
-      createdAt: this.getCurrentTimestamp(),
-      updatedAt: this.getCurrentTimestamp(),
-    }
-
-    const updated = [...customers, newCustomer]
-    this.setItem("customers", updated)
-    return newCustomer
+    const result = await this.apiRequest("/api/customers", "POST", data)
+    return this.mapId<Customer>(result)
   }
 
   static async updateCustomer(id: string, data: Partial<Omit<Customer, "id" | "createdAt">>): Promise<Customer | null> {
-    const customers = this.getCustomers()
-    const index = customers.findIndex((cust) => cust.id === id)
-
-    if (index === -1) return null
-
-    const updated = customers.map((cust) =>
-      cust.id === id ? { ...cust, ...data, updatedAt: this.getCurrentTimestamp() } : cust,
-    )
-
-    this.setItem("customers", updated)
-    return updated[index]
+    const result = await this.apiRequest(`/api/customers/${id}`, "PUT", data)
+    return this.mapId<Customer>(result)
   }
 
   static async deleteCustomer(id: string): Promise<boolean> {
-    const customers = this.getCustomers()
-    const filtered = customers.filter((cust) => cust.id !== id)
-
-    if (filtered.length === customers.length) return false
-
-    this.setItem("customers", filtered)
+    await this.apiRequest(`/api/customers/${id}`, "DELETE")
     return true
   }
-  static getSales(): Sale[] {
-    return this.getItem<Sale>("sales", [])
-  }
-  static getSalesWithEstimateNumber(): Sale[] {
-    const sales = this.getSales()
 
+  static async searchCustomers(query: string): Promise<Customer[]> {
+    const customers = await this.getCustomers()
+    const lowercaseQuery = query.toLowerCase()
+    return customers.filter(
+      (customer) =>
+        customer.name.toLowerCase().includes(lowercaseQuery) ||
+        customer.email.toLowerCase().includes(lowercaseQuery) ||
+        customer.phone.includes(query),
+    )
+  }
+
+  // Suppliers
+  static async getSuppliers(): Promise<Supplier[]> {
+    const data = await this.apiRequest("/api/suppliers")
+    return this.mapIds<Supplier>(data)
+  }
+
+  static async addSupplier(data: Omit<Supplier, "id" | "createdAt" | "updatedAt">): Promise<Supplier> {
+    const result = await this.apiRequest("/api/suppliers", "POST", data)
+    return this.mapId<Supplier>(result)
+  }
+
+  static async updateSupplier(id: string, data: Partial<Omit<Supplier, "id" | "createdAt">>): Promise<Supplier | null> {
+    const result = await this.apiRequest(`/api/suppliers/${id}`, "PUT", data)
+    return this.mapId<Supplier>(result)
+  }
+
+  static async deleteSupplier(id: string): Promise<boolean> {
+    await this.apiRequest(`/api/suppliers/${id}`, "DELETE")
+    return true
+  }
+
+  // Sales
+  static async getSales(): Promise<Sale[]> {
+    const data = await this.apiRequest("/api/sales")
+    return this.mapIds<Sale>(data)
+  }
+
+  static async getSalesWithEstimateNumber(): Promise<Sale[]> {
+    const sales = await this.getSales()
     return sales.map((sale) => ({
       ...sale,
+      id: sale.id || sale._id || "unknown",
       estimateNumber: sale.estimateNumber || (sale as any).invoiceNumber || "Unknown",
-    }))
+    })) as Sale[]
   }
 
-  static async recordSale(saleData: {
-    estimateNumber: string
-    customerId?: string
-    isCashSale: boolean
-    items: Array<{
-      productId: string
-      quantity: number
-      unitPrice: number
-    }>
-    paymentMethod?: "cash" | "card" | "upi" | "credit"
-    timestamp?: number
-    customerName?: string
-    customerPhone?: string
-    subtotal: number
-    hamaliCharges: number
-    total: number
-    reference?: string
-  }): Promise<Sale> {
-    const sales = this.getSales()
-    const products = this.getProducts()
-    const subCategories = this.getSubCategories()
-    const superCategories = this.getSuperCategories()
-    const customers = this.getCustomers()
-    const customer = saleData.customerId ? customers.find((c) => c.id === saleData.customerId) : null
-    const saleItems: SaleItem[] = saleData.items.map((item) => {
-      const product = products.find((p) => p.id === item.productId)
-      if (!product) throw new Error(`Product not found: ${item.productId}`)
-
-      const subCategory = subCategories.find((sc) => sc.id === product.subCategoryId)
-      if (!subCategory) throw new Error(`Sub category not found: ${product.subCategoryId}`)
-
-      const superCategory = superCategories.find((sc) => sc.id === subCategory.superCategoryId)
-      if (!superCategory) throw new Error(`Super category not found: ${subCategory.superCategoryId}`)
-
-      return {
-        id: this.generateId(),
-        productId: product.id,
-        productName: product.name,
-        quantity: item.quantity,
-        unitPrice: item.unitPrice,
-        lineTotal: item.quantity * item.unitPrice,
-        unit: product.unit,
-        subCategoryId: subCategory.id,
-        subCategoryName: subCategory.name,
-        superCategoryId: superCategory.id,
-        superCategoryName: superCategory.name,
-      }
-    })
-
-    const newSale: Sale = {
-      id: this.generateId(),
-      estimateNumber: saleData.estimateNumber,
-      date: new Date().toLocaleDateString("en-IN"),
-      timestamp: saleData.timestamp || Date.now(),
-      customerId: customer?.id,
-      customerName: saleData.customerName || customer?.name,
-      customerPhone: saleData.customerPhone || customer?.phone,
-      isCashSale: saleData.isCashSale,
-      items: saleItems,
-      subtotal: saleData.subtotal,
-      hamaliCharges: saleData.hamaliCharges,
-      total: saleData.total,
-      paymentMethod: saleData.paymentMethod || "cash",
-      reference: saleData.reference,
-      createdAt: this.getCurrentTimestamp(),
-      updatedAt: this.getCurrentTimestamp(),
-    }
-    for (const item of saleData.items) {
-      const product = products.find((p) => p.id === item.productId)
-      if (product) {
-        await this.updateProductStock(product.id, Math.max(0, product.stock - item.quantity))
-      }
-    }
-
-    const updated = [...sales, newSale]
-    this.setItem("sales", updated)
-    return newSale
+  static async recordSale(saleData: any): Promise<Sale> {
+    const result = await this.apiRequest("/api/sales", "POST", saleData)
+    return this.mapId<Sale>(result)
   }
 
   static async updateSale(id: string, data: Partial<Omit<Sale, "id" | "createdAt">>): Promise<Sale | null> {
-    const sales = this.getSales()
-    const index = sales.findIndex((sale) => sale.id === id)
-
-    if (index === -1) return null
-
-    const updated = sales.map((sale) =>
-      sale.id === id ? { ...sale, ...data, updatedAt: this.getCurrentTimestamp() } : sale,
-    )
-
-    this.setItem("sales", updated)
-    return updated[index]
+    const result = await this.apiRequest(`/api/sales/${id}`, "PUT", data)
+    return this.mapId<Sale>(result)
   }
 
   static async deleteSale(id: string): Promise<boolean> {
-    const sales = this.getSales()
-    const filtered = sales.filter((sale) => sale.id !== id)
-
-    if (filtered.length === sales.length) return false
-
-    this.setItem("sales", filtered)
+    await this.apiRequest(`/api/sales/${id}`, "DELETE")
     return true
   }
-  static getSalesAnalytics(dateRange?: { start: Date; end: Date }): SalesAnalytics {
-    const sales = this.getSales()
+
+  static async searchSales(query: string): Promise<Sale[]> {
+    const sales = await this.getSales()
+    const lowercaseQuery = query.toLowerCase()
+    return sales.filter((sale) => 
+      sale.estimateNumber.toLowerCase().includes(lowercaseQuery) || 
+      (sale.customerName && sale.customerName.toLowerCase().includes(lowercaseQuery))
+    )
+  }
+
+  static async getSalesByCustomer(customerId: string): Promise<Sale[]> {
+    const sales = await this.getSales()
+    return sales.filter(s => s.customerId === customerId)
+  }
+
+  private static mapPurchaseOrder(po: any): PurchaseOrder {
+    if (!po) return po
+    const mapped = { ...po, id: po._id || po.id } as PurchaseOrder
+    if (Array.isArray(mapped.items)) {
+      mapped.items = mapped.items.map((item: any) => ({
+        ...item,
+        id: item.productId || item.id || item._id,
+      }))
+    }
+    return mapped
+  }
+
+  // Purchase Orders
+  static async getPurchaseOrders(): Promise<PurchaseOrder[]> {
+    const data = await this.apiRequest("/api/purchase-orders")
+    if (!Array.isArray(data)) return []
+    return data.map((po) => this.mapPurchaseOrder(po))
+  }
+
+  static async addPurchaseOrder(data: any): Promise<PurchaseOrder> {
+    const result = await this.apiRequest("/api/purchase-orders", "POST", data)
+    return this.mapPurchaseOrder(result)
+  }
+
+  static async updatePurchaseOrder(id: string, data: any): Promise<PurchaseOrder | null> {
+    const result = await this.apiRequest(`/api/purchase-orders/${id}`, "PUT", data)
+    return this.mapPurchaseOrder(result)
+  }
+
+  static async deletePurchaseOrder(id: string): Promise<boolean> {
+    await this.apiRequest(`/api/purchase-orders/${id}`, "DELETE")
+    return true
+  }
+
+  // Inventory
+  static async getInventoryItems(): Promise<InventoryItem[]> {
+    const data = await this.apiRequest("/api/inventory/items")
+    return this.mapIds<InventoryItem>(data)
+  }
+
+  static async setInventoryItems(items: InventoryItem[]): Promise<void> {
+    for (const item of items) {
+      await this.apiRequest("/api/inventory/items", "POST", item)
+    }
+  }
+
+  static async getStockTransactions(): Promise<StockTransaction[]> {
+    const data = await this.apiRequest("/api/inventory/transactions")
+    return this.mapIds<StockTransaction>(data)
+  }
+
+  static async setStockTransactions(transactions: StockTransaction[]): Promise<void> {
+    for (const t of transactions) {
+      await this.apiRequest("/api/inventory/transactions", "POST", t)
+    }
+  }
+
+  static async getTransactionBatches(): Promise<TransactionBatch[]> {
+    const data = await this.apiRequest("/api/inventory/batches")
+    return this.mapIds<TransactionBatch>(data)
+  }
+
+  static async setTransactionBatches(batches: TransactionBatch[]): Promise<void> {
+    for (const b of batches) {
+      await this.apiRequest("/api/inventory/batches", "POST", b)
+    }
+  }
+
+  // Counters
+  static async getNextEstimateNumber(): Promise<number> {
+    const result = await this.apiRequest("/api/counters/estimateCounter", "POST")
+    return result.seq
+  }
+
+  static async getNextPONumber(): Promise<number> {
+    const result = await this.apiRequest("/api/counters/poCounter", "POST")
+    return result.seq
+  }
+
+  // Analytics
+  static async getSalesAnalytics(dateRange?: { start: Date; end: Date }): Promise<SalesAnalytics> {
+    const sales = await this.getSales()
     let filteredSales = sales
 
     if (dateRange) {
@@ -638,6 +552,7 @@ export class DataManager {
     const totalSales = filteredSales.length
     const totalRevenue = filteredSales.reduce((sum, sale) => sum + sale.total, 0)
     const averageOrderValue = totalSales > 0 ? totalRevenue / totalSales : 0
+
     const productStats = new Map<string, { name: string; quantity: number; revenue: number }>()
     filteredSales.forEach((sale) => {
       sale.items.forEach((item) => {
@@ -657,6 +572,7 @@ export class DataManager {
       }))
       .sort((a, b) => b.totalRevenue - a.totalRevenue)
       .slice(0, 10)
+
     const customerStats = new Map<string, { name: string; orders: number; revenue: number }>()
     filteredSales.forEach((sale) => {
       if (!sale.isCashSale && sale.customerId) {
@@ -676,6 +592,7 @@ export class DataManager {
       }))
       .sort((a, b) => b.totalRevenue - a.totalRevenue)
       .slice(0, 10)
+
     const categoryStats = new Map<
       string,
       {
@@ -688,7 +605,8 @@ export class DataManager {
 
     filteredSales.forEach((sale) => {
       sale.items.forEach((item) => {
-        const superCat = categoryStats.get(item.superCategoryId) || {
+        const superCatId = item.superCategoryId.toString()
+        const superCat = categoryStats.get(superCatId) || {
           name: item.superCategoryName,
           quantity: 0,
           revenue: 0,
@@ -696,16 +614,18 @@ export class DataManager {
         }
         superCat.quantity += item.quantity
         superCat.revenue += item.lineTotal
-        const subCat = superCat.subCategories.get(item.subCategoryId) || {
+
+        const subCatId = item.subCategoryId.toString()
+        const subCat = superCat.subCategories.get(subCatId) || {
           name: item.subCategoryName,
           quantity: 0,
           revenue: 0,
         }
         subCat.quantity += item.quantity
         subCat.revenue += item.lineTotal
-        superCat.subCategories.set(item.subCategoryId, subCat)
+        superCat.subCategories.set(subCatId, subCat)
 
-        categoryStats.set(item.superCategoryId, superCat)
+        categoryStats.set(superCatId, superCat)
       })
     })
 
@@ -725,6 +645,7 @@ export class DataManager {
           .sort((a, b) => b.totalRevenue - a.totalRevenue),
       }))
       .sort((a, b) => b.totalRevenue - a.totalRevenue)
+
     const dailyStats = new Map<string, { sales: number; revenue: number }>()
     filteredSales.forEach((sale) => {
       const date = new Date(sale.timestamp).toLocaleDateString("en-IN")
@@ -741,7 +662,38 @@ export class DataManager {
         totalRevenue: stats.revenue,
       }))
       .sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime())
+
     const monthlyStats = new Map<string, { sales: number; revenue: number }>()
+    const paymentStats = new Map<string, { count: number; total: number }>()
+    const hourlyStats = new Array(24).fill(null).map(() => ({ count: 0, total: 0 }))
+
+    filteredSales.forEach((sale) => {
+      // Payment Method
+      const method = sale.paymentMethod || "unknown"
+      const pExisting = paymentStats.get(method) || { count: 0, total: 0 }
+      pExisting.count += 1
+      pExisting.total += sale.total
+      paymentStats.set(method, pExisting)
+
+      // Hourly Trends
+      const hour = new Date(sale.timestamp || sale.date).getHours()
+      if (hour >= 0 && hour < 24) {
+        hourlyStats[hour].count += 1
+        hourlyStats[hour].total += sale.total
+      }
+    })
+
+    const paymentMethodBreakdown = Array.from(paymentStats.entries()).map(([method, stats]) => ({
+      method,
+      count: stats.count,
+      total: stats.total,
+    }))
+
+    const hourlyTrends = hourlyStats.map((stats, hour) => ({
+      hour,
+      count: stats.count,
+      total: stats.total,
+    }))
     filteredSales.forEach((sale) => {
       const date = new Date(sale.timestamp)
       const month = `${date.getFullYear()}-${(date.getMonth() + 1).toString().padStart(2, "0")}`
@@ -750,6 +702,7 @@ export class DataManager {
       existing.revenue += sale.total
       monthlyStats.set(month, existing)
     })
+
 
     const monthlySales = Array.from(monthlyStats.entries())
       .map(([month, stats]) => ({
@@ -768,451 +721,121 @@ export class DataManager {
       categoryPerformance,
       dailySales,
       monthlySales,
-    }
-  }
-  static searchProducts(query: string): Product[] {
-    const products = this.getProducts()
-    const lowercaseQuery = query.toLowerCase()
-
-    return products.filter(
-      (product) =>
-        product.name.toLowerCase().includes(lowercaseQuery) || product.unit.toLowerCase().includes(lowercaseQuery),
-    )
-  }
-
-  static searchCustomers(query: string): Customer[] {
-    const customers = this.getCustomers()
-    const lowercaseQuery = query.toLowerCase()
-
-    return customers.filter(
-      (customer) =>
-        customer.name.toLowerCase().includes(lowercaseQuery) ||
-        customer.email.toLowerCase().includes(lowercaseQuery) ||
-        customer.phone.includes(query),
-    )
-  }
-
-  static searchSales(query: string): Sale[] {
-    const sales = this.getSales()
-    const lowercaseQuery = query.toLowerCase()
-
-    return sales.filter(
-      (sale) =>
-        sale.estimateNumber.toLowerCase().includes(lowercaseQuery) ||
-        sale.customerName?.toLowerCase().includes(lowercaseQuery) ||
-        sale.items.some((item) => item.productName.toLowerCase().includes(lowercaseQuery)),
-    )
-  }
-
-  static getProductsBySubCategory(subCategoryId: string): Product[] {
-    const products = this.getProducts()
-    return products.filter((product) => product.subCategoryId === subCategoryId)
-  }
-
-  static getSubCategoriesBySuperCategory(superCategoryId: string): SubCategory[] {
-    const subCategories = this.getSubCategories()
-    return subCategories.filter((subCategory) => subCategory.superCategoryId === superCategoryId)
-  }
-
-  static getSalesByCustomer(customerId: string): Sale[] {
-    const sales = this.getSales()
-    return sales.filter((sale) => sale.customerId === customerId)
-  }
-
-  static getSalesByDateRange(start: Date, end: Date): Sale[] {
-    const sales = this.getSales()
-    return sales.filter((sale) => {
-      const saleDate = new Date(sale.timestamp)
-      return saleDate >= start && saleDate <= end
-    })
-  }
-  static validateSuperCategory(data: Partial<SuperCategory>): string[] {
-    const errors: string[] = []
-
-    if (!data.name?.trim()) {
-      errors.push("Name is required")
-    }
-
-    if (!data.icon?.trim()) {
-      errors.push("Icon is required")
-    }
-
-    return errors
-  }
-
-  static validateSubCategory(data: Partial<SubCategory>): string[] {
-    const errors: string[] = []
-
-    if (!data.name?.trim()) {
-      errors.push("Name is required")
-    }
-
-    if (!data.icon?.trim()) {
-      errors.push("Icon is required")
-    }
-
-    if (!data.superCategoryId?.trim()) {
-      errors.push("Super category is required")
-    }
-
-    return errors
-  }
-
-  static validateProduct(data: Partial<Product>): string[] {
-    const errors: string[] = []
-
-    if (!data.name?.trim()) {
-      errors.push("Name is required")
-    }
-
-    if (typeof data.price !== "number" || data.price < 0) {
-      errors.push("Valid price is required")
-    }
-
-    if (typeof data.stock !== "number" || data.stock < 0) {
-      errors.push("Valid stock quantity is required")
-    }
-
-    if (!data.unit?.trim()) {
-      errors.push("Unit is required")
-    }
-
-    if (!data.subCategoryId?.trim()) {
-      errors.push("Sub category is required")
-    }
-
-    if (typeof data.hamaliValue !== "number" || data.hamaliValue < 0) {
-      errors.push("Valid hamali value is required")
-    }
-
-    return errors
-  }
-
-  static validateCustomer(data: Partial<Customer>): string[] {
-    const errors: string[] = []
-
-    if (!data.name?.trim()) {
-      errors.push("Name is required")
-    }
-
-    if (!data.phone?.trim()) {
-      errors.push("Phone is required")
-    }
-
-    if (data.email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(data.email)) {
-      errors.push("Valid email is required")
-    }
-
-    return errors
-  }
-  static async importData(data: {
-    superCategories?: SuperCategory[]
-    subCategories?: SubCategory[]
-    products?: Product[]
-    customers?: Customer[]
-    sales?: Sale[]
-  }): Promise<void> {
-    try {
-      if (data.superCategories) {
-        this.setItem("superCategories", data.superCategories)
-      }
-
-      if (data.subCategories) {
-        this.setItem("subCategories", data.subCategories)
-      }
-
-      if (data.products) {
-        this.setItem("products", data.products)
-      }
-
-      if (data.customers) {
-        this.setItem("customers", data.customers)
-      }
-
-      if (data.sales) {
-        this.setItem("sales", data.sales)
-      }
-    } catch (error) {
-      console.error("Error importing data:", error)
-      throw new Error("Failed to import data")
+      paymentMethodBreakdown,
+      hourlyTrends,
     }
   }
 
-  static exportData(): {
-    superCategories: SuperCategory[]
-    subCategories: SubCategory[]
-    products: Product[]
-    customers: Customer[]
-    sales: Sale[]
-  } {
-    return {
-      superCategories: this.getSuperCategories(),
-      subCategories: this.getSubCategories(),
-      products: this.getProducts(),
-      customers: this.getCustomers(),
-      sales: this.getSales(),
-    }
-  }
-  static getDataStats(): {
-    superCategories: number
-    subCategories: number
-    products: number
-    customers: number
-    sales: number
-    totalStock: number
-    totalValue: number
-    totalRevenue: number
-  } {
-    const superCategories = this.getSuperCategories()
-    const subCategories = this.getSubCategories()
-    const products = this.getProducts()
-    const customers = this.getCustomers()
-    const sales = this.getSales()
-
-    const totalStock = products.reduce((sum, product) => sum + product.stock, 0)
-    const totalValue = products.reduce((sum, product) => sum + product.price * product.stock, 0)
-    const totalRevenue = sales.reduce((sum, sale) => sum + sale.total, 0)
-
-    return {
-      superCategories: superCategories.length,
-      subCategories: subCategories.length,
-      products: products.length,
-      customers: customers.length,
-      sales: sales.length,
-      totalStock,
-      totalValue,
-      totalRevenue,
-    }
-  }
-  static clearAllData(): void {
-    localStorage.removeItem("superCategories")
-    localStorage.removeItem("subCategories")
-    localStorage.removeItem("products")
-    localStorage.removeItem("customers")
-    localStorage.removeItem("sales")
-    localStorage.removeItem("estimateCounter")
-    window.dispatchEvent(new StorageEvent("storage", { key: "superCategories", storageArea: localStorage }))
-    window.dispatchEvent(new StorageEvent("storage", { key: "subCategories", storageArea: localStorage }))
-    window.dispatchEvent(new StorageEvent("storage", { key: "products", storageArea: localStorage }))
-    window.dispatchEvent(new StorageEvent("storage", { key: "customers", storageArea: localStorage }))
-    window.dispatchEvent(new StorageEvent("storage", { key: "sales", storageArea: localStorage }))
-  }
-  static setInventoryItems(items: any[]): void {
-    this.setItem("inventory_items", items)
-  }
-
-  static getInventoryItems(): any[] {
-    return this.getItem("inventory_items", [])
-  }
-
-  static setStockTransactions(transactions: any[]): void {
-    this.setItem("stock_transactions", transactions)
-  }
-
-  static getStockTransactions(): any[] {
-    return this.getItem("stock_transactions", [])
-  }
-
-  static getAllDataTypes(): Array<{
-    key: string
-    name: string
-    description: string
-    count: number
-    size: string
-  }> {
-    const dataTypes = [
-      { key: "superCategories", name: "Super Categories", description: "Main product categories" },
-      { key: "subCategories", name: "Sub Categories", description: "Product subcategories" },
-      { key: "products", name: "Products", description: "Product inventory items" },
-      { key: "customers", name: "Customers", description: "Customer information" },
-      { key: "sales", name: "Sales Records", description: "Sales transactions" },
-      { key: "inventory_items", name: "Inventory Items", description: "Inventory management data" },
-      { key: "stock_transactions", name: "Stock Transactions", description: "Stock movement history" },
-      { key: "estimateCounter", name: "Estimate Counter", description: "Invoice/estimate numbering" },
-      { key: "pos_backups", name: "Backup History", description: "System backup records" },
-      { key: "salesRecords", name: "Legacy Sales", description: "Legacy sales data" },
+  // Migration
+  static async migrateToMongoDB(): Promise<void> {
+    const data: any = {}
+    const keys = [
+      "superCategories",
+      "subCategories",
+      "products",
+      "customers",
+      "suppliers",
+      "sales",
+      "purchaseOrders",
+      "inventory_items",
+      "stock_transactions",
+      "transaction_batches",
+      "estimateCounter",
+      "poCounter",
     ]
 
-    return dataTypes.map((type) => {
-      const data = this.getRawData(type.key)
-      const dataStr = JSON.stringify(data)
-      const sizeInBytes = new Blob([dataStr]).size
-      const sizeFormatted = this.formatBytes(sizeInBytes)
-
-      return {
-        ...type,
-        count: Array.isArray(data) ? data.length : data ? 1 : 0,
-        size: sizeFormatted,
-      }
-    })
-  }
-
-  static getRawData(key: string): any {
-    try {
+    for (const key of keys) {
       const stored = localStorage.getItem(key)
-      return stored ? JSON.parse(stored) : null
-    } catch (error) {
-      console.error(`Error loading ${key}:`, error)
-      return null
+      if (stored) {
+        try {
+          data[key] = JSON.parse(stored)
+        } catch (e) {
+          data[key] = stored
+        }
+      }
     }
+
+    await this.apiRequest("/api/migrate", "POST", data)
+    localStorage.setItem("mongodb_migrated", "true")
   }
 
-  static formatBytes(bytes: number): string {
-    if (bytes === 0) return "0 B"
+  // Utilities
+  static formatBytes(bytes: number, decimals = 2) {
+    if (bytes === 0) return "0 Bytes"
     const k = 1024
-    const sizes = ["B", "KB", "MB", "GB"]
+    const dm = decimals < 0 ? 0 : decimals
+    const sizes = ["Bytes", "KB", "MB", "GB", "TB"]
     const i = Math.floor(Math.log(bytes) / Math.log(k))
-    return Number.parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + " " + sizes[i]
+    return parseFloat((bytes / Math.pow(k, i)).toFixed(dm)) + " " + sizes[i]
   }
 
-  static exportSelectedData(selectedTypes: string[], format: "json" | "csv"): { [key: string]: any } | string {
-    const exportData: { [key: string]: any } = {}
-
-    selectedTypes.forEach((type) => {
-      const data = this.getRawData(type)
-      if (data !== null) {
-        exportData[type] = data
-      }
-    })
-
-    if (format === "json") {
-      return exportData
-    } else {
-
-      return this.convertToCSV(exportData)
-    }
+  static getAllDataTypes(): any[] {
+    return [
+      { key: "superCategories", name: "Super Categories", description: "Main categories" },
+      { key: "subCategories", name: "Sub Categories", description: "Secondary categories" },
+      { key: "products", name: "Products", description: "Inventory items" },
+      { key: "customers", name: "Customers", description: "Client records" },
+      { key: "suppliers", name: "Suppliers", description: "Vendor records" },
+      { key: "sales", name: "Sales", description: "Transaction history" },
+      { key: "purchaseOrders", name: "Purchase Orders", description: "Order history" },
+    ].map(t => ({ ...t, count: 0, size: "MongoDB" }))
   }
 
-  static convertToCSV(data: { [key: string]: any }): string {
-    let csvContent = ""
-
-    Object.entries(data).forEach(([key, value]) => {
-      csvContent += `\n\n=== ${key.toUpperCase()} ===\n`
-
-      if (Array.isArray(value) && value.length > 0) {
-
-        const headers = Object.keys(value[0])
-        csvContent += headers.join(",") + "\n"
-
-        value.forEach((item) => {
-          const row = headers.map((header) => {
-            const cellValue = item[header]
-
-            if (typeof cellValue === "string" && (cellValue.includes(",") || cellValue.includes('"'))) {
-              return `"${cellValue.replace(/"/g, '""')}"`
-            }
-            return cellValue || ""
-          })
-          csvContent += row.join(",") + "\n"
-        })
-      } else if (value && typeof value === "object") {
-
-        const headers = Object.keys(value)
-        csvContent += headers.join(",") + "\n"
-        const row = headers.map((header) => value[header] || "")
-        csvContent += row.join(",") + "\n"
-      } else {
-        csvContent += `${value}\n`
-      }
-    })
-
-    return csvContent
-  }
-
-  static async importSelectedData(data: any, selectedTypes: string[], format: "json" | "csv"): Promise<void> {
-    try {
-      let importData: { [key: string]: any } = {}
-
-      if (format === "json") {
-        importData = typeof data === "string" ? JSON.parse(data) : data
-      } else {
-
-        importData = this.parseCSV(data)
-      }
-
-      selectedTypes.forEach((type) => {
-        if (importData[type] !== undefined) {
-          localStorage.setItem(type, JSON.stringify(importData[type]))
-
-          window.dispatchEvent(
-            new StorageEvent("storage", {
-              key: type,
-              newValue: JSON.stringify(importData[type]),
-              storageArea: localStorage,
-            }),
-          )
-        }
-      })
-    } catch (error) {
-      console.error("Error importing data:", error)
-      throw new Error("Failed to import data")
-    }
-  }
-
-  static parseCSV(csvData: string): { [key: string]: any } {
-    const result: { [key: string]: any } = {}
-    const sections = csvData.split(/\n\n=== (\w+) ===\n/)
-
-    for (let i = 1; i < sections.length; i += 2) {
-      const sectionName = sections[i].toLowerCase()
-      const sectionData = sections[i + 1]
-
-      if (sectionData && sectionData.trim()) {
-        const lines = sectionData.trim().split("\n")
-        if (lines.length > 1) {
-          const headers = lines[0].split(",")
-          const rows = lines.slice(1).map((line) => {
-            const values = line.split(",")
-            const obj: any = {}
-            headers.forEach((header, index) => {
-              obj[header] = values[index] || ""
-            })
-            return obj
-          })
-          result[sectionName] = rows
-        }
-      }
-    }
-
-    return result
-  }
-
-  static getStorageInfo(): {
-    used: number
-    total: number
-    available: number
-    usedFormatted: string
-    totalFormatted: string
-    availableFormatted: string
-    percentage: number
-  } {
-    let used = 0
-
-    for (const key in localStorage) {
-      if (localStorage.hasOwnProperty(key)) {
-        used += localStorage[key].length + key.length
-      }
-    }
-
-    const total = 5 * 1024 * 1024
-    const available = total - used
-    const percentage = (used / total) * 100
-
+  static getStorageInfo() {
     return {
-      used,
-      total,
-      available,
-      usedFormatted: this.formatBytes(used),
-      totalFormatted: this.formatBytes(total),
-      availableFormatted: this.formatBytes(available),
-      percentage: Math.min(percentage, 100),
+      usedFormatted: "MongoDB",
+      totalFormatted: "Cloud",
+      percentage: 0,
+      availableFormatted: "Scalable"
     }
   }
+  static async exportSelectedData(types: string[], format: "json" | "csv"): Promise<any> {
+    const data: any = {}
+    for (const type of types) {
+      switch (type) {
+        case "superCategories": data.superCategories = await this.getSuperCategories(); break
+        case "subCategories": data.subCategories = await this.getSubCategories(); break
+        case "products": data.products = await this.getProducts(); break
+        case "customers": data.customers = await this.getCustomers(); break
+        case "suppliers": data.suppliers = await this.getSuppliers(); break
+        case "sales": data.sales = await this.getSales(); break
+        case "purchaseOrders": data.purchaseOrders = await this.getPurchaseOrders(); break
+        case "inventory_items": data.inventory_items = await this.getInventoryItems(); break
+        case "stock_transactions": data.stock_transactions = await this.getStockTransactions(); break
+        case "transaction_batches": data.transaction_batches = await this.getTransactionBatches(); break
+      }
+    }
 
-  static clearSelectedData(selectedTypes: string[]): void {
-    selectedTypes.forEach((type) => {
-      localStorage.removeItem(type)
-      window.dispatchEvent(new StorageEvent("storage", { key: type, storageArea: localStorage }))
-    })
+    if (format === "json") return data
+
+    let csv = ""
+    for (const [type, items] of Object.entries(data)) {
+      if (Array.isArray(items) && items.length > 0) {
+        const headers = Object.keys(items[0]).join(",")
+        const rows = items.map((item: any) => 
+          Object.values(item).map(v => JSON.stringify(v)).join(",")
+        ).join("\n")
+        csv += `${type.toUpperCase()}\n${headers}\n${rows}\n\n`
+      }
+    }
+    return csv
+  }
+
+  static async importSelectedData(data: string, types: string[], format: "json" | "csv"): Promise<void> {
+    let parsedData: any = {}
+    if (format === "json") {
+      parsedData = JSON.parse(data)
+    } else {
+      // Very basic CSV parsing for a single type if needed
+      // But migrate expects full object
+      throw new Error("CSV import not implemented for MongoDB migration yet")
+    }
+    await this.apiRequest("/api/migrate", "POST", parsedData)
+  }
+
+  static async clearSelectedData(types: string[]): Promise<void> {
+    const clearData: any = {}
+    types.forEach(t => clearData[t] = [])
+    await this.apiRequest("/api/migrate", "POST", clearData)
   }
 }

@@ -7,6 +7,7 @@
     "build": "next build",
     "start": "next start",
     "lint": "next lint",
+    "seed": "node scripts/seed-database.js",
     "build:web": "next build && NEXT_PUBLIC_IS_MOBILE=true next build",
     "build:export": "NEXT_PUBLIC_IS_MOBILE=true next export",
     "build:mobile": "npm run build:web && npm run build:export && npx cap sync"
@@ -54,6 +55,8 @@
     "jspdf": "^3.0.1",
     "jspdf-autotable": "^5.0.2",
     "lucide-react": "^0.454.0",
+    "mongodb": "^7.1.0",
+    "mongoose": "^9.3.0",
     "next": "15.5.12",
     "next-themes": "^0.4.4",
     "react": "^19",
@@ -67,6 +70,7 @@
     "sonner": "^1.7.1",
     "tailwind-merge": "^2.5.5",
     "tailwindcss-animate": "^1.0.7",
+    "translate-google": "^1.5.0",
     "vaul": "^0.9.6",
     "xlsx": "^0.18.5",
     "zod": "^3.24.1"
@@ -77,6 +81,7 @@
     "@types/react-dom": "^19",
     "postcss": "^8",
     "tailwindcss": "^3.4.17",
+    "tsx": "^4.21.0",
     "typescript": "^5"
   }
 }

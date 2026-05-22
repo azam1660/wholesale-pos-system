@@ -113,7 +113,7 @@ export default function DataManagement() {
     setExportProgress(10)
 
     try {
-      const exportData = DataManager.exportSelectedData(selectedDataTypes, exportFormat)
+      const exportData = await DataManager.exportSelectedData(selectedDataTypes, exportFormat)
       setExportProgress(50)
 
       const currentDate = format(new Date(), "yyyy-MM-dd_HH-mm-ss")
@@ -207,13 +207,13 @@ export default function DataManagement() {
     }
   }
 
-  const createBackup = () => {
+  const createBackup = async () => {
     if (selectedDataTypes.length === 0) return
 
     setBackupProgress(10)
 
     try {
-      const exportData = DataManager.exportSelectedData(selectedDataTypes, exportFormat)
+      const exportData = await DataManager.exportSelectedData(selectedDataTypes, exportFormat)
       setBackupProgress(50)
 
       const now = new Date()

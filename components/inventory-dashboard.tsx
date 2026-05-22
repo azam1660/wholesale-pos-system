@@ -6,28 +6,35 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 import { DataManager } from "./data-manager"
+import { useLanguage } from "@/contexts/LanguageContext"
 
 interface InventoryDashboardProps {
   onRefresh?: () => void
 }
 
 export default function InventoryDashboard({ onRefresh }: InventoryDashboardProps) {
+  const { tName } = useLanguage()
   const [inventoryItems, setInventoryItems] = useState<any[]>([])
   const [stockTransactions, setStockTransactions] = useState<any[]>([])
   const [products, setProducts] = useState<any[]>([])
+  const [subCategories, setSubCategories] = useState<any[]>([])
   const [loading, setLoading] = useState(true)
   const [lastUpdated, setLastUpdated] = useState<Date>(new Date())
 
-  const loadDashboardData = () => {
+  const loadDashboardData = async () => {
     setLoading(true)
     try {
-      const items = DataManager.getInventoryItems()
-      const transactions = DataManager.getStockTransactions()
-      const prods = DataManager.getProducts()
+      const [items, transactions, prods, subCats] = await Promise.all([
+        DataManager.getInventoryItems(),
+        DataManager.getStockTransactions(),
+        DataManager.getProducts(),
+        DataManager.getSubCategories(),
+      ])
 
       setInventoryItems(items)
       setStockTransactions(transactions)
       setProducts(prods)
+      setSubCategories(subCats)
       setLastUpdated(new Date())
     } catch (error) {
       console.error("Error loading dashboard data:", error)
@@ -39,20 +46,10 @@ export default function InventoryDashboard({ onRefresh }: InventoryDashboardProp
   useEffect(() => {
     loadDashboardData()
 
-    // Listen for storage changes
-    const handleStorageChange = (e: StorageEvent) => {
-      if (e.key === "inventory_items" || e.key === "stock_transactions" || e.key === "products" || e.key === "sales") {
-        loadDashboardData()
-      }
-    }
-
-    window.addEventListener("storage", handleStorageChange)
-
-    // Auto-refresh every 30 seconds
+    // Auto-refresh every 30 seconds (MongoDB data)
     const interval = setInterval(loadDashboardData, 30000)
 
     return () => {
-      window.removeEventListener("storage", handleStorageChange)
       clearInterval(interval)
     }
   }, [])
@@ -255,7 +252,11 @@ export default function InventoryDashboard({ onRefresh }: InventoryDashboardProp
                         {transaction.type.toUpperCase()}
                       </Badge>
                       <div>
-                        <p className="font-medium text-sm">{transaction.productName}</p>
+                        <p className="font-medium text-sm">
+                          {products.find((p) => p.id === transaction.productId)
+                            ? tName(products.find((p) => p.id === transaction.productId))
+                            : transaction.productName}
+                        </p>
                         <p className="text-xs text-gray-500">{new Date(transaction.date).toLocaleDateString()}</p>
                       </div>
                     </div>
@@ -291,9 +292,19 @@ export default function InventoryDashboard({ onRefresh }: InventoryDashboardProp
                       <div key={item.id} className="flex items-center justify-between p-2 border rounded-[9px]">
                         <div className="flex items-center gap-3">
                           <Badge className={`text-xs ${stockStatus.color}`}>{stockStatus.status}</Badge>
-                          <div>
-                            <p className="font-medium text-sm">{item.productName}</p>
-                            <p className="text-xs text-gray-500">{item.category}</p>
+                          <div className="flex-1 min-w-0">
+                            <p className="font-medium text-sm break-words">
+                              {products.find((p) => p.id === item.productId)
+                                ? tName(products.find((p) => p.id === item.productId))
+                                : item.productName}
+                            </p>
+                            <p className="text-xs text-gray-500 break-words">
+                              {(() => {
+                                const product = products.find((p) => p.id === item.productId)
+                                const subCategory = product ? subCategories.find((sc) => sc.id === product.subCategoryId) : null
+                                return subCategory ? tName(subCategory) : item.category
+                              })()}
+                            </p>
                           </div>
                         </div>
                         <div className="text-right">

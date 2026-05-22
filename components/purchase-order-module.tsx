@@ -1,6 +1,7 @@
 "use client"
 
 import { useState, useEffect, useRef } from "react"
+import { useLanguage } from "@/contexts/LanguageContext"
 import {
   ArrowLeft,
   Plus,
@@ -69,16 +70,8 @@ const storeInfo = {
   phone: "9420490692",
 }
 
-const getPOCounter = () => {
-  const stored = localStorage.getItem("poCounter")
-  return stored ? Number.parseInt(stored) : 1
-}
-
-const setPOCounter = (counter: number) => {
-  localStorage.setItem("poCounter", counter.toString())
-}
-
 export default function PurchaseOrderModule({ onBack }: { onBack: () => void }) {
+  const { tName } = useLanguage()
   const [currentView, setCurrentView] = useState<"super" | "sub" | "products">("super")
   const [selectedSuperCategory, setSelectedSuperCategory] = useState<string>("")
   const [selectedSubCategory, setSelectedSubCategory] = useState<string>("")
@@ -127,17 +120,19 @@ export default function PurchaseOrderModule({ onBack }: { onBack: () => void }) 
   useEffect(() => {
     const loadAllData = async () => {
       try {
-        const [superCats, subCats, prods] = await Promise.all([
+        const [superCats, subCats, prods, supps, pos] = await Promise.all([
           DataManager.getSuperCategories(),
           DataManager.getSubCategories(),
           DataManager.getProducts(),
+          DataManager.getSuppliers(),
+          DataManager.getPurchaseOrders(),
         ])
 
         setSuperCategories(superCats)
         setSubCategories(subCats)
         setProducts(prods)
-        loadSuppliers()
-        loadPurchaseOrders()
+        setSuppliers(supps)
+        setPurchaseOrders(pos)
         setDataLoaded(true)
       } catch (error) {
         console.error("Error loading data:", error)
@@ -148,36 +143,32 @@ export default function PurchaseOrderModule({ onBack }: { onBack: () => void }) 
     loadAllData()
   }, [])
 
-  const loadSuppliers = () => {
-    const stored = localStorage.getItem("suppliers")
-    if (stored) {
-      setSuppliers(JSON.parse(stored))
-    }
+  const loadSuppliers = async () => {
+    const supps = await DataManager.getSuppliers()
+    setSuppliers(supps)
   }
 
-  const loadPurchaseOrders = () => {
-    const stored = localStorage.getItem("purchaseOrders")
-    if (stored) {
-      setPurchaseOrders(JSON.parse(stored))
-    }
+  const loadPurchaseOrders = async () => {
+    const pos = await DataManager.getPurchaseOrders()
+    setPurchaseOrders(pos)
   }
 
-  const saveSuppliers = (suppliersData: Supplier[]) => {
-    localStorage.setItem("suppliers", JSON.stringify(suppliersData))
+  const saveSuppliers = async (suppliersData: Supplier[]) => {
+    // Note: DataManager.addSupplier handles individual adds.
+    // This method seems to be used for bulk? In PO module it's often individual.
+    // For now, let's keep it as a sync state update if we already called DataManager.
     setSuppliers(suppliersData)
   }
 
-  const savePurchaseOrders = (orders: PurchaseOrder[]) => {
-    localStorage.setItem("purchaseOrders", JSON.stringify(orders))
+  const savePurchaseOrders = async (orders: PurchaseOrder[]) => {
     setPurchaseOrders(orders)
   }
 
-  const generatePONumber = () => {
-    const counter = getPOCounter()
+  const generatePONumber = async () => {
+    const counter = await DataManager.getNextPONumber()
     const date = new Date(orderDate)
     const dateStr = date.toISOString().split("T")[0].replace(/-/g, "")
     const poNumber = `PO/${dateStr}/${counter.toString().padStart(4, "0")}`
-    setPOCounter(counter + 1)
     return poNumber
   }
 
@@ -190,22 +181,18 @@ export default function PurchaseOrderModule({ onBack }: { onBack: () => void }) 
 
   const selectedSupplierData = suppliers.find((s) => s.id === selectedSupplier)
 
-  const handleSaveSupplier = () => {
+  const handleSaveSupplier = async () => {
     if (!supplierForm.name.trim()) return
 
-    const newSupplier: Supplier = {
-      id: Date.now().toString(),
+    const result = await DataManager.addSupplier({
       name: supplierForm.name.trim(),
       email: supplierForm.email.trim(),
       phone: supplierForm.phone.trim(),
       address: supplierForm.address.trim(),
-      createdAt: new Date().toISOString(),
-      updatedAt: new Date().toISOString(),
-    }
+    })
 
-    const updatedSuppliers = [...suppliers, newSupplier]
-    saveSuppliers(updatedSuppliers)
-    setSelectedSupplier(newSupplier.id)
+    setSuppliers((prev) => [...prev, result])
+    setSelectedSupplier(result.id)
     resetSupplierForm()
   }
 
@@ -243,7 +230,7 @@ export default function PurchaseOrderModule({ onBack }: { onBack: () => void }) 
     } else {
       const newItem: PurchaseOrderItem = {
         id: product.id,
-        name: product.name,
+        name: tName(product),
         quantity: 1,
         unit: product.unit,
       }
@@ -269,47 +256,53 @@ export default function PurchaseOrderModule({ onBack }: { onBack: () => void }) 
     setIsEditMode(false)
   }
 
-  const generatePurchaseOrder = () => {
+  const generatePurchaseOrder = async () => {
+    const formattedItems = orderItems.map((item) => ({
+      productId: item.id,
+      name: item.name,
+      quantity: item.quantity,
+      unit: item.unit,
+    }))
+
     if (isEditMode && editingPO) {
-      const updatedPO: PurchaseOrder = {
+      const updatedPO: any = {
         ...editingPO,
         date: orderDate,
         supplierId: isCashPurchase ? undefined : selectedSupplier,
         supplierName: isCashPurchase ? "Cash Purchase" : selectedSupplierData?.name,
         supplierPhone: isCashPurchase ? undefined : selectedSupplierData?.phone,
         isCashPurchase,
-        items: [...orderItems],
+        items: formattedItems,
         reference: orderReference,
         notes: orderNotes,
         updatedAt: new Date().toISOString(),
       }
 
-      const updatedOrders = purchaseOrders.map((po) => (po.id === editingPO.id ? updatedPO : po))
-      savePurchaseOrders(updatedOrders)
-      setCurrentPO(updatedPO)
+      const result = await DataManager.updatePurchaseOrder(editingPO.id, updatedPO)
+      if (result) {
+        setPurchaseOrders(prev => prev.map(po => po.id === editingPO.id ? result : po))
+        setCurrentPO(result)
+      }
     } else {
-      const orderNumber = generatePONumber()
-      const purchaseOrder: PurchaseOrder = {
-        id: Date.now().toString(),
+      const orderNumber = await generatePONumber()
+      const purchaseOrder: any = {
         orderNumber,
         date: orderDate,
         supplierId: isCashPurchase ? undefined : selectedSupplier,
         supplierName: isCashPurchase ? "Cash Purchase" : selectedSupplierData?.name,
         supplierPhone: isCashPurchase ? undefined : selectedSupplierData?.phone,
         isCashPurchase,
-        items: [...orderItems],
+        items: formattedItems,
         subtotal: 0,
         total: 0,
         status: "pending",
         reference: orderReference,
         notes: orderNotes,
-        createdAt: new Date().toISOString(),
-        updatedAt: new Date().toISOString(),
       }
 
-      const updatedOrders = [...purchaseOrders, purchaseOrder]
-      savePurchaseOrders(updatedOrders)
-      setCurrentPO(purchaseOrder)
+      const result = await DataManager.addPurchaseOrder(purchaseOrder)
+      setPurchaseOrders(prev => [...prev, result])
+      setCurrentPO(result)
     }
 
     setShowPurchaseOrder(true)
@@ -712,7 +705,7 @@ export default function PurchaseOrderModule({ onBack }: { onBack: () => void }) 
         <Button
           key={category.id}
           onClick={() => handleSuperCategorySelect(category.id)}
-          className="h-16 sm:h-20 md:h-24 lg:h-28 w-full bg-white border-2 border-gray-200 hover:border-blue-400 hover:bg-blue-50 text-black rounded-[12px] sm:rounded-[15px] md:rounded-[20px] flex flex-col items-center justify-center gap-1 sm:gap-2 transition-colors p-2 sm:p-3"
+          className="h-16 sm:h-20 md:h-24 lg:h-28 w-full bg-white border-2 border-gray-200 hover:border-blue-400 hover:bg-blue-50 text-black rounded-[12px] sm:rounded-[15px] md:rounded-[20px] flex flex-col items-center justify-center gap-1 sm:gap-2 transition-colors p-2 sm:p-3 overflow-hidden"
           variant="outline"
         >
           <div className="relative flex-shrink-0">
@@ -721,16 +714,16 @@ export default function PurchaseOrderModule({ onBack }: { onBack: () => void }) 
                 <img
                   src={category.image || "/placeholder.svg"}
                   alt={category.name}
-                  className="w-6 h-6 sm:w-8 sm:h-8 md:w-10 md:h-10 lg:w-12 lg:h-12 object-cover rounded-[6px] sm:rounded-[8px] md:rounded-[10px] border border-gray-200"
+                  className="w-8 h-8 sm:w-10 sm:h-10 object-cover rounded-[6px] sm:rounded-[8px] md:rounded-[10px] border border-gray-200"
                 />
-                <span className="absolute -bottom-1 -right-1 text-xs sm:text-sm md:text-base">{category.icon}</span>
+                <span className="absolute -bottom-1 -right-1 text-xs sm:text-sm">{category.icon}</span>
               </div>
             ) : (
               <span className="text-sm sm:text-lg md:text-xl lg:text-2xl">{category.icon}</span>
             )}
           </div>
-          <span className="font-medium text-[10px] sm:text-xs md:text-sm text-center leading-tight break-words hyphens-auto max-w-full">
-            {category.name}
+          <span className="font-medium text-xs sm:text-sm text-center leading-tight break-words hyphens-auto w-full px-1">
+            {tName(category)}
           </span>
         </Button>
       ))}
@@ -753,7 +746,7 @@ export default function PurchaseOrderModule({ onBack }: { onBack: () => void }) 
             <Button
               key={subCategory.id}
               onClick={() => handleSubCategorySelect(subCategory.id)}
-              className="h-14 sm:h-16 md:h-20 lg:h-24 w-full bg-white border-2 border-gray-200 hover:border-blue-400 hover:bg-blue-50 text-black rounded-[10px] sm:rounded-[12px] md:rounded-[15px] flex flex-col items-center justify-center gap-1 sm:gap-2 transition-colors p-2 sm:p-3"
+              className="h-14 sm:h-16 md:h-20 lg:h-24 w-full bg-white border-2 border-gray-200 hover:border-blue-400 hover:bg-blue-50 text-black rounded-[10px] sm:rounded-[12px] md:rounded-[15px] flex flex-col items-center justify-center gap-1 sm:gap-2 transition-colors p-2 sm:p-3 overflow-hidden"
               variant="outline"
             >
               <div className="relative flex-shrink-0">
@@ -764,7 +757,7 @@ export default function PurchaseOrderModule({ onBack }: { onBack: () => void }) 
                       alt={subCategory.name}
                       className="w-5 h-5 sm:w-6 sm:h-6 md:w-8 md:h-8 lg:w-10 lg:h-10 object-cover rounded-[5px] sm:rounded-[6px] md:rounded-[8px] border border-gray-200"
                     />
-                    <span className="absolute -bottom-1 -right-1 text-[10px] sm:text-xs md:text-sm">
+                    <span className="absolute -bottom-1 -right-1 text-xs sm:text-sm">
                       {subCategory.icon}
                     </span>
                   </div>
@@ -772,8 +765,8 @@ export default function PurchaseOrderModule({ onBack }: { onBack: () => void }) 
                   <span className="text-xs sm:text-sm md:text-lg lg:text-xl">{subCategory.icon}</span>
                 )}
               </div>
-              <span className="font-medium text-[9px] sm:text-[10px] md:text-xs text-center leading-tight break-words hyphens-auto max-w-full">
-                {subCategory.name}
+              <span className="font-medium text-[9px] sm:text-[10px] md:text-xs text-center leading-tight break-words hyphens-auto w-full px-1">
+                {tName(subCategory)}
               </span>
             </Button>
           ))}
@@ -804,8 +797,8 @@ export default function PurchaseOrderModule({ onBack }: { onBack: () => void }) 
         </div>
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-2 sm:gap-3 md:gap-4">
           {filteredProducts.map((product) => (
-            <Card key={product.id} className="rounded-[11px] border-gray-200">
-              <CardContent className="p-3 sm:p-4">
+            <Card key={product.id} className="rounded-[11px] border-gray-200 overflow-hidden">
+              <CardContent className="p-3 sm:p-4 overflow-hidden">
                 <div className="space-y-2 sm:space-y-3">
                   <div className="flex items-start gap-2 sm:gap-3">
                     {product.image && (
@@ -815,9 +808,9 @@ export default function PurchaseOrderModule({ onBack }: { onBack: () => void }) 
                         className="w-10 h-10 sm:w-12 sm:h-12 md:w-14 md:h-14 object-cover rounded-[8px] sm:rounded-[9px] border border-gray-200 flex-shrink-0"
                       />
                     )}
-                    <div className="flex-1 min-w-0">
-                      <h3 className="font-medium text-xs sm:text-sm md:text-base leading-tight break-words hyphens-auto">
-                        {product.name}
+                    <div className="flex-1 min-w-0 overflow-hidden">
+                      <h3 className="font-medium text-xs sm:text-sm leading-tight break-words hyphens-auto">
+                        {tName(product)}
                       </h3>
                       <div className="text-xs sm:text-sm text-gray-600 mt-1">
                         Stock: {product.stock} {product.unit}
@@ -826,7 +819,7 @@ export default function PurchaseOrderModule({ onBack }: { onBack: () => void }) 
                   </div>
                   <Button
                     onClick={() => addToOrder(product)}
-                    className="w-full bg-blue-500 hover:bg-blue-600 text-white rounded-[9px] font-medium text-xs sm:text-sm md:text-base py-2"
+                    className="w-full bg-blue-500 hover:bg-blue-600 text-white rounded-[9px] font-medium text-xs sm:text-sm py-2"
                   >
                     <Plus className="w-3 h-3 sm:w-4 sm:h-4 mr-1 sm:mr-2" />
                     Add to Order
@@ -863,7 +856,11 @@ export default function PurchaseOrderModule({ onBack }: { onBack: () => void }) 
                 <Card key={item.id} className="rounded-[9px] border-gray-200">
                   <CardContent className="p-3">
                     <div className="space-y-2">
-                      <div className="font-medium text-sm break-words hyphens-auto leading-tight">{item.name}</div>
+                      <div className="font-medium text-sm break-words hyphens-auto leading-tight">
+                        {products.find((p) => p.id === item.id)
+                          ? tName(products.find((p) => p.id === item.id))
+                          : item.name}
+                      </div>
 
                       <div className="flex items-center gap-2">
                         <Button
@@ -1111,7 +1108,11 @@ export default function PurchaseOrderModule({ onBack }: { onBack: () => void }) 
                     <Card key={item.id} className="rounded-[9px] border-gray-200">
                       <CardContent className="p-3">
                         <div className="space-y-2">
-                          <div className="font-medium text-sm break-words hyphens-auto leading-tight">{item.name}</div>
+                          <div className="font-medium text-sm break-words hyphens-auto leading-tight">
+                            {products.find((p) => p.id === item.id)
+                              ? tName(products.find((p) => p.id === item.id))
+                              : item.name}
+                          </div>
 
                           <div className="flex items-center gap-2">
                             <Button
@@ -1369,7 +1370,9 @@ export default function PurchaseOrderModule({ onBack }: { onBack: () => void }) 
                       <tr key={item.id}>
                         <td className="border border-black p-2 text-xs sm:text-sm">{index + 1}</td>
                         <td className="border border-black p-2 text-xs sm:text-sm break-words hyphens-auto">
-                          {item.name}
+                          {products.find((p) => p.id === item.id)
+                            ? tName(products.find((p) => p.id === item.id))
+                            : item.name}
                         </td>
                         <td className="border border-black p-2 text-center text-xs sm:text-sm">{item.quantity}</td>
                         <td className="border border-black p-2 text-center text-xs sm:text-sm">{item.unit}</td>

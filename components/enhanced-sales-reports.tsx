@@ -30,6 +30,7 @@ import { format } from "date-fns"
 import jsPDF from "jspdf"
 import "jspdf-autotable"
 import { DataManager } from "./data-manager"
+import { useLanguage } from "@/contexts/LanguageContext"
 
 interface EnhancedSalesReportsProps {
   onBack: () => void
@@ -37,7 +38,7 @@ interface EnhancedSalesReportsProps {
 
 interface Sale {
   id: string
-  invoiceNumber: string
+  estimateNumber: string
   date: string
   timestamp: number
   customerId?: string
@@ -65,11 +66,13 @@ interface ReportData {
 }
 
 export default function EnhancedSalesReports({ onBack }: EnhancedSalesReportsProps) {
+  const { tName } = useLanguage()
   const [dateRange, setDateRange] = useState<"today" | "week" | "month" | "year" | "custom">("month")
   const [customStartDate, setCustomStartDate] = useState("")
   const [customEndDate, setCustomEndDate] = useState("")
   const [analytics, setAnalytics] = useState<ReportData | null>(null)
   const [sales, setSales] = useState<Sale[]>([])
+  const [products, setProducts] = useState<any[]>([])
   const [filteredSales, setFilteredSales] = useState<Sale[]>([])
   const [searchQuery, setSearchQuery] = useState("")
   const [paymentFilter, setPaymentFilter] = useState<"all" | "cash" | "card" | "upi" | "credit">("all")
@@ -118,15 +121,22 @@ export default function EnhancedSalesReports({ onBack }: EnhancedSalesReportsPro
   }, [])
 
   useEffect(() => {
-    const { start, end } = getDateRange()
-    const analyticsData = DataManager.getSalesAnalytics({ start, end })
-    setAnalytics(analyticsData)
+    const fetchAnalytics = async () => {
+      const { start, end } = getDateRange()
+      const analyticsData = await DataManager.getSalesAnalytics({ start, end })
+      setAnalytics(analyticsData)
+    }
+    fetchAnalytics()
     applyFilters()
   }, [dateRange, customStartDate, customEndDate, sales, searchQuery, paymentFilter])
 
-  const loadSalesData = () => {
-    const salesData = DataManager.getSales()
+  const loadSalesData = async () => {
+    const [salesData, productsData] = await Promise.all([
+      DataManager.getSales(),
+      DataManager.getProducts(),
+    ])
     setSales(salesData)
+    setProducts(productsData)
   }
 
   const applyFilters = () => {
@@ -140,7 +150,7 @@ export default function EnhancedSalesReports({ onBack }: EnhancedSalesReportsPro
       const query = searchQuery.toLowerCase()
       filtered = filtered.filter(
         (sale) =>
-          sale.invoiceNumber.toLowerCase().includes(query) ||
+          sale.estimateNumber.toLowerCase().includes(query) ||
           sale.customerName?.toLowerCase().includes(query) ||
           sale.customerPhone?.includes(query),
       )
@@ -197,7 +207,9 @@ export default function EnhancedSalesReports({ onBack }: EnhancedSalesReportsPro
       .slice(0, 10)
       .map((product, index) => [
         index + 1,
-        product.productName,
+        products.find((p) => p.id === product.productId)
+          ? tName(products.find((p) => p.id === product.productId))
+          : product.productName,
         product.totalQuantity,
         formatCurrency(product.totalRevenue),
       ])
@@ -219,7 +231,7 @@ export default function EnhancedSalesReports({ onBack }: EnhancedSalesReportsPro
     const salesData = filteredSales
       .slice(0, 20)
       .map((sale) => [
-        sale.invoiceNumber,
+        sale.estimateNumber,
         format(new Date(sale.timestamp), "MMM dd, yyyy"),
         sale.customerName || "Cash Customer",
         sale.paymentMethod.toUpperCase(),
@@ -245,16 +257,15 @@ export default function EnhancedSalesReports({ onBack }: EnhancedSalesReportsPro
 
     const pdfBlob = doc.output("blob")
 
-    if (navigator.share && navigator.canShare) {
+    const data = {
+      title: "Sales Report",
+      text: `Sales report from SNS for ${format(new Date(), "MMM dd, yyyy")}`,
+      files: [new File([pdfBlob], `Sales_Report_${format(new Date(), "yyyy-MM-dd")}.pdf`, { type: "application/pdf" })],
+    }
+
+    if (navigator.share && navigator.canShare && navigator.canShare(data)) {
       try {
-        const file = new File([pdfBlob], `Sales_Report_${format(new Date(), "yyyy-MM-dd")}.pdf`, {
-          type: "application/pdf",
-        })
-        await navigator.share({
-          title: "Sales Report",
-          text: `Sales report from SNS for ${format(new Date(), "MMM dd, yyyy")}`,
-          files: [file],
-        })
+        await navigator.share(data)
       } catch (error) {
         console.error("Error sharing:", error)
         exportReportToPDF()
@@ -302,12 +313,12 @@ export default function EnhancedSalesReports({ onBack }: EnhancedSalesReportsPro
     setShowEditSale(true)
   }
 
-  const saveSaleChanges = () => {
+  const saveSaleChanges = async () => {
     if (!editableSale) return
 
     // Update the sale in DataManager
-    DataManager.updateSale(editableSale.id, editableSale)
-    loadSalesData()
+    await DataManager.updateSale(editableSale.id, editableSale)
+    await loadSalesData()
     setShowEditSale(false)
   }
 
@@ -404,7 +415,12 @@ export default function EnhancedSalesReports({ onBack }: EnhancedSalesReportsPro
           </CardContent>
         </Card>
 
-        <div ref={reportRef}>
+        {!analytics ? (
+          <div className="flex items-center justify-center p-12">
+            <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary"></div>
+          </div>
+        ) : (
+          <div ref={reportRef}>
           {/* Key Metrics */}
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
             <Card className="rounded-[11px]">
@@ -532,7 +548,11 @@ export default function EnhancedSalesReports({ onBack }: EnhancedSalesReportsPro
                             {index + 1}
                           </div>
                           <div>
-                            <p className="font-medium text-sm">{product.productName}</p>
+                            <p className="font-medium text-sm">
+                              {products.find((p) => p.id === product.productId)
+                                ? tName(products.find((p) => p.id === product.productId))
+                                : product.productName}
+                            </p>
                             <p className="text-xs text-gray-500">{product.totalQuantity} units sold</p>
                           </div>
                         </div>
@@ -636,7 +656,7 @@ export default function EnhancedSalesReports({ onBack }: EnhancedSalesReportsPro
                       >
                         <div className="flex-1">
                           <div className="flex items-center gap-2 mb-1">
-                            <span className="font-medium">{sale.invoiceNumber}</span>
+                            <span className="font-medium">{sale.estimateNumber}</span>
                             <Badge variant={sale.isCashSale ? "secondary" : "default"} className="text-xs">
                               {sale.isCashSale ? "Cash" : "Customer"}
                             </Badge>
@@ -686,14 +706,15 @@ export default function EnhancedSalesReports({ onBack }: EnhancedSalesReportsPro
               </Card>
             </TabsContent>
           </Tabs>
-        </div>
+          </div>
+        )}
       </div>
 
       {/* Sale Details Dialog */}
       <Dialog open={showSaleDetails} onOpenChange={setShowSaleDetails}>
         <DialogContent className="max-w-2xl">
           <DialogHeader>
-            <DialogTitle>Sale Details - {selectedSale?.invoiceNumber}</DialogTitle>
+            <DialogTitle>Sale Details - {selectedSale?.estimateNumber}</DialogTitle>
           </DialogHeader>
           {selectedSale && (
             <div className="space-y-4">
@@ -722,7 +743,11 @@ export default function EnhancedSalesReports({ onBack }: EnhancedSalesReportsPro
                   {selectedSale.items.map((item, index) => (
                     <div key={index} className="flex justify-between items-center p-2 bg-gray-50 rounded-[9px]">
                       <div>
-                        <p className="font-medium text-sm">{item.productName}</p>
+                        <p className="font-medium text-sm">
+                          {products.find((p) => p.id === item.productId)
+                            ? tName(products.find((p) => p.id === item.productId))
+                            : item.productName}
+                        </p>
                         <p className="text-xs text-gray-600">
                           {item.quantity} {item.unit} × ₹{item.unitPrice}
                         </p>
@@ -741,7 +766,7 @@ export default function EnhancedSalesReports({ onBack }: EnhancedSalesReportsPro
       <Dialog open={showEditSale} onOpenChange={setShowEditSale}>
         <DialogContent className="max-w-2xl">
           <DialogHeader>
-            <DialogTitle>Edit Sale - {editableSale?.invoiceNumber}</DialogTitle>
+            <DialogTitle>Edit Sale - {editableSale?.estimateNumber}</DialogTitle>
           </DialogHeader>
           {editableSale && (
             <div className="space-y-4">
